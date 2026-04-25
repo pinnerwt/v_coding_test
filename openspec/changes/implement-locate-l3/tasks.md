@@ -26,9 +26,9 @@
 
 ## 3. Implementation (green)
 
-- [ ] 3.1 In `task2/agent/locate.py`, add module constants `_L3_MAX_CANDIDATES = 10`, `_L3_MAX_HEADING_CHARS = 100`, `_L3_MAX_NEARBY_CHARS = 200`, `_L3_CONFIDENCE = 0.8`.
-- [ ] 3.2 Add a JS helper string constant `_L3_CANDIDATE_CONTEXT_JS` that, given an element, returns `{section_heading: str, nearby_text: str}` with truncation done in JS (no Python post-processing of large strings). `section_heading` extraction order: closest ancestor `<section>`'s `aria-label` → first descendant heading (`h1..h6`) of that section → closest preceding heading sibling. `nearby_text` extraction: `textContent` of the closest semantic ancestor (`section, article, nav, aside, main, form`) trimmed and truncated; fallback to parent's text content. Apply `String.prototype.slice(0, limit)` for truncation; collapse internal whitespace before truncating.
-- [ ] 3.3 Implement `locate_l3(page, *, role, name, llm_chat=None) -> LocateResult`:
+- [x] 3.1 In `task2/agent/locate.py`, add module constants `_L3_MAX_CANDIDATES = 10`, `_L3_MAX_HEADING_CHARS = 100`, `_L3_MAX_NEARBY_CHARS = 200`, `_L3_CONFIDENCE = 0.8`.
+- [x] 3.2 Add a JS helper string constant `_L3_CANDIDATE_CONTEXT_JS` that, given an element, returns `{section_heading: str, nearby_text: str}` with truncation done in JS (no Python post-processing of large strings). `section_heading` extraction order: closest ancestor `<section>`'s `aria-label` → first descendant heading (`h1..h6`) of that section → closest preceding heading sibling. `nearby_text` extraction: `textContent` of the closest semantic ancestor (`section, article, nav, aside, main, form`) trimmed and truncated; fallback to parent's text content. Apply `String.prototype.slice(0, limit)` for truncation; collapse internal whitespace before truncating.
+- [x] 3.3 Implement `locate_l3(page, *, role, name, llm_chat=None) -> LocateResult`:
   - Build the candidates locator: `loc = page.get_by_role(role, name=name, exact=False) if name else page.get_by_role(role)`.
   - `count = loc.count()`. If `count == 0`, raise `LocatorMiss(reason="zero_matches", match_count=0)`. The LLM SHALL NOT be invoked.
   - If `count == 1`, build the L3 result for the unique candidate via `loc.first.evaluate(_L3_CANDIDATE_CONTEXT_JS)` to get `section_heading` for the fingerprint, and a selector of the form `f'role={role}[name="{escaped_name}" i] >> nth=0'` (or `f'role={role} >> nth=0'` when `name is None`). The LLM SHALL NOT be invoked.
@@ -41,8 +41,8 @@
     - Build the selector: `f'role={role}[name="{_escape_quoted(name)}" i] >> nth={chosen_index}'` (or the no-name variant when `name is None`).
     - Build the fingerprint: `sha256(f"{role}:{name or ''}:{candidates[chosen_index].section_heading}".encode()).hexdigest()`.
     - Return `LocateResult(tier="L3_rerank", role=role, name=name, selector=selector, ax_fingerprint=fingerprint, confidence=_L3_CONFIDENCE)`.
-- [ ] 3.4 Add a private helper `_resolve_default_llm_chat()` that does `from agent.llm import chat; return chat`, so module load of `agent.locate` does NOT pull in `agent.llm` / `httpx`.
-- [ ] 3.5 Modify `locate(page, intent, *, llm_chat=None)` to add the `ambiguous` branch:
+- [x] 3.4 Add a private helper `_resolve_default_llm_chat()` that does `from agent.llm import chat; return chat`, so module load of `agent.locate` does NOT pull in `agent.llm` / `httpx`.
+- [x] 3.5 Modify `locate(page, intent, *, llm_chat=None)` to add the `ambiguous` branch:
   ```python
   except LocatorMiss as miss:
       if miss.reason == "zero_matches":
@@ -52,9 +52,9 @@
       raise
   ```
   The L2 branch is unchanged (L2's own `LocatorMiss` still propagates; we deliberately do NOT cascade L2 ambiguous to L3 in this ticket — see design.md "Non-Goals").
-- [ ] 3.6 Update the module-level signature to add the optional kwarg-only `llm_chat` parameter on `locate(...)`. Backwards compatibility: positional `locate(page, intent)` SHALL still work for all existing callers.
-- [ ] 3.7 From `task2/`, run `uv run pytest tests/agent/test_locate_l3.py` and confirm all new tests pass.
-- [ ] 3.8 From `task2/`, run `uv run pytest` (full suite) and confirm tickets #1, #2, #3, #4 tests still pass — in particular the renamed L2-era test in `test_locate_l2.py` reflects the new orchestrator behaviour, and L1 / L2 happy-path tests are unaffected.
+- [x] 3.6 Update the module-level signature to add the optional kwarg-only `llm_chat` parameter on `locate(...)`. Backwards compatibility: positional `locate(page, intent)` SHALL still work for all existing callers.
+- [x] 3.7 From `task2/`, run `uv run pytest tests/agent/test_locate_l3.py` and confirm all new tests pass.
+- [x] 3.8 From `task2/`, run `uv run pytest` (full suite) and confirm tickets #1, #2, #3, #4 tests still pass — in particular the renamed L2-era test in `test_locate_l2.py` reflects the new orchestrator behaviour, and L1 / L2 happy-path tests are unaffected.
 
 ## 4. Refactor + housekeeping
 
