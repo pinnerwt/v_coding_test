@@ -66,11 +66,11 @@
 
 ## 5. Validation
 
-- [ ] 5.1 Run `openspec validate implement-locate-l3 --strict` — change SHALL be valid.
-- [ ] 5.2 Final pre-commit gate from `task2/`: `uv run ruff format .` (no changes), `uv run ruff check .` (clean), `uv run pytest` (all tests pass).
-- [ ] 5.3 Three or four conventional commits on the branch:
+- [x] 5.1 Run `openspec validate implement-locate-l3 --strict` — change SHALL be valid.
+- [x] 5.2 Final pre-commit gate from `task2/`: `uv run ruff format .` (no changes), `uv run ruff check .` (clean), `uv run pytest` (all tests pass).
+- [x] 5.3 Three or four conventional commits on the branch:
   - `chore(task2): scaffold implement-locate-l3` (already created in step 2 of the parent skill — counts).
   - `test(task2): add failing L3 locator tests and fixtures`.
   - `feat(task2): add L3 LLM-rerank locator tier and L1-ambiguous cascade`.
   - `refactor(task2): <whatever 4.1 ends up doing>` — only if a real cleanup happens; skip if 4.1 finds nothing worth changing.
-- [ ] 5.4 No hooks bypassed at any point.
+- [x] 5.4 No hooks bypassed at any point.
