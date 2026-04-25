@@ -116,6 +116,7 @@ def _check_evidence(evidence: dict | None) -> dict:
     """Validate evidence dict for required fields; return verifier verdict."""
     reasons: list[str] = []
     if not isinstance(evidence, dict):
+        # Not a dict ⇒ neither required field can exist; report both.
         reasons.append("evidence.url is missing or empty")
         reasons.append("evidence.text_snippet is missing or empty")
     else:
