@@ -367,7 +367,7 @@ def test_locate_l4_default_chat_honors_llm_base_url(monkeypatch):
         def viewport_size(self):
             return {"width": 1280, "height": 800}
 
-        def screenshot(self, *, full_page=False):
+        def screenshot(self, *, full_page=False, scale="device"):
             return base64.b64decode(
                 "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgAAIAAAUAAeImBZsAAAAASUVORK5CYII="
             )
@@ -376,3 +376,28 @@ def test_locate_l4_default_chat_honors_llm_base_url(monkeypatch):
 
     assert route.called
     assert route.calls.last.request.url == "http://vision.example.test/v1/chat/completions"
+
+
+def test_locate_l4_screenshots_in_css_pixel_scale():
+    # Playwright's page.screenshot defaults to scale="device", but page.mouse.click
+    # takes CSS pixels — on deviceScaleFactor != 1 contexts the bbox coords from a
+    # device-scaled image would not line up with the click target. L4 must request
+    # CSS-scale screenshots so the model's bbox coords are directly clickable.
+    captured: dict = {}
+
+    class _StubPage:
+        @property
+        def viewport_size(self):
+            return {"width": 1280, "height": 800}
+
+        def screenshot(self, *, full_page=False, scale="device"):
+            captured["full_page"] = full_page
+            captured["scale"] = scale
+            return base64.b64decode(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgAAIAAAUAAeImBZsAAAAASUVORK5CYII="
+            )
+
+    stub = _make_chat_stub(content=json.dumps({"bbox": [10, 20, 30, 40]}))
+    locate_l4(_StubPage(), role="button", name=None, intent="Submit button", llm_chat=stub)
+    assert captured["scale"] == "css"
+    assert captured["full_page"] is False
