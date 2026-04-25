@@ -142,7 +142,7 @@ def _dispatch(tool_name: str, args: dict, browser: Browser) -> str:
         if intent:
             return browser.read(locate(page, intent).selector)
         return _body_text(page)
-    raise ValueError(f"Unknown tool: {tool_name!r}")
+    return f"Error: unknown tool {tool_name!r}"
 
 
 def loop(
@@ -176,7 +176,17 @@ def loop(
             continue
 
         for tool_call in response.tool_calls:
-            args = json.loads(tool_call.arguments) if tool_call.arguments else {}
+            try:
+                args = json.loads(tool_call.arguments) if tool_call.arguments else {}
+            except json.JSONDecodeError as exc:
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": f"Error: invalid JSON arguments ({exc.msg})",
+                    }
+                )
+                continue
 
             if tool_call.name == "done":
                 return RunResult(
