@@ -416,6 +416,115 @@ def test_replay_run_ignores_no_tool_decide_turns(tmp_path):
     assert result.first_divergence is None
 
 
+def test_replay_run_detects_extra_chat_calls(tmp_path):
+    """Loop calling chat() more times than the recording SHALL surface a divergence.
+
+    Construct a recording that ends after a single no-tool decide turn (no DecisionEvent
+    emitted, recording stops mid-flight). When replay runs, loop.py will keep calling
+    chat() until max_steps because no done/fail tool ever arrives — those extra calls
+    must be reported, not silently capped at min(recorded, consumed).
+    """
+    no_tool = ChatResponse(
+        content="thinking",
+        tool_calls=[],
+        finish_reason="stop",
+        model="stub",
+        usage=Usage(0, 0, 0),
+        raw={},
+    )
+
+    capture = StubLLMClient([no_tool])
+    with StubBrowser() as br:
+        loop(task="task", browser=br, llm_client=capture, max_steps=1)
+    first_prompt = capture.prompts_consumed[0]
+
+    run = {
+        "run_id": "run-rec-001",
+        "task": "task",
+        "expect_schema": None,
+        "budget": {"steps": 20, "usd": 1.0, "seconds": 120},
+        "llm": {
+            "base_url": "http://stub.local",
+            "model": "stub-model",
+            "temperature": 0.0,
+            "seed": None,
+        },
+        "agent_version": "0.0.1-test",
+        "started_at": "2024-01-01T00:00:00Z",
+        "ended_at": None,
+        "status": None,
+        "final": None,
+        "totals": None,
+    }
+    events = [
+        {
+            "run_id": run["run_id"],
+            "seq": 1,
+            "ts": "2024-01-01T00:00:01Z",
+            "step_id": "step-1",
+            "kind": "observation",
+            "url": "http://stub.local/",
+            "title": "",
+            "ax_tree_digest": "",
+            "ax_fingerprint": "",
+            "screenshot_ref": "",
+            "viewport": {"width": 1280, "height": 720},
+        },
+        {
+            "run_id": run["run_id"],
+            "seq": 2,
+            "ts": "2024-01-01T00:00:02Z",
+            "step_id": "step-1",
+            "kind": "llm_call",
+            "llm_call_id": "lc-1",
+            "purpose": "decide",
+            "model": "stub-model",
+            "base_url": "http://stub.local",
+            "prompt": {"messages": first_prompt},
+            "response": {"content": "thinking", "finish_reason": "stop", "tool_calls": []},
+            "tokens": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+            "usd": 0.0,
+            "ms": 0,
+        },
+    ]
+    fixture = tmp_path / "truncated.jsonl"
+    fixture.write_text("\n".join([json.dumps(run)] + [json.dumps(e) for e in events]) + "\n")
+
+    result = replay_run(fixture)
+    assert result.matched is False
+    assert result.first_divergence is not None
+    assert result.first_divergence.kind == "prompt"
+
+
+def test_replay_run_compares_messages_only_not_full_prompt_payload(tmp_path):
+    """Extra fields in recorded LLMCallEvent.prompt (tools/model/...) SHALL NOT diverge.
+
+    The trace schema allows `prompt: dict[str, Any]` to carry arbitrary keys beyond
+    `messages`. Replay only sees `messages` (what loop.py passes to chat), so the
+    diff must compare just the `messages` field — not the whole payload.
+    """
+    lines = FIXTURE_PATH.read_text().strip().splitlines()
+    out: list[str] = []
+    augmented = False
+    for line in lines:
+        obj = json.loads(line)
+        if obj.get("kind") == "llm_call" and obj.get("purpose") == "decide":
+            obj["prompt"]["tools"] = [
+                {"type": "function", "function": {"name": "extra", "description": "x"}}
+            ]
+            obj["prompt"]["model"] = "stub-model"
+            augmented = True
+        out.append(json.dumps(obj))
+    assert augmented, "Expected to augment at least one decide LLMCallEvent prompt"
+
+    fixture = tmp_path / "augmented.jsonl"
+    fixture.write_text("\n".join(out) + "\n")
+
+    result = replay_run(fixture)
+    assert result.matched is True, f"Expected match; got divergence={result.first_divergence!r}"
+    assert result.first_divergence is None
+
+
 def test_stub_browser_no_playwright_import():
     """agent.replay SHALL NOT directly import playwright.
 

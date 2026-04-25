@@ -176,23 +176,44 @@ def replay_run(trace_path: str | Path) -> ReplayResult:
     )
 
     # Prompt drift: compare what loop.py actually sent against what was recorded.
-    # If the prompt diverges at any chat() call, surface that divergence — a matching
-    # tool-call sequence is not enough to declare the run regression-free.
-    n_prompt_pairs = min(len(decide_llm_calls), len(stub_llm.prompts_consumed))
+    # The trace schema lets `LLMCallEvent.prompt` carry extra fields (tools/model/…),
+    # so diff only on `messages` — that is the slice replay actually drives.
+    n_recorded_calls = len(decide_llm_calls)
+    n_consumed_calls = len(stub_llm.prompts_consumed)
+    n_prompt_pairs = min(n_recorded_calls, n_consumed_calls)
     for i in range(n_prompt_pairs):
-        recorded_prompt = decide_llm_calls[i].prompt
-        actual_prompt = {"messages": stub_llm.prompts_consumed[i]}
-        if recorded_prompt != actual_prompt:
+        recorded_messages = decide_llm_calls[i].prompt.get("messages")
+        actual_messages = stub_llm.prompts_consumed[i]
+        if recorded_messages != actual_messages:
             return ReplayResult(
                 matched=False,
                 steps=i,
                 first_divergence=ReplayDivergence(
                     step_id=decide_llm_calls[i].step_id,
-                    expected=recorded_prompt,
-                    actual=actual_prompt,
+                    expected={"messages": recorded_messages},
+                    actual={"messages": actual_messages},
                     kind="prompt",
                 ),
             )
+
+    # Chat-call count mismatch: extra (or missing) chat() calls beyond the recording
+    # signal a control-flow regression that a per-pair messages diff alone would miss.
+    if n_consumed_calls != n_recorded_calls:
+        step_id = (
+            decide_llm_calls[n_consumed_calls].step_id
+            if n_recorded_calls > n_consumed_calls
+            else None
+        )
+        return ReplayResult(
+            matched=False,
+            steps=n_prompt_pairs,
+            first_divergence=ReplayDivergence(
+                step_id=step_id,
+                expected={"chat_calls": n_recorded_calls},
+                actual={"chat_calls": n_consumed_calls},
+                kind="prompt",
+            ),
+        )
 
     # Decision diff is over tool-call responses only. A no-tool 'decide' turn produces
     # an LLMCallEvent but no DecisionEvent in the recording, so its consumed counterpart
