@@ -58,11 +58,11 @@
 
 ## 4. Refactor + housekeeping
 
-- [ ] 4.1 Reread `task2/agent/locate.py`. Look for unifying the per-candidate context extraction with `_ACCESSIBLE_NAME_JS` (one JS function returning all three fields) if it does not bloat that helper beyond readability.
-- [ ] 4.2 Confirm `LocateResult`'s field order, frozen-ness, and L1 / L2 constants are unchanged.
-- [ ] 4.3 Confirm `agent.llm` is NOT imported at module top of `agent.locate`. Verify with `python -c "import sys, agent.locate; assert 'agent.llm' not in sys.modules"` — actually this is too brittle for a unit test (tests pull in `agent.llm` themselves), so just verify by reading the imports at the top of `agent/locate.py`.
-- [ ] 4.4 Run `uv run ruff format .` (no changes after green) and `uv run ruff check .` (clean).
-- [ ] 4.5 No new dependencies added to `task2/pyproject.toml`.
+- [x] 4.1 Reread `task2/agent/locate.py`. Look for unifying the per-candidate context extraction with `_ACCESSIBLE_NAME_JS` (one JS function returning all three fields) if it does not bloat that helper beyond readability.
+- [x] 4.2 Confirm `LocateResult`'s field order, frozen-ness, and L1 / L2 constants are unchanged.
+- [x] 4.3 Confirm `agent.llm` is NOT imported at module top of `agent.locate`. Verify with `python -c "import sys, agent.locate; assert 'agent.llm' not in sys.modules"` — actually this is too brittle for a unit test (tests pull in `agent.llm` themselves), so just verify by reading the imports at the top of `agent/locate.py`.
+- [x] 4.4 Run `uv run ruff format .` (no changes after green) and `uv run ruff check .` (clean).
+- [x] 4.5 No new dependencies added to `task2/pyproject.toml`.
 
 ## 5. Validation
 

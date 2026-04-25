@@ -321,31 +321,22 @@ def locate_l3(
     if count == 0:
         raise LocatorMiss(reason="zero_matches", match_count=0)
 
-    selector_prefix = f'role={role}[name="{_escape_quoted(name)}" i]' if name else f"role={role}"
+    capped = min(count, _L3_MAX_CANDIDATES)
+    candidates = [
+        locator.nth(i).evaluate(_L3_CANDIDATE_CONTEXT_JS, _L3_CONTEXT_ARGS) for i in range(capped)
+    ]
 
     if count == 1:
-        ctx = locator.first.evaluate(_L3_CANDIDATE_CONTEXT_JS, _L3_CONTEXT_ARGS)
-        return _build_l3_result(role, name, selector_prefix, 0, ctx["section_heading"])
+        chosen = 0
+    else:
+        chat_fn = llm_chat if llm_chat is not None else _resolve_default_llm_chat()
+        response = chat_fn(messages=_build_l3_messages(role, name, candidates), temperature=0.0)
+        idx = _parse_l3_index(response, len(candidates))
+        if idx is None:
+            raise LocatorMiss(reason="ambiguous", match_count=count)
+        chosen = idx
 
-    capped = min(count, _L3_MAX_CANDIDATES)
-    candidates: list[dict[str, str]] = []
-    for i in range(capped):
-        ctx = locator.nth(i).evaluate(_L3_CANDIDATE_CONTEXT_JS, _L3_CONTEXT_ARGS)
-        candidates.append(
-            {
-                "accessible_name": ctx.get("accessible_name", ""),
-                "section_heading": ctx.get("section_heading", ""),
-                "nearby_text": ctx.get("nearby_text", ""),
-            }
-        )
-
-    chat_fn = llm_chat if llm_chat is not None else _resolve_default_llm_chat()
-    messages = _build_l3_messages(role, name, candidates)
-    response = chat_fn(messages=messages, temperature=0.0)
-    chosen = _parse_l3_index(response, len(candidates))
-    if chosen is None:
-        raise LocatorMiss(reason="ambiguous", match_count=count)
-
+    selector_prefix = f'role={role}[name="{_escape_quoted(name)}" i]' if name else f"role={role}"
     return _build_l3_result(
         role, name, selector_prefix, chosen, candidates[chosen]["section_heading"]
     )
