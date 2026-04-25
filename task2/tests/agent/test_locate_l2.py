@@ -116,13 +116,30 @@ def test_locate_orchestrator_cascades_l1_zero_to_l2(fixture_server, playwright_c
         assert result.name == "Submit"
 
 
-def test_locate_orchestrator_does_not_cascade_on_l1_ambiguous(fixture_server, playwright_chromium):
+def test_locate_orchestrator_l1_ambiguous_now_cascades_to_l3(fixture_server, playwright_chromium):
+    # Ticket #5 changes the cascade: L1 ambiguous now goes to L3, not propagation.
+    # We mock the LLM to confirm L3 is reached; the L3 test module covers the
+    # fingerprint/selector contract end-to-end.
+    import json
+
+    from agent.llm import ChatResponse, Usage
+
+    def stub(messages, **kwargs):
+        return ChatResponse(
+            content=json.dumps({"index": 0}),
+            tool_calls=[],
+            finish_reason="stop",
+            model="stub",
+            usage=Usage(prompt_tokens=0, completion_tokens=0, total_tokens=0),
+            raw={},
+        )
+
     with Browser(playwright_browser=playwright_chromium) as b:
         b.goto(f"{fixture_server}/locate_l1.html")
-        with pytest.raises(LocatorMiss) as excinfo:
-            locate(b._page, "Save button")
-        assert excinfo.value.reason == "ambiguous"
-        assert excinfo.value.match_count == 2
+        result = locate(b._page, "Save button", llm_chat=stub)
+        assert result.tier == "L3_rerank"
+        assert result.role == "button"
+        assert result.name == "Save"
 
 
 def test_locate_orchestrator_surfaces_l2_zero_match(fixture_server, playwright_chromium):
