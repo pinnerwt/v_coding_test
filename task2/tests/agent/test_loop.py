@@ -463,6 +463,103 @@ def test_loop_self_correction_supervisor_halt(fixture_server, playwright_chromiu
 # ---------------------------------------------------------------------------
 
 
+def test_loop_done_no_evidence_argument(fixture_server, playwright_chromium):
+    """Scenario: LLM calls done with no evidence key in args — loop marks run as unverified.
+
+    The done handler must treat a missing 'evidence' key the same as an empty dict:
+    required fields url and text_snippet are absent, so status must be 'unverified'.
+    """
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {},
+                    # no 'evidence' key at all
+                },
+                call_id="tc-2",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop("read the heading", browser, fake_llm)
+
+    assert result.status == "unverified"
+    assert result.verifier is not None
+    assert result.verifier["ok"] is False
+    assert len(result.verifier["reasons"]) > 0
+
+
+def test_loop_done_evidence_missing_url(fixture_server, playwright_chromium):
+    """Scenario: LLM calls done with evidence missing url — loop marks run as unverified.
+
+    When only text_snippet is present but url is absent, the guard must catch the
+    missing url field and return status='unverified' with a reason mentioning 'url'.
+    """
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {},
+                    "evidence": {"text_snippet": "Hello, loop"},
+                },
+                call_id="tc-2",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop("read the heading", browser, fake_llm)
+
+    assert result.status == "unverified"
+    assert result.verifier is not None
+    assert result.verifier["ok"] is False
+    assert any("url" in r for r in result.verifier["reasons"])
+
+
+def test_loop_done_evidence_missing_text_snippet(fixture_server, playwright_chromium):
+    """Scenario: LLM calls done with evidence missing text_snippet — loop marks run as unverified.
+
+    When only url is present but text_snippet is absent, the guard must catch the
+    missing text_snippet field and return status='unverified' with a reason mentioning
+    'text_snippet'.
+    """
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {},
+                    "evidence": {"url": fixture_url},
+                },
+                call_id="tc-2",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop("read the heading", browser, fake_llm)
+
+    assert result.status == "unverified"
+    assert result.verifier is not None
+    assert result.verifier["ok"] is False
+    assert any("text_snippet" in r for r in result.verifier["reasons"])
+
+
 def test_loop_done_without_evidence(fixture_server, playwright_chromium):
     """Scenario: LLM calls done with evidence={} — loop marks run as unverified.
 
