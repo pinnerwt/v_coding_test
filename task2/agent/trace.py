@@ -144,9 +144,12 @@ _SECRET_HEADER_PATTERN = re.compile(r"(?i)(set-cookie|cookie|authorization):\s*[
 def redact(event: AnyEvent) -> AnyEvent:
     """Return a new event with secret fields replaced by '[REDACTED]'."""
     if isinstance(event, LLMCallEvent):
-        old_messages: list[dict[str, Any]] = event.prompt.get("messages", [])
+        old_messages: list[Any] = event.prompt.get("messages", [])
         new_messages = []
         for msg in old_messages:
+            if not isinstance(msg, dict):
+                new_messages.append(msg)
+                continue
             content = msg.get("content")
             if isinstance(content, str) and _SECRET_HEADER_PATTERN.search(content):
                 new_content = _SECRET_HEADER_PATTERN.sub("[REDACTED]", content)
@@ -186,7 +189,7 @@ CREATE TABLE IF NOT EXISTS traces_events (
 )"""
 
 _INSERT_RUN_SQL = "INSERT INTO traces_runs (run_id, payload) VALUES (?, ?)"
-_RUN_EXISTS_SQL = "SELECT 1 FROM traces_runs WHERE run_id = ?"
+_RUN_STATUS_SQL = "SELECT status FROM traces_runs WHERE run_id = ?"
 _SELECT_RUN_PAYLOAD_SQL = "SELECT payload FROM traces_runs WHERE run_id = ?"
 _MAX_SEQ_SQL = "SELECT MAX(seq) FROM traces_events WHERE run_id = ?"
 _INSERT_EVENT_SQL = "INSERT INTO traces_events (run_id, seq, payload) VALUES (?, ?, ?)"
@@ -219,6 +222,10 @@ class TraceWriter:
     def _missing_run(run_id: str) -> LookupError:
         return LookupError(f"No open run with run_id={run_id!r}; call open_run first.")
 
+    @staticmethod
+    def _closed_run(run_id: str) -> LookupError:
+        return LookupError(f"Run {run_id!r} is already closed; cannot append further events.")
+
     def open_run(self, run: Run) -> None:
         conn = self._require_conn()
         conn.execute(_INSERT_RUN_SQL, (run.run_id, run.model_dump_json()))
@@ -226,8 +233,11 @@ class TraceWriter:
 
     def append_event(self, event: AnyEvent) -> None:  # type: ignore[override]
         conn = self._require_conn()
-        if conn.execute(_RUN_EXISTS_SQL, (event.run_id,)).fetchone() is None:
+        status_row = conn.execute(_RUN_STATUS_SQL, (event.run_id,)).fetchone()
+        if status_row is None:
             raise self._missing_run(event.run_id)
+        if status_row[0] is not None:
+            raise self._closed_run(event.run_id)
         max_seq_row = conn.execute(_MAX_SEQ_SQL, (event.run_id,)).fetchone()
         max_seq: int | None = max_seq_row[0] if max_seq_row else None
         if max_seq is not None and event.seq <= max_seq:

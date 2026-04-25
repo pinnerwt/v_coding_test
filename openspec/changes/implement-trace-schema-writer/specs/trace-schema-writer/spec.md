@@ -186,7 +186,7 @@ The system SHALL provide `agent.trace.TraceWriter` — a class that persists `Ru
 
 - Open a SQLite connection to `path` and call `_ensure_schema()` which creates `traces.runs` and `traces.events` tables if they do not exist.
 - `open_run(run: Run) -> None` — INSERT the run as a JSON blob into `traces.runs`. Raise `sqlite3.IntegrityError` if the `run_id` already exists.
-- `append_event(event: AnyEvent) -> None` — verify the run exists, validate `event.seq > last_seq_for_run`, then INSERT the event's JSON into `traces.events`. Raise `LookupError` if `event.run_id` has no row in `traces.runs`. Raise `SeqError` if the seq is not strictly greater than the last appended seq for this run.
+- `append_event(event: AnyEvent) -> None` — verify the run exists and is still open, validate `event.seq > last_seq_for_run`, then INSERT the event's JSON into `traces.events`. Raise `LookupError` if `event.run_id` has no row in `traces.runs` OR if the run is already closed (`status` is non-NULL). Raise `SeqError` if the seq is not strictly greater than the last appended seq for this run.
 - `close_run(run_id: str, *, status: str, ended_at: str, final: dict, totals: dict) -> None` — UPDATE the `traces.runs` row to set `status`, `ended_at`, `final_json`, `totals_json`, AND rewrite the `payload` JSON blob so the canonical `Run` reflects the closed state. The merged values SHALL be re-validated against the `Run` schema before the row is written, so an invalid `status` (or any other field) raises `pydantic.ValidationError` and leaves the existing payload untouched. Raise `LookupError` if `run_id` has no row.
 - `close() -> None` — close the SQLite connection.
 - `__enter__` / `__exit__` context manager: call `close()` on exit.
@@ -235,7 +235,7 @@ The system SHALL provide `agent.trace.SeqError` — a `ValueError` subclass rais
 
 The system SHALL provide `agent.trace.redact(event: AnyEvent) -> AnyEvent` — a function that returns a new event instance with secret-typed fields replaced by the string `"[REDACTED]"`. Secret fields are:
 
-- For `LLMCallEvent`: any message in `prompt.messages` whose `content` string matches the pattern `(?i)(set-cookie|cookie|authorization):\s*\S+` SHALL have the matching substring(s) replaced with `[REDACTED]`.
+- For `LLMCallEvent`: any message in `prompt.messages` whose `content` string matches the pattern `(?i)(set-cookie|cookie|authorization):\s*\S+` SHALL have the matching substring(s) replaced with `[REDACTED]`. Entries that are not dicts (or that lack a string `content`) SHALL be passed through unchanged rather than crashing redaction.
 - For `DecisionEvent` or `ActEvent` with `tool == "type"`: `args["text"]` SHALL be replaced with `"[REDACTED]"`. Both event variants are covered because `DecisionEvent` records the LLM's intent and `ActEvent` records the executed action — leaking either persists the typed text.
 - For all other event variants: the event SHALL be returned unchanged.
 
@@ -283,6 +283,19 @@ The system SHALL provide `agent.trace.redact(event: AnyEvent) -> AnyEvent` — a
 - **GIVEN** a `TraceWriter` with no run opened
 - **WHEN** `append_event(event)` is called with a `run_id` that has no row in `traces.runs`
 - **THEN** a `LookupError` SHALL be raised
+
+#### Scenario: append_event rejects events after close_run
+
+- **GIVEN** a `TraceWriter` with a run opened and then closed via `close_run(...)`
+- **WHEN** `append_event(event)` is called for that `run_id`
+- **THEN** a `LookupError` SHALL be raised
+
+#### Scenario: redact tolerates non-dict prompt messages
+
+- **GIVEN** an `LLMCallEvent` whose `prompt.messages` contains a non-dict entry (e.g. a bare string)
+- **WHEN** `redact(event)` is called
+- **THEN** redaction SHALL NOT raise
+- **AND** the non-dict entry SHALL be returned unchanged in the new event
 
 #### Scenario: close_run rejects invalid Run state
 
