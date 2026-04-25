@@ -1,0 +1,309 @@
+import json
+
+import httpx
+import pytest
+import respx
+
+from agent.llm import ChatResponse, LLMClient, LLMError, ToolCall, Usage, chat
+
+
+CHAT_PATH = "/v1/chat/completions"
+
+
+def _ok_payload(content="hello", model="qwen3.5", tool_calls=None):
+    message = {"role": "assistant", "content": content}
+    if tool_calls is not None:
+        message["tool_calls"] = tool_calls
+        if content == "":
+            message["content"] = None
+    return {
+        "id": "chatcmpl-1",
+        "object": "chat.completion",
+        "model": model,
+        "choices": [
+            {
+                "index": 0,
+                "message": message,
+                "finish_reason": "stop",
+            }
+        ],
+        "usage": {
+            "prompt_tokens": 5,
+            "completion_tokens": 1,
+            "total_tokens": 6,
+        },
+    }
+
+
+@respx.mock
+def test_default_base_url():
+    route = respx.post(f"http://localhost:8090{CHAT_PATH}").mock(
+        return_value=httpx.Response(200, json=_ok_payload())
+    )
+
+    chat(messages=[{"role": "user", "content": "hi"}], model="m")
+
+    assert route.called
+    assert route.calls.last.request.url == f"http://localhost:8090{CHAT_PATH}"
+
+
+@respx.mock
+def test_env_base_url_honored(monkeypatch):
+    monkeypatch.setenv("LLM_BASE_URL", "https://api.example.com/v1")
+    monkeypatch.setenv("LLM_MODEL", "qwen3.5")
+    route = respx.post(f"https://api.example.com/v1{CHAT_PATH}").mock(
+        return_value=httpx.Response(200, json=_ok_payload(model="qwen3.5"))
+    )
+
+    chat(messages=[{"role": "user", "content": "hi"}])
+
+    assert route.called
+    body = json.loads(route.calls.last.request.content)
+    assert body["model"] == "qwen3.5"
+
+
+@respx.mock
+def test_explicit_kwarg_overrides_env(monkeypatch):
+    monkeypatch.setenv("LLM_BASE_URL", "https://env.example.com")
+    route = respx.post(f"https://override.example.com{CHAT_PATH}").mock(
+        return_value=httpx.Response(200, json=_ok_payload())
+    )
+
+    chat(
+        messages=[{"role": "user", "content": "hi"}],
+        model="m",
+        base_url="https://override.example.com",
+    )
+
+    assert route.called
+
+
+@respx.mock
+def test_request_body_shape():
+    route = respx.post(f"http://localhost:8090{CHAT_PATH}").mock(
+        return_value=httpx.Response(200, json=_ok_payload())
+    )
+
+    chat(messages=[{"role": "user", "content": "hi"}], model="m")
+
+    body = json.loads(route.calls.last.request.content)
+    assert body["model"] == "m"
+    assert body["messages"] == [{"role": "user", "content": "hi"}]
+    assert body["temperature"] == 0.0
+    assert "tools" not in body
+    assert "seed" not in body
+    assert route.calls.last.request.headers["content-type"].startswith("application/json")
+
+
+@respx.mock
+def test_tools_and_seed_forwarded():
+    route = respx.post(f"http://localhost:8090{CHAT_PATH}").mock(
+        return_value=httpx.Response(200, json=_ok_payload())
+    )
+    tools = [
+        {
+            "type": "function",
+            "function": {"name": "click", "parameters": {"type": "object"}},
+        }
+    ]
+
+    chat(
+        messages=[{"role": "user", "content": "hi"}],
+        model="m",
+        tools=tools,
+        seed=7,
+    )
+
+    body = json.loads(route.calls.last.request.content)
+    assert body["tools"] == tools
+    assert body["seed"] == 7
+
+
+@respx.mock
+def test_authorization_header_present(monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    route = respx.post(f"http://localhost:8090{CHAT_PATH}").mock(
+        return_value=httpx.Response(200, json=_ok_payload())
+    )
+
+    chat(messages=[{"role": "user", "content": "hi"}], model="m")
+
+    assert route.calls.last.request.headers["authorization"] == "Bearer sk-test"
+
+
+@respx.mock
+def test_authorization_header_absent():
+    route = respx.post(f"http://localhost:8090{CHAT_PATH}").mock(
+        return_value=httpx.Response(200, json=_ok_payload())
+    )
+
+    chat(messages=[{"role": "user", "content": "hi"}], model="m")
+
+    assert "authorization" not in {k.lower() for k in route.calls.last.request.headers.keys()}
+
+
+@respx.mock
+def test_parses_content_response():
+    respx.post(f"http://localhost:8090{CHAT_PATH}").mock(
+        return_value=httpx.Response(200, json=_ok_payload(content="hello"))
+    )
+
+    resp = chat(messages=[{"role": "user", "content": "hi"}], model="m")
+
+    assert isinstance(resp, ChatResponse)
+    assert resp.content == "hello"
+    assert resp.tool_calls == []
+    assert resp.finish_reason == "stop"
+    assert resp.model == "qwen3.5"
+    assert isinstance(resp.usage, Usage)
+    assert resp.usage.prompt_tokens == 5
+    assert resp.usage.completion_tokens == 1
+    assert resp.usage.total_tokens == 6
+
+
+@respx.mock
+def test_parses_tool_call_response():
+    tc = [
+        {
+            "id": "c1",
+            "type": "function",
+            "function": {
+                "name": "click",
+                "arguments": '{"intent": "submit"}',
+            },
+        }
+    ]
+    payload = _ok_payload(content="", tool_calls=tc)
+    respx.post(f"http://localhost:8090{CHAT_PATH}").mock(
+        return_value=httpx.Response(200, json=payload)
+    )
+
+    resp = chat(messages=[{"role": "user", "content": "hi"}], model="m")
+
+    assert resp.content is None
+    assert len(resp.tool_calls) == 1
+    assert isinstance(resp.tool_calls[0], ToolCall)
+    assert resp.tool_calls[0].id == "c1"
+    assert resp.tool_calls[0].name == "click"
+    assert resp.tool_calls[0].arguments == '{"intent": "submit"}'
+
+
+@respx.mock
+def test_raw_field_preserved():
+    payload = _ok_payload(content="hi")
+    respx.post(f"http://localhost:8090{CHAT_PATH}").mock(
+        return_value=httpx.Response(200, json=payload)
+    )
+
+    resp = chat(messages=[{"role": "user", "content": "hi"}], model="m")
+
+    assert resp.raw == payload
+
+
+@respx.mock
+def test_missing_model_raises_config_error():
+    route = respx.post(f"http://localhost:8090{CHAT_PATH}").mock(
+        return_value=httpx.Response(200, json=_ok_payload())
+    )
+
+    with pytest.raises(LLMError) as ei:
+        chat(messages=[{"role": "user", "content": "hi"}])
+
+    assert ei.value.kind == "config"
+    assert not route.called
+
+
+@respx.mock
+def test_http_500_raises_http_error():
+    respx.post(f"http://localhost:8090{CHAT_PATH}").mock(
+        return_value=httpx.Response(500, text="upstream timeout")
+    )
+
+    with pytest.raises(LLMError) as ei:
+        chat(messages=[{"role": "user", "content": "hi"}], model="m")
+
+    assert ei.value.kind == "http"
+    assert ei.value.status == 500
+    assert ei.value.body == "upstream timeout"
+
+
+@respx.mock
+def test_transport_error_raises_transport_error():
+    respx.post(f"http://localhost:8090{CHAT_PATH}").mock(
+        side_effect=httpx.ConnectError("boom")
+    )
+
+    with pytest.raises(LLMError) as ei:
+        chat(messages=[{"role": "user", "content": "hi"}], model="m")
+
+    assert ei.value.kind == "transport"
+    assert isinstance(ei.value.cause, httpx.ConnectError)
+
+
+@respx.mock
+def test_decode_error_on_bad_json():
+    respx.post(f"http://localhost:8090{CHAT_PATH}").mock(
+        return_value=httpx.Response(200, text="not json {")
+    )
+
+    with pytest.raises(LLMError) as ei:
+        chat(messages=[{"role": "user", "content": "hi"}], model="m")
+
+    assert ei.value.kind == "decode"
+
+
+@respx.mock
+def test_decode_error_on_missing_choices():
+    respx.post(f"http://localhost:8090{CHAT_PATH}").mock(
+        return_value=httpx.Response(200, json={"id": "x"})
+    )
+
+    with pytest.raises(LLMError) as ei:
+        chat(messages=[{"role": "user", "content": "hi"}], model="m")
+
+    assert ei.value.kind == "decode"
+
+
+@respx.mock
+def test_error_body_truncated_to_2048():
+    big = "x" * 5000
+    respx.post(f"http://localhost:8090{CHAT_PATH}").mock(
+        return_value=httpx.Response(502, text=big)
+    )
+
+    with pytest.raises(LLMError) as ei:
+        chat(messages=[{"role": "user", "content": "hi"}], model="m")
+
+    assert ei.value.kind == "http"
+    assert ei.value.body is not None
+    assert len(ei.value.body) <= 2048
+
+
+@respx.mock
+def test_llmclient_reuses_config():
+    route = respx.post(f"https://x.example.com{CHAT_PATH}").mock(
+        return_value=httpx.Response(200, json=_ok_payload(model="m"))
+    )
+    client = LLMClient(base_url="https://x.example.com", model="m")
+
+    client.chat(messages=[{"role": "user", "content": "1"}])
+    client.chat(messages=[{"role": "user", "content": "2"}])
+
+    assert route.call_count == 2
+    for call in route.calls:
+        assert call.request.url == f"https://x.example.com{CHAT_PATH}"
+        body = json.loads(call.request.content)
+        assert body["model"] == "m"
+
+
+@respx.mock
+def test_llmclient_per_call_override():
+    route = respx.post(f"http://localhost:8090{CHAT_PATH}").mock(
+        return_value=httpx.Response(200, json=_ok_payload(model="other-m"))
+    )
+    client = LLMClient(model="default-m")
+
+    client.chat(messages=[{"role": "user", "content": "hi"}], model="other-m")
+
+    body = json.loads(route.calls.last.request.content)
+    assert body["model"] == "other-m"
