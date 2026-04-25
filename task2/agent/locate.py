@@ -418,7 +418,7 @@ def locate_l4(
     if vp is None:
         raise LocatorMiss(reason="vision_miss", match_count=0)
 
-    png_bytes = page.screenshot(full_page=False)
+    png_bytes = page.screenshot(full_page=False, scale="css")
     png_b64 = base64.b64encode(png_bytes).decode("ascii")
 
     chat_fn = llm_chat if llm_chat is not None else _resolve_default_llm_chat()
