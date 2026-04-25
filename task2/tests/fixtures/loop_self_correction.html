@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Loop Self-Correction Fixture</title></head>
+<body>
+  <h1>Self-correction test page</h1>
+  <!--
+    aria-label="action" overrides the accessible name to "action",
+    so get_by_role("button", name="Submit") returns zero matches (L1 fails).
+    The visible textContent is "Submit", so filter(has_text="Submit") succeeds (L2 wins).
+  -->
+  <button aria-label="action">Submit</button>
+</body>
+</html>

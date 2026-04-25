@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
-from agent.locate import locate
+from agent.locate import locate_l1, parse_intent
 
 if TYPE_CHECKING:
     from playwright.sync_api import Page
@@ -143,7 +143,9 @@ def _dispatch(tool_name: str, args: dict, browser: Browser) -> str:
         intent: str | None = args.get("intent")
         page = browser._page
         if intent:
-            return browser.read(locate(page, intent).selector)
+            role, name = parse_intent(intent)
+            locate_result = locate_l1(page, role=role, name=name)
+            return browser.read(locate_result.selector)
         return _body_text(page)
     return f"Error: unknown tool {tool_name!r}"
 
