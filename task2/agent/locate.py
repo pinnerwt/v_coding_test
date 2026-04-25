@@ -453,9 +453,11 @@ def locate_l4(
 
 def _canonical_ax_fingerprint(page: Page, *, role: str, selector: str) -> str | None:
     # Single revalidation rule for the locator cache: hash role:accessible_name of
-    # the element the selector resolves to. Returns None when there is no match.
+    # the element the selector resolves to. Returns None when the selector does not
+    # resolve to exactly one element — zero matches and ambiguous matches both
+    # invalidate the cache so the ladder gets a fresh shot at L1/L3 disambiguation.
     names = page.locator(selector).evaluate_all(f"els => els.map({_ACCESSIBLE_NAME_JS})")
-    if not names:
+    if len(names) != 1:
         return None
     accessible_name = names[0] if isinstance(names[0], str) else ""
     return hashlib.sha256(f"{role}:{accessible_name}".encode()).hexdigest()

@@ -52,6 +52,8 @@ def _origin_from_url(url: str) -> str:
     parts = urlsplit(url)
     scheme = parts.scheme.lower()
     host = (parts.hostname or "").lower()
+    if ":" in host:
+        host = f"[{host}]"
     port = parts.port
     if scheme == "http" and (port is None or port == 80):
         return f"http://{host}"
