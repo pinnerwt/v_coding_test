@@ -41,14 +41,24 @@ If the working tree is dirty, **stop and ask** the user how to proceed — do no
 
 Invoke the `/opsx:new` skill with the change name (kebab-case derived above). This creates `openspec/changes/<change-name>/` with the default schema.
 
-### 4. Generate all artifacts
+### 4. Generate all artifacts (subagent)
 
-Invoke the `/opsx:ff` skill with the same change name. This produces every artifact required for `apply` (typically `proposal.md`, `design.md`, `tasks.md`, `specs/...`).
+Spawn a `general-purpose` subagent via the **Agent** tool to run `/opsx:ff` and produce every artifact required for `apply` (typically `proposal.md`, `design.md`, `tasks.md`, `specs/...`). The subagent has no conversation context, so the prompt must be self-contained.
 
-While drafting artifacts, ground them in:
-- The ticket text from `task2/plan.md` (acceptance criteria for the test).
-- `task2/CLAUDE.md` and the rest of `task2/` for code conventions and existing structure.
-- The repo `CLAUDE.md` (TDD non-negotiable, `uv` + `ruff` tooling, no hardcoded LLM provider).
+Agent call:
+- `subagent_type`: `general-purpose`
+- `description`: `Generate opsx artifacts for <change-name>`
+- `prompt`: include all of the following so the subagent can run autonomously:
+  - The exact change name (kebab-case, derived in Step 1).
+  - The ticket number, title, and full ticket text from `task2/plan.md`.
+  - Instruction: "Invoke the `/opsx:ff` skill on `<change-name>`. Do not commit or push. Do not implement code — artifacts only."
+  - Grounding sources to read before drafting:
+    - `task2/plan.md` (ticket acceptance criteria).
+    - `task2/CLAUDE.md` and the rest of `task2/` for code conventions and existing structure.
+    - Repo-root `CLAUDE.md` (TDD non-negotiable, `uv` + `ruff` tooling, no hardcoded LLM provider).
+  - Required report back: list of files created under `openspec/changes/<change-name>/`, plus any open questions or assumptions made.
+
+Wait for the subagent to return, then **verify the actual artifacts on disk** (`ls openspec/changes/<change-name>/`, spot-read `proposal.md` and `tasks.md`) before continuing. The subagent's summary describes intent, not necessarily what landed.
 
 ### 5. Commit the scaffold
 
@@ -58,43 +68,59 @@ chore(task2): scaffold <change-name>
 ```
 Use a HEREDOC for the message and include the standard `Co-Authored-By` trailer per the repo commit protocol.
 
-### 6. Implement via /opsx:apply
+### 6. Implement via /opsx:apply (subagent)
 
-Invoke the `/opsx:apply` skill on `<change-name>`. Drive each task in the tasks file to completion under TDD discipline (red → green → refactor; tests live under `task2/tests/`).
+Spawn a `general-purpose` subagent via the **Agent** tool to drive `/opsx:apply` for `<change-name>`. The subagent runs the full TDD loop and commits along the way; it has no conversation context, so embed everything it needs in the prompt.
 
-**Tooling (per `task2/README.md`)** — every command runs from the `task2/` directory:
-- One-time setup if not already done: `uv sync && uv run playwright install chromium`.
-- Tests: `uv run pytest`.
-- Lint: `uv run ruff check .` (auto-fix with `uv run ruff check --fix .` only when safe).
-- Format: `uv run ruff format .`.
+Agent call:
+- `subagent_type`: `general-purpose`
+- `description`: `Apply opsx change <change-name>`
+- `prompt`: must include:
+  - The exact change name and the path `openspec/changes/<change-name>/`.
+  - The current branch name (`task2/<change-name>`) and instruction: "Stay on this branch. Do not switch branches, rebase, push, or open a PR — those are handled outside this subagent."
+  - Instruction: "Invoke the `/opsx:apply` skill on `<change-name>` and drive every task in `tasks.md` to completion under TDD discipline (red → green → refactor; tests live under `task2/tests/`)."
+  - **Tooling** — every command runs from the `task2/` directory:
+    - One-time setup if not already done: `uv sync && uv run playwright install chromium`.
+    - Tests: `uv run pytest`.
+    - Lint: `uv run ruff check .` (auto-fix with `uv run ruff check --fix .` only when safe).
+    - Format: `uv run ruff format .`.
+  - **Per red-green-refactor cycle:**
+    1. **Red** — write the failing test, run `uv run pytest <path-to-new-test>`, confirm it fails for the expected reason. Commit: `test(task2): <what the new failing test covers>`.
+    2. **Green** — minimal implementation. Run `uv run pytest` until green. Commit: `feat(task2): <what now works>`.
+    3. **Refactor** (optional, only while green). Re-run `uv run pytest` after each meaningful edit. Commit: `refactor(task2): <what changed>`.
+  - **Pre-commit gate (mandatory before every commit):**
+    ```bash
+    cd task2
+    uv run ruff format .
+    uv run ruff check .
+    uv run pytest
+    ```
+    All three must be clean. Stage any `ruff format` rewrites into the same commit. Never commit with failing tests or ruff errors. Never use `--no-verify`.
+  - Keep commits small enough that the diff matches the message. Do not bundle unrelated changes.
+  - If a task surfaces a design problem, **stop and report back** (per `/opsx:apply` guardrails) instead of papering over it.
+  - Honor `task2/CLAUDE.md` and the repo-root `CLAUDE.md` (TDD, `uv`, `ruff`, configurable LLM base URL).
+  - Required report back: list of commits made (sha + subject), final `pytest` / `ruff` status, any tasks left unchecked in `tasks.md`, and any design questions that surfaced.
 
-**Per red-green-refactor cycle:**
-1. **Red** — write the failing test, then run `uv run pytest <path-to-new-test>` and confirm it fails for the expected reason. Commit: `test(task2): <what the new failing test covers>`.
-2. **Green** — minimal implementation. Run the full suite `uv run pytest` until green. Commit: `feat(task2): <what now works>`.
-3. **Refactor** (optional) — only while green. Re-run `uv run pytest` after each meaningful edit. Commit: `refactor(task2): <what changed>`.
+Wait for the subagent to return, then **verify the work on disk**: `git log --oneline task2/<change-name> ^master`, re-run the pre-commit gate yourself, and read `tasks.md` to confirm checkboxes match what the subagent claims. If anything is off, address it in the main thread before continuing.
 
-**Pre-commit gate (mandatory before every commit on this branch):**
-```bash
-cd task2
-uv run ruff format .
-uv run ruff check .
-uv run pytest
-```
-All three must be clean. If `ruff format` rewrites files, stage those changes into the same commit. Never commit with failing tests or ruff errors, and never bypass hooks with `--no-verify`.
+### 7. Verify (subagent)
 
-Keep commits small enough that the diff matches the message. Do not bundle unrelated changes.
+Once `tasks.md` is fully checked off, spawn a `general-purpose` subagent via the **Agent** tool to run `/opsx:verify` and close any gaps it surfaces.
 
-If a task surfaces a design problem, pause and surface it (per `/opsx:apply` guardrails) instead of papering over it.
+Agent call:
+- `subagent_type`: `general-purpose`
+- `description`: `Verify opsx change <change-name>`
+- `prompt`: must include:
+  - The change name and the path `openspec/changes/<change-name>/`.
+  - The branch name (`task2/<change-name>`) and instruction: "Stay on this branch. Do not switch branches, push, or open a PR."
+  - Instruction: "Invoke `/opsx:verify` on `<change-name>`. Address every gap it reports — **extend tests first** when behavior is missing, then code. Re-run `/opsx:verify` until it is clean."
+  - Commit conventions for fixes:
+    - `fix(task2): address verify feedback for <change-name>` for code fixes.
+    - `test(task2): <what the new test covers>` if the change is purely additional tests.
+  - Pre-commit gate (same as Step 6) must pass before every commit; never `--no-verify`.
+  - Required report back: the final `/opsx:verify` output, list of commits added, and a confirmation that the verifier reports zero gaps.
 
-### 7. Verify
-
-Once `tasks.md` is fully checked off, invoke the `/opsx:verify` skill on `<change-name>`. Address every gap it reports — extend tests first when behavior is missing, then code. Re-run `/opsx:verify` until clean.
-
-Commit any fixes:
-```
-fix(task2): address verify feedback for <change-name>
-```
-or `test(task2): ...` if the change is purely test additions.
+Wait for the subagent to return, then re-run `/opsx:verify` yourself in the main thread to confirm it really is clean. If any gap remains, decide whether to re-invoke the subagent or handle it directly.
 
 ### 8. Simplify
 
