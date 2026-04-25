@@ -6,30 +6,20 @@ Writer: TraceWriter (append-only, strictly-increasing seq, redaction before writ
 
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, TypeAdapter
 
-# ---------------------------------------------------------------------------
-# Shared event base
-# ---------------------------------------------------------------------------
-
 
 class EventBase(BaseModel):
-    """Fields shared by every event variant."""
-
     run_id: str
     seq: int
     ts: str
     step_id: str | None
     kind: str
-
-
-# ---------------------------------------------------------------------------
-# Event variant models
-# ---------------------------------------------------------------------------
 
 
 class ObservationEvent(EventBase):
@@ -112,10 +102,6 @@ class DoneEvent(EventBase):
     verifier: dict[str, Any]
 
 
-# ---------------------------------------------------------------------------
-# AnyEvent discriminated union
-# ---------------------------------------------------------------------------
-
 AnyEvent = Annotated[
     ObservationEvent
     | PlanEvent
@@ -129,10 +115,6 @@ AnyEvent = Annotated[
 ]
 
 _any_event_adapter: TypeAdapter[AnyEvent] = TypeAdapter(AnyEvent)
-
-# ---------------------------------------------------------------------------
-# Run model
-# ---------------------------------------------------------------------------
 
 
 class Run(BaseModel):
@@ -149,34 +131,18 @@ class Run(BaseModel):
     totals: dict[str, Any] | None
 
 
-# ---------------------------------------------------------------------------
-# SeqError
-# ---------------------------------------------------------------------------
-
-
 class SeqError(ValueError):
-    """Raised when an event's seq is not strictly greater than the last appended seq."""
-
     def __init__(self, *, expected_min: int, got: int) -> None:
         self.expected_min = expected_min
         self.got = got
         super().__init__(f"Expected seq >= {expected_min}, got {got}")
 
 
-# ---------------------------------------------------------------------------
-# redact helper
-# ---------------------------------------------------------------------------
-
 _SECRET_HEADER_PATTERN = re.compile(r"(?i)(set-cookie|cookie|authorization):\s*[^\r\n]+")
 
 
 def redact(event: AnyEvent) -> AnyEvent:
-    """Return a new event with secret fields replaced by '[REDACTED]'.
-
-    - LLMCallEvent: scans each message content for auth/cookie headers.
-    - DecisionEvent with tool=='type': replaces args['text'].
-    - All others: returned unchanged.
-    """
+    """Return a new event with secret fields replaced by '[REDACTED]'."""
     if isinstance(event, LLMCallEvent):
         old_messages: list[dict[str, Any]] = event.prompt.get("messages", [])
         new_messages = []
@@ -197,10 +163,6 @@ def redact(event: AnyEvent) -> AnyEvent:
     return event
 
 
-# ---------------------------------------------------------------------------
-# TraceWriter
-# ---------------------------------------------------------------------------
-
 _CREATE_RUNS_SQL = """\
 CREATE TABLE IF NOT EXISTS traces_runs (
     run_id TEXT PRIMARY KEY NOT NULL,
@@ -219,13 +181,18 @@ CREATE TABLE IF NOT EXISTS traces_events (
     UNIQUE(run_id, seq)
 )"""
 
+_INSERT_RUN_SQL = "INSERT INTO traces_runs (run_id, payload) VALUES (?, ?)"
+_MAX_SEQ_SQL = "SELECT MAX(seq) FROM traces_events WHERE run_id = ?"
+_INSERT_EVENT_SQL = "INSERT INTO traces_events (run_id, seq, payload) VALUES (?, ?, ?)"
+_UPDATE_RUN_SQL = (
+    "UPDATE traces_runs "
+    "SET status = ?, ended_at = ?, final_json = ?, totals_json = ? "
+    "WHERE run_id = ?"
+)
+
 
 class TraceWriter:
-    """Append-only SQLite writer for Run headers and Event streams.
-
-    Mirrors the LocatorCache pattern: :memory: default, _ensure_schema(),
-    context manager.
-    """
+    """Append-only SQLite writer for Run headers and Event streams."""
 
     def __init__(self, path: str = ":memory:") -> None:
         self._conn: sqlite3.Connection | None = sqlite3.connect(path)
@@ -237,30 +204,28 @@ class TraceWriter:
         self._conn.execute(_CREATE_EVENTS_SQL)
         self._conn.commit()
 
+    def _require_conn(self) -> sqlite3.Connection:
+        if self._conn is None:
+            raise sqlite3.ProgrammingError("Cannot operate on a closed TraceWriter.")
+        return self._conn
+
     def open_run(self, run: Run) -> None:
-        """INSERT a new run header into traces_runs."""
-        assert self._conn is not None
-        self._conn.execute(
-            "INSERT INTO traces_runs (run_id, payload) VALUES (?, ?)",
-            (run.run_id, run.model_dump_json()),
-        )
-        self._conn.commit()
+        conn = self._require_conn()
+        conn.execute(_INSERT_RUN_SQL, (run.run_id, run.model_dump_json()))
+        conn.commit()
 
     def append_event(self, event: AnyEvent) -> None:  # type: ignore[override]
-        """Validate seq, redact, and INSERT the event into traces_events."""
-        assert self._conn is not None
-        row = self._conn.execute(
-            "SELECT MAX(seq) FROM traces_events WHERE run_id = ?", (event.run_id,)
-        ).fetchone()
+        conn = self._require_conn()
+        row = conn.execute(_MAX_SEQ_SQL, (event.run_id,)).fetchone()
         max_seq: int | None = row[0] if row else None
         if max_seq is not None and event.seq <= max_seq:
             raise SeqError(expected_min=max_seq + 1, got=event.seq)
         clean_event = redact(event)
-        self._conn.execute(
-            "INSERT INTO traces_events (run_id, seq, payload) VALUES (?, ?, ?)",
+        conn.execute(
+            _INSERT_EVENT_SQL,
             (clean_event.run_id, clean_event.seq, clean_event.model_dump_json()),
         )
-        self._conn.commit()
+        conn.commit()
 
     def close_run(
         self,
@@ -271,20 +236,12 @@ class TraceWriter:
         final: dict[str, Any],
         totals: dict[str, Any],
     ) -> None:
-        """UPDATE the traces_runs row with final fields."""
-        import json
-
-        assert self._conn is not None
-        _UPDATE_RUN_SQL = (
-            "UPDATE traces_runs "
-            "SET status = ?, ended_at = ?, final_json = ?, totals_json = ? "
-            "WHERE run_id = ?"
-        )
-        self._conn.execute(
+        conn = self._require_conn()
+        conn.execute(
             _UPDATE_RUN_SQL,
             (status, ended_at, json.dumps(final), json.dumps(totals), run_id),
         )
-        self._conn.commit()
+        conn.commit()
 
     def close(self) -> None:
         if self._conn is None:
