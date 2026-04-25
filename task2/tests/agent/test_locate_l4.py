@@ -55,24 +55,12 @@ def _make_chat_stub_raising(exc: BaseException) -> Callable[..., ChatResponse]:
     return stub
 
 
-def _make_recording_chat_stub(content: str) -> Callable[..., ChatResponse]:
-    calls: list[dict] = []
-
-    def stub(messages, **kwargs):
-        calls.append({"messages": messages, "kwargs": kwargs})
-        return _ok_chat_response(content)
-
-    stub.calls = calls  # type: ignore[attr-defined]
-    return stub
-
-
 def _make_dispatch_stub(*, l3_content: str, l4_content: str) -> Callable[..., ChatResponse]:
     """Dispatch based on the user message shape: list content => L4, str content => L3."""
     calls: list[dict] = []
 
     def stub(messages, **kwargs):
         calls.append({"messages": messages, "kwargs": kwargs})
-        # User message is messages[1]; if its content is a list (multimodal), it's L4.
         user = messages[1]
         if isinstance(user.get("content"), list):
             return _ok_chat_response(l4_content)
@@ -174,9 +162,7 @@ def test_locate_l4_non_numeric_bbox_raises_vision_miss(fixture_server, playwrigh
 
 
 def test_locate_l4_nan_bbox_raises_vision_miss(fixture_server, playwright_chromium):
-    # json.loads('{"bbox": [NaN, ...]}') would parse but produce float('nan'); strict JSON
-    # would normally reject NaN, but Python's json.loads accepts it as a numeric. We assert
-    # the parser path catches NaN via math.isfinite.
+    # Python's json.loads accepts non-strict NaN; the parser must still reject it via math.isfinite.
     stub = _make_chat_stub(content='{"bbox": [NaN, 20, 30, 40]}')
     with Browser(playwright_browser=playwright_chromium) as b:
         b.goto(f"{fixture_server}/locate_l4_no_metadata.html")
@@ -207,7 +193,7 @@ def test_locate_l4_llm_transport_error_raises_vision_miss(fixture_server, playwr
 
 
 def test_locate_l4_prompt_shape_carries_image_data_url(fixture_server, playwright_chromium):
-    stub = _make_recording_chat_stub(content=json.dumps({"bbox": [100, 200, 80, 40]}))
+    stub = _make_chat_stub(content=json.dumps({"bbox": [100, 200, 80, 40]}))
     with Browser(playwright_browser=playwright_chromium) as b:
         b.goto(f"{fixture_server}/locate_l4_no_metadata.html")
         b._page.set_viewport_size({"width": 1280, "height": 800})
@@ -241,7 +227,6 @@ def test_locate_l4_viewport_size_none_raises_vision_miss_without_calling_llm(
     stub = _make_chat_stub(fail_if_called=True)
     with Browser(playwright_browser=playwright_chromium) as b:
         b.goto(f"{fixture_server}/locate_l4_no_metadata.html")
-        # Force viewport_size to return None via a property override.
         monkeypatch.setattr(type(b._page), "viewport_size", property(lambda self: None))
         with pytest.raises(LocatorMiss) as ei:
             locate_l4(b._page, role="button", name=None, intent="Submit button", llm_chat=stub)
@@ -329,7 +314,6 @@ def test_locate_orchestrator_surfaces_vision_miss_when_all_tiers_fail(
         assert ei.value.match_count == 0
 
 
-# Confirm L1/L2/L3 leave coords=None on their successful results.
 def test_l1_result_has_coords_none(fixture_server, playwright_chromium):
     with Browser(playwright_browser=playwright_chromium) as b:
         b.goto(f"{fixture_server}/locate_l1.html")
@@ -354,7 +338,6 @@ def test_l3_result_has_coords_none(fixture_server, playwright_chromium):
 
 @respx.mock
 def test_locate_l4_default_chat_honors_llm_base_url(monkeypatch):
-    """Default-resolved L4 client posts to the LLM_BASE_URL endpoint."""
     monkeypatch.setenv("LLM_BASE_URL", "http://vision.example.test")
     monkeypatch.setenv("LLM_MODEL", "stub-vision")
     route = respx.post("http://vision.example.test/v1/chat/completions").mock(
@@ -379,14 +362,12 @@ def test_locate_l4_default_chat_honors_llm_base_url(monkeypatch):
         )
     )
 
-    # Build a minimal stub Page that satisfies the locate_l4 contract.
     class _StubPage:
         @property
         def viewport_size(self):
             return {"width": 1280, "height": 800}
 
         def screenshot(self, *, full_page=False):
-            # Tiny valid 1x1 PNG.
             return base64.b64decode(
                 "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgAAIAAAUAAeImBZsAAAAASUVORK5CYII="
             )
