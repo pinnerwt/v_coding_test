@@ -23,6 +23,20 @@ from agent.trace import (
 FIXTURE_PATH = Path(__file__).parent.parent / "fixtures" / "traces" / "simple_goto_done.jsonl"
 
 
+def _mutate_decision_tool(lines: list[str], old_tool: str, new_tool: str) -> list[str]:
+    """Rewrite the first DecisionEvent line whose tool == old_tool to new_tool."""
+    out: list[str] = []
+    mutated = False
+    for line in lines:
+        obj = json.loads(line)
+        if not mutated and obj.get("kind") == "decision" and obj.get("tool") == old_tool:
+            obj["tool"] = new_tool
+            mutated = True
+        out.append(json.dumps(obj))
+    assert mutated, f"Expected to mutate a decision line with tool={old_tool!r}"
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Dataclass frozen tests
 # ---------------------------------------------------------------------------
@@ -173,17 +187,7 @@ def test_replay_run_steps_count():
 def test_replay_run_divergence_on_mutated_fixture(tmp_path):
     """Mutate first DecisionEvent.tool from 'goto' to 'read' — expect divergence."""
     lines = FIXTURE_PATH.read_text().strip().splitlines()
-
-    mutated_lines = []
-    mutated = False
-    for line in lines:
-        obj = json.loads(line)
-        if not mutated and obj.get("kind") == "decision" and obj.get("tool") == "goto":
-            obj["tool"] = "read"
-            mutated = True
-        mutated_lines.append(json.dumps(obj))
-
-    assert mutated, "Expected to mutate a decision line"
+    mutated_lines = _mutate_decision_tool(lines, "goto", "read")
 
     mutated_file = tmp_path / "mutated.jsonl"
     mutated_file.write_text("\n".join(mutated_lines) + "\n")
@@ -198,15 +202,7 @@ def test_replay_run_divergence_on_mutated_fixture(tmp_path):
 def test_replay_run_divergence_step_id_from_recorded(tmp_path):
     """first_divergence.step_id SHALL equal the step_id of the recorded DecisionEvent."""
     lines = FIXTURE_PATH.read_text().strip().splitlines()
-
-    mutated_lines = []
-    mutated = False
-    for line in lines:
-        obj = json.loads(line)
-        if not mutated and obj.get("kind") == "decision" and obj.get("tool") == "goto":
-            obj["tool"] = "read"
-            mutated = True
-        mutated_lines.append(json.dumps(obj))
+    mutated_lines = _mutate_decision_tool(lines, "goto", "read")
 
     mutated_file = tmp_path / "mutated_stepid.jsonl"
     mutated_file.write_text("\n".join(mutated_lines) + "\n")
@@ -214,7 +210,6 @@ def test_replay_run_divergence_step_id_from_recorded(tmp_path):
     result = replay_run(mutated_file)
     assert result.matched is False
     assert result.first_divergence is not None
-    # step_id must come from the recorded DecisionEvent (fixture has "step-1")
     assert result.first_divergence.step_id == "step-1"
 
 
