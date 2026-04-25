@@ -7,10 +7,13 @@ import math
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Literal, get_args
 
 if TYPE_CHECKING:
     from playwright.sync_api import Page
+
+    from agent.locator_cache import LocatorCache
 
 _SUPPORTED_ROLES: frozenset[str] = frozenset({"button", "link", "textbox", "checkbox", "heading"})
 _ARTICLES: frozenset[str] = frozenset({"the", "a", "an"})
@@ -448,13 +451,26 @@ def locate_l4(
     )
 
 
-def locate(
+def _canonical_ax_fingerprint(page: Page, *, role: str, selector: str) -> str | None:
+    # Single revalidation rule for the locator cache: hash role:accessible_name of
+    # the element the selector resolves to. Returns None when the selector does not
+    # resolve to exactly one element — zero matches and ambiguous matches both
+    # invalidate the cache so the ladder gets a fresh shot at L1/L3 disambiguation.
+    names = page.locator(selector).evaluate_all(f"els => els.map({_ACCESSIBLE_NAME_JS})")
+    if len(names) != 1:
+        return None
+    accessible_name = names[0] if isinstance(names[0], str) else ""
+    return hashlib.sha256(f"{role}:{accessible_name}".encode()).hexdigest()
+
+
+def _resolve_via_ladder(
     page: Page,
-    intent: str,
     *,
-    llm_chat: Callable[..., Any] | None = None,
+    role: str,
+    name: str | None,
+    intent: str,
+    llm_chat: Callable[..., Any] | None,
 ) -> LocateResult:
-    role, name = parse_intent(intent)
     try:
         return locate_l1(page, role=role, name=name)
     except LocatorMiss as miss:
@@ -469,3 +485,63 @@ def locate(
             except LocatorMiss:
                 return locate_l4(page, role=role, name=name, intent=intent, llm_chat=llm_chat)
         raise
+
+
+def locate(
+    page: Page,
+    intent: str,
+    *,
+    llm_chat: Callable[..., Any] | None = None,
+    cache: LocatorCache | None = None,
+) -> LocateResult:
+    role, name = parse_intent(intent)
+
+    origin: str | None = None
+    if cache is not None:
+        from agent.locator_cache import CacheEntry, _origin_from_url
+
+        origin = _origin_from_url(page.url)
+        entry = cache.get(origin=origin, intent=intent)
+        if entry is not None:
+            if entry.tier == "L4_vision":
+                cache.invalidate(origin=origin, intent=intent)
+            else:
+                live_fp = _canonical_ax_fingerprint(page, role=entry.role, selector=entry.selector)
+                if live_fp is None or live_fp != entry.ax_fingerprint:
+                    cache.invalidate(origin=origin, intent=intent)
+                else:
+                    return LocateResult(
+                        tier="cache",
+                        role=entry.role,
+                        name=entry.name,
+                        selector=entry.selector,
+                        ax_fingerprint=entry.ax_fingerprint,
+                        confidence=entry.confidence,
+                        coords=entry.coords,
+                    )
+
+    result = _resolve_via_ladder(page, role=role, name=name, intent=intent, llm_chat=llm_chat)
+
+    if cache is not None and origin is not None:
+        if result.tier == "L4_vision":
+            stored_fingerprint = result.ax_fingerprint
+        else:
+            canonical = _canonical_ax_fingerprint(page, role=result.role, selector=result.selector)
+            stored_fingerprint = canonical if canonical is not None else result.ax_fingerprint
+        written_at = datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
+        cache.put(
+            CacheEntry(
+                origin=origin,
+                intent=intent,
+                role=result.role,
+                name=result.name,
+                selector=result.selector,
+                ax_fingerprint=stored_fingerprint,
+                confidence=result.confidence,
+                tier=result.tier,
+                coords=result.coords,
+                written_at_utc=written_at,
+            )
+        )
+
+    return result

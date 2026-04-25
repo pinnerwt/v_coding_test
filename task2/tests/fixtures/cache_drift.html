@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>locator-cache drift fixture</title>
+  </head>
+  <body>
+    <main>
+      <button id="target">Submit</button>
+    </main>
+    <script>
+      window.__rename = (newName) => {
+        document.getElementById('target').textContent = newName;
+      };
+      window.__remove = () => {
+        const t = document.getElementById('target');
+        if (t) t.remove();
+      };
+      window.__add = (text) => {
+        const b = document.createElement('button');
+        b.textContent = text;
+        document.body.appendChild(b);
+      };
+    </script>
+  </body>
+</html>
