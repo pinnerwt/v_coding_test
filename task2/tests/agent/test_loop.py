@@ -5,9 +5,8 @@ import json
 
 import pytest
 
-from agent.loop import RunResult, loop
 from agent.llm import ChatResponse, ToolCall, Usage
-
+from agent.loop import RunResult, loop
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -85,9 +84,7 @@ def test_loop_happy_path(fixture_server, playwright_chromium):
     fixture_url = f"{fixture_server}/loop_happy_path.html"
 
     responses = [
-        _response_with_tool_call(
-            _tool_call("goto", {"url": fixture_url}, call_id="tc-1")
-        ),
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
         _response_with_tool_call(
             _tool_call(
                 "done",
@@ -145,9 +142,7 @@ def test_loop_fail(fixture_server, playwright_chromium):
     fixture_url = f"{fixture_server}/loop_happy_path.html"
 
     responses = [
-        _response_with_tool_call(
-            _tool_call("fail", {"reason": "blocked"}, call_id="tc-f")
-        ),
+        _response_with_tool_call(_tool_call("fail", {"reason": "blocked"}, call_id="tc-f")),
     ]
     fake_llm = _FakeLLMClient(responses)
 
