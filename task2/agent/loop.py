@@ -2,9 +2,21 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from agent.locate import locate
+
+if TYPE_CHECKING:
+    from playwright.sync_api import Page
+
+    from agent.browser import Browser
+    from agent.llm import LLMClient
+
+RunStatus = Literal["succeeded", "failed", "timeout"]
+ToolName = Literal["goto", "read", "done", "fail"]
+
+_BODY_TEXT_JS = "() => document.body.innerText"
+_BODY_TEXT_LIMIT = 2000
 
 TOOLS: list[dict] = [
     {
@@ -93,7 +105,7 @@ TOOLS: list[dict] = [
 
 @dataclass(frozen=True)
 class RunResult:
-    status: str
+    status: RunStatus
     result: Any
     evidence: dict | None
 
@@ -109,16 +121,18 @@ def _build_system_prompt(task: str) -> str:
     )
 
 
-def _observe(browser: Any) -> dict:
+def _body_text(page: Page) -> str:
+    return page.evaluate(_BODY_TEXT_JS)[:_BODY_TEXT_LIMIT]
+
+
+def _observe(browser: Browser) -> dict:
     page = browser._page
     if page is None:
         return {"url": "", "text": ""}
-    url: str = page.url
-    text: str = page.evaluate("() => document.body.innerText")[:2000]
-    return {"url": url, "text": text}
+    return {"url": page.url, "text": _body_text(page)}
 
 
-def _dispatch(tool_name: str, args: dict, browser: Any) -> str:
+def _dispatch(tool_name: str, args: dict, browser: Browser) -> str:
     if tool_name == "goto":
         browser.goto(args["url"])
         return f"Navigated to {args['url']}"
@@ -126,35 +140,27 @@ def _dispatch(tool_name: str, args: dict, browser: Any) -> str:
         intent: str | None = args.get("intent")
         page = browser._page
         if intent:
-            locate_result = locate(page, intent)
-            return browser.read(locate_result.selector)
-        return page.evaluate("() => document.body.innerText")[:2000]
-    return f"Unknown tool: {tool_name}"
+            return browser.read(locate(page, intent).selector)
+        return _body_text(page)
+    raise ValueError(f"Unknown tool: {tool_name!r}")
 
 
 def loop(
     task: str,
-    browser: Any,
-    llm_client: Any,
+    browser: Browser,
+    llm_client: LLMClient,
     *,
     max_steps: int = 20,
 ) -> RunResult:
     messages: list[dict] = [{"role": "system", "content": _build_system_prompt(task)}]
 
     for _ in range(max_steps):
-        # Observe current state.
         observation = _observe(browser)
         messages.append({"role": "user", "content": f"Current state: {json.dumps(observation)}"})
 
-        # Ask the LLM what to do next.
         response = llm_client.chat(messages, tools=TOOLS)
 
-        # Build the assistant message to append to history.
-        assistant_msg: dict[str, Any] = {"role": "assistant"}
-        if response.content:
-            assistant_msg["content"] = response.content
-        else:
-            assistant_msg["content"] = None
+        assistant_msg: dict[str, Any] = {"role": "assistant", "content": response.content}
         if response.tool_calls:
             assistant_msg["tool_calls"] = [
                 {
@@ -167,7 +173,6 @@ def loop(
         messages.append(assistant_msg)
 
         if not response.tool_calls:
-            # Model returned text only — continue to next step.
             continue
 
         for tool_call in response.tool_calls:
@@ -182,7 +187,6 @@ def loop(
             if tool_call.name == "fail":
                 return RunResult(status="failed", result=None, evidence=None)
 
-            # Non-terminal tool — execute and feed result back.
             tool_result = _dispatch(tool_call.name, args, browser)
             messages.append(
                 {

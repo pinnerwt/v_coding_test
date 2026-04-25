@@ -5,6 +5,7 @@ import json
 
 import pytest
 
+from agent.browser import Browser
 from agent.llm import ChatResponse, ToolCall, Usage
 from agent.loop import RunResult, loop
 
@@ -79,8 +80,6 @@ def test_run_result_is_frozen():
 
 
 def test_loop_happy_path(fixture_server, playwright_chromium):
-    from agent.browser import Browser
-
     fixture_url = f"{fixture_server}/loop_happy_path.html"
 
     responses = [
@@ -117,8 +116,6 @@ def test_loop_happy_path(fixture_server, playwright_chromium):
 
 
 def test_loop_timeout(fixture_server, playwright_chromium):
-    from agent.browser import Browser
-
     fixture_url = f"{fixture_server}/loop_happy_path.html"
 
     # The fake LLM always returns a no-op text response (no done/fail).
@@ -137,8 +134,6 @@ def test_loop_timeout(fixture_server, playwright_chromium):
 
 
 def test_loop_fail(fixture_server, playwright_chromium):
-    from agent.browser import Browser
-
     fixture_url = f"{fixture_server}/loop_happy_path.html"
 
     responses = [
@@ -161,8 +156,6 @@ def test_loop_fail(fixture_server, playwright_chromium):
 
 def test_loop_read_no_intent(fixture_server, playwright_chromium):
     """Scenario: LLM calls read without intent — returns body text and loop continues."""
-    from agent.browser import Browser
-
     fixture_url = f"{fixture_server}/loop_happy_path.html"
 
     # Step 1: goto, Step 2: read (no intent), Step 3: done
@@ -199,8 +192,6 @@ def test_loop_read_no_intent(fixture_server, playwright_chromium):
 
 def test_loop_read_with_intent(fixture_server, playwright_chromium):
     """Scenario: LLM calls read with intent — uses locate to find element and returns text."""
-    from agent.browser import Browser
-
     fixture_url = f"{fixture_server}/loop_happy_path.html"
 
     # Step 1: goto, Step 2: read with intent targeting the h1, Step 3: done
