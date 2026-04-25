@@ -14,18 +14,66 @@ from typing import Any, Literal
 
 from agent.llm import ChatResponse, ToolCall, Usage
 from agent.loop import loop
-from agent.trace import AnyEvent, DecisionEvent, LLMCallEvent, Run, _any_event_adapter
+from agent.trace import (
+    AnyEvent,
+    DecisionEvent,
+    LLMCallEvent,
+    ObservationEvent,
+    Run,
+    _any_event_adapter,
+)
 
 _TERMINAL_TOOLS = frozenset({"done", "fail"})
 
 
+class _ZeroMatchLocator:
+    """Locator that resolves to zero matches.
+
+    Lets locate_l1/locate_l2 raise a clean LocatorMiss(zero_matches) — which
+    loop._dispatch turns into an "Error: could not locate ..." tool message —
+    instead of letting the stub page surface AttributeError on missing methods.
+    """
+
+    def count(self) -> int:
+        return 0
+
+    def filter(self, **_: Any) -> _ZeroMatchLocator:
+        return self
+
+
+_ZERO_MATCH = _ZeroMatchLocator()
+
+
 class _StubPage:
+    def __init__(self, url: str = "") -> None:
+        self._url: str = url
+
     @property
     def url(self) -> str:
-        return "http://stub.local/"
+        return self._url
 
     def evaluate(self, js: str, *args: Any) -> str:  # noqa: ARG002
         return ""
+
+    def get_by_role(
+        self,
+        role: str,  # noqa: ARG002
+        *,
+        name: str | None = None,  # noqa: ARG002
+        exact: bool = False,  # noqa: ARG002
+    ) -> _ZeroMatchLocator:
+        return _ZERO_MATCH
+
+    def get_by_placeholder(
+        self,
+        text: str,  # noqa: ARG002
+        *,
+        exact: bool = False,  # noqa: ARG002
+    ) -> _ZeroMatchLocator:
+        return _ZERO_MATCH
+
+    def locator(self, selector: str) -> _ZeroMatchLocator:  # noqa: ARG002
+        return _ZERO_MATCH
 
 
 class StubBrowser:
@@ -34,11 +82,11 @@ class StubBrowser:
     Does NOT subclass agent.browser.Browser to avoid importing Playwright.
     """
 
-    def __init__(self) -> None:
-        self._page: _StubPage = _StubPage()
+    def __init__(self, *, initial_url: str = "") -> None:
+        self._page: _StubPage = _StubPage(url=initial_url)
 
-    def goto(self, url: str) -> None:  # noqa: ARG002
-        pass
+    def goto(self, url: str) -> None:
+        self._page._url = url
 
     def read(self, selector: str) -> str:  # noqa: ARG002
         return ""
@@ -197,7 +245,11 @@ def replay_run(trace_path: str | Path) -> ReplayResult:
         _response_from_recorded(lc.response) for lc in decide_llm_calls
     ]
 
-    stub_browser = StubBrowser()
+    # Seed the stub's URL from the first recorded observation so the initial
+    # `_observe()` prompt matches the recording rather than a fixed default.
+    first_obs = next((e for e in events if isinstance(e, ObservationEvent)), None)
+    initial_url = first_obs.url if first_obs is not None else ""
+    stub_browser = StubBrowser(initial_url=initial_url)
     stub_llm = StubLLMClient(responses)
 
     loop(

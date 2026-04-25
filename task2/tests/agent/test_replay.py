@@ -89,7 +89,6 @@ def test_replay_result_is_frozen():
 def test_stub_browser_page_attributes():
     stub = StubBrowser()
     assert isinstance(stub._page.url, str)
-    assert len(stub._page.url) > 0
     result = stub._page.evaluate("() => document.body.innerText")
     assert isinstance(result, str)
 
@@ -314,6 +313,7 @@ def _record_fixture(tmp_path: Path, task: str, responses: list) -> Path:
     events: list[dict] = []
     seq = 0
     decision_idx = 0
+    current_url = ""  # mirrors StubBrowser default; updated after each goto response.
     for i, (prompt_msgs, resp) in enumerate(zip(rec.prompts_consumed, responses, strict=True)):
         step_id = f"step-{i + 1}"
         seq += 1
@@ -324,7 +324,7 @@ def _record_fixture(tmp_path: Path, task: str, responses: list) -> Path:
                 "ts": f"2024-01-01T00:00:{seq:02d}Z",
                 "step_id": step_id,
                 "kind": "observation",
-                "url": "http://stub.local/",
+                "url": current_url,
                 "title": "",
                 "ax_tree_digest": "",
                 "ax_fingerprint": "",
@@ -367,6 +367,7 @@ def _record_fixture(tmp_path: Path, task: str, responses: list) -> Path:
         if resp.tool_calls:
             decision_idx += 1
             tc = resp.tool_calls[0]
+            tc_args = json.loads(tc.arguments) if tc.arguments else {}
             seq += 1
             events.append(
                 {
@@ -377,11 +378,13 @@ def _record_fixture(tmp_path: Path, task: str, responses: list) -> Path:
                     "kind": "decision",
                     "intent": f"decision-{decision_idx}",
                     "tool": tc.name,
-                    "args": json.loads(tc.arguments) if tc.arguments else {},
+                    "args": tc_args,
                     "rationale": "recorded by test helper",
                     "llm_call_id": llm_call_id,
                 }
             )
+            if tc.name == "goto" and isinstance(tc_args.get("url"), str):
+                current_url = tc_args["url"]
 
     fixture_path = tmp_path / "recorded.jsonl"
     fixture_path.write_text("\n".join([json.dumps(run)] + [json.dumps(e) for e in events]) + "\n")
@@ -679,6 +682,69 @@ def test_replay_run_handles_multiple_tool_calls_per_response(tmp_path):
     fixture.write_text("\n".join([json.dumps(run)] + [json.dumps(e) for e in events]) + "\n")
 
     result = replay_run(fixture)
+    assert result.matched is True, f"Expected match; got divergence={result.first_divergence!r}"
+
+
+def test_stub_browser_goto_updates_url():
+    """browser.goto(url) SHALL update the stub page's url so subsequent _observe
+    calls in loop.py see the new URL — otherwise prompts drift after navigation.
+    """
+    stub = StubBrowser()
+    stub.goto("https://example.com/path")
+    assert stub._page.url == "https://example.com/path"
+
+
+def test_replay_run_tracks_navigated_url_in_prompt(tmp_path):
+    """After a recorded `goto` the next prompt's URL must reflect the navigated URL.
+
+    Records a trace by running loop with a real navigation, then replays. If the
+    stub page kept its initial URL across goto, the post-navigation prompt would
+    diverge even though loop's behaviour is unchanged.
+    """
+    task = "navigate then done"
+
+    target_url = "https://example.com/page"
+    goto_response = _make_chat_response("goto", {"url": target_url})
+    done_args = {
+        "result": {},
+        "evidence": {"url": target_url, "text_snippet": "ok"},
+    }
+    done_response = _make_chat_response("done", done_args)
+
+    rec = StubLLMClient([goto_response, done_response])
+    with StubBrowser() as br:
+        loop(task=task, browser=br, llm_client=rec, max_steps=4)
+
+    second_prompt = rec.prompts_consumed[1]
+    user_state = second_prompt[-1]["content"]
+    assert target_url in user_state, (
+        f"After goto({target_url!r}), the next observation prompt must include the "
+        f"navigated URL. Got: {user_state!r}"
+    )
+
+    fixture_path = _record_fixture(tmp_path, task, [goto_response, done_response])
+    result = replay_run(fixture_path)
+    assert result.matched is True, f"Expected match; got divergence={result.first_divergence!r}"
+
+
+def test_replay_run_handles_intent_based_read_without_crashing(tmp_path):
+    """A recorded `read` with non-empty intent SHALL NOT crash replay.
+
+    loop._dispatch routes intent-driven reads through locate_l1/locate_l2, which
+    call page.get_by_role / page.locator. The stub page must expose enough of
+    that surface to raise a clean LocatorMiss (which loop turns into a tool
+    error message) instead of AttributeError.
+    """
+    task = "find the heading"
+    read_response = _make_chat_response("read", {"intent": "the heading"})
+    done_args = {
+        "result": {},
+        "evidence": {"url": "http://stub.local/", "text_snippet": "ok"},
+    }
+    done_response = _make_chat_response("done", done_args)
+
+    fixture_path = _record_fixture(tmp_path, task, [read_response, done_response])
+    result = replay_run(fixture_path)
     assert result.matched is True, f"Expected match; got divergence={result.first_divergence!r}"
 
 
