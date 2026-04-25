@@ -6,7 +6,6 @@ import respx
 
 from agent.llm import ChatResponse, LLMClient, LLMError, ToolCall, Usage, chat
 
-
 CHAT_PATH = "/v1/chat/completions"
 
 
@@ -229,9 +228,7 @@ def test_http_500_raises_http_error():
 
 @respx.mock
 def test_transport_error_raises_transport_error():
-    respx.post(f"http://localhost:8090{CHAT_PATH}").mock(
-        side_effect=httpx.ConnectError("boom")
-    )
+    respx.post(f"http://localhost:8090{CHAT_PATH}").mock(side_effect=httpx.ConnectError("boom"))
 
     with pytest.raises(LLMError) as ei:
         chat(messages=[{"role": "user", "content": "hi"}], model="m")
@@ -267,9 +264,7 @@ def test_decode_error_on_missing_choices():
 @respx.mock
 def test_error_body_truncated_to_2048():
     big = "x" * 5000
-    respx.post(f"http://localhost:8090{CHAT_PATH}").mock(
-        return_value=httpx.Response(502, text=big)
-    )
+    respx.post(f"http://localhost:8090{CHAT_PATH}").mock(return_value=httpx.Response(502, text=big))
 
     with pytest.raises(LLMError) as ei:
         chat(messages=[{"role": "user", "content": "hi"}], model="m")

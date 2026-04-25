@@ -37,6 +37,18 @@ What this rules out: writing implementation first and retro-fitting tests; skipp
 - Per-task plans live under `prompts/<task>/` (see `prompts/task2.md` for the seed prompt and the plan it produces).
 - Commit messages: conventional style (`feat:`, `fix:`, `docs:`, `chore:`, `test:`). Scope by task where useful: `feat(task2): ...`.
 
+## Python tooling
+
+- **Package manager: `uv`.** Don't use `pip`, `pip-tools`, `poetry`, `venv`, or `python -m venv` directly. Each Python task lives in its own directory with its own `pyproject.toml` + `uv.lock` (e.g. `task2/`).
+  - Install / sync deps: `uv sync` (run from the task directory).
+  - Add a dep: `uv add <pkg>` (runtime) or `uv add --dev <pkg>` (dev). Don't hand-edit `pyproject.toml` for deps when `uv add` will do it.
+  - Run anything inside the env: `uv run <cmd>` (e.g. `uv run pytest`, `uv run python -m agent`). Don't activate `.venv` manually.
+  - Commit `uv.lock`. Don't commit `.venv/`.
+- **Linter / formatter: `ruff`.** It is the only linter and formatter; don't add `black`, `isort`, `flake8`, `pylint`, etc.
+  - Lint: `uv run ruff check .` — Format: `uv run ruff format .` — Auto-fix: `uv run ruff check --fix .`.
+  - Config lives in each task's `pyproject.toml` under `[tool.ruff]` / `[tool.ruff.lint]`. Don't introduce a separate `ruff.toml` unless a task genuinely needs to diverge.
+  - Ruff must be clean before a change is considered done (alongside the TDD green bar).
+
 ## Known Constraints
 
 - **Task 2 LLM**: a local Qwen3.5 27B at `http://localhost:8090` with an OpenAI-compatible endpoint. Code must not hardcode a hosted provider; route through a configurable base URL so the deployed Zeabur instance can point elsewhere.

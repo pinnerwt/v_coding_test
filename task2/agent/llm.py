@@ -6,7 +6,6 @@ from typing import Any, Literal
 
 import httpx
 
-
 _DEFAULT_BASE_URL = "http://localhost:8090"
 _CHAT_PATH = "/v1/chat/completions"
 _MAX_ERROR_BODY = 2048
@@ -73,7 +72,7 @@ class LLMClient:
     def close(self) -> None:
         self._client.close()
 
-    def __enter__(self) -> "LLMClient":
+    def __enter__(self) -> LLMClient:
         return self
 
     def __exit__(self, *exc: Any) -> None:
