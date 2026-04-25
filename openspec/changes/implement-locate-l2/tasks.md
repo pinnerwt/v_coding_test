@@ -44,6 +44,6 @@
 
 ## 5. Validation
 
-- [ ] 5.1 Run `openspec validate implement-locate-l2 --strict` from the repo root and resolve any findings.
-- [ ] 5.2 From `task2/`, final pre-commit gate: `uv run ruff format . && uv run ruff check . && uv run pytest` — all clean.
-- [ ] 5.3 Stage commits in conventional-commit style (`test(task2): ...`, `feat(task2): ...`, `refactor(task2): ...`) preserving real history; never `--no-verify`.
+- [x] 5.1 Ran `openspec validate implement-locate-l2 --strict` — change is valid.
+- [x] 5.2 Final pre-commit gate from `task2/`: `uv run ruff format .` (no changes), `uv run ruff check .` (clean), `uv run pytest` (61 passed).
+- [x] 5.3 Three conventional commits on the branch: `test(task2): add failing L2 locator tests and fixtures`, `feat(task2): add L2 DOM-heuristic locator tier and cascade`, `refactor(task2): collapse L2 single-strategy-per-role and dedup escape`. No hooks bypassed.
