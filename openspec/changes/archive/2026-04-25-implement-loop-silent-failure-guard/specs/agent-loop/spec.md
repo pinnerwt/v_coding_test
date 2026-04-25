@@ -1,8 +1,5 @@
-# agent-loop Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change implement-loop-happy-path. Update Purpose after archive.
-## Requirements
 ### Requirement: RunResult dataclass
 
 The system SHALL provide `agent.loop.RunResult` — a frozen dataclass representing the outcome of a completed loop run. It SHALL have the following fields:
@@ -30,27 +27,6 @@ The system SHALL provide `agent.loop.RunResult` — a frozen dataclass represent
 - **THEN** `RunResult.status` SHALL equal `"failed"`
 - **WHEN** the step count reaches `max_steps` without a terminal tool call
 - **THEN** `RunResult.status` SHALL equal `"timeout"`
-
-### Requirement: loop function
-
-The system SHALL provide `agent.loop.loop(task, browser, llm_client, *, max_steps=20)` — a synchronous function that drives the observe → decide → act cycle. Parameters:
-
-- `task: str` — natural-language task description, verbatim as given by the caller.
-- `browser: agent.browser.Browser` — an already-open `Browser` instance (inside a `with` block; the loop does not open or close it).
-- `llm_client: agent.llm.LLMClient` — an already-constructed `LLMClient`; the loop calls `llm_client.chat(messages, tools=TOOLS)`.
-- `max_steps: int = 20` — maximum number of observe→decide→act iterations before returning `status="timeout"`.
-
-The function SHALL return a `RunResult`.
-
-#### Scenario: loop returns RunResult
-
-- **WHEN** `loop(task, browser, llm_client)` is called with a valid `Browser` and `LLMClient`
-- **THEN** it SHALL return a `RunResult` instance
-
-#### Scenario: loop is bounded by max_steps
-
-- **WHEN** the LLM never calls `done` or `fail` within `max_steps` iterations
-- **THEN** the loop SHALL return `RunResult(status="timeout", result=None, evidence=None)`
 
 ### Requirement: LLM tool surface exposed by the loop
 
@@ -101,68 +77,7 @@ The loop SHALL NOT expose `click`, `type`, `select`, `wait_for`, `back`, or `scr
 - **THEN** the loop SHALL return `RunResult(status="failed", result=None, evidence=None, verifier=None)`
 - **AND** SHALL NOT make any further LLM calls
 
-### Requirement: Happy-path 2-step task completion
-
-The system SHALL support completing a 2-step task on a local HTML fixture: step 1 navigate to a page, step 2 read a value and call `done` with valid evidence. This is the acceptance criterion for ticket #9.
-
-The evidence dict passed to `done` SHALL contain at minimum `url` (the current page URL) and `text_snippet` (a non-empty string of visible page text confirming the result). The loop SHALL treat any non-empty evidence dict with these two keys as valid for the happy path.
-
-#### Scenario: 2-step task completes with succeeded status
-
-- **GIVEN** a local HTML fixture page with a known heading
-- **AND** a mock LLM that emits: step 1 → `goto(url=<fixture_url>)`, step 2 → `done(result={"heading": <text>}, evidence={"url": <fixture_url>, "text_snippet": <text>})`
-- **WHEN** `loop(task, browser, mock_llm_client)` is called
-- **THEN** the return value SHALL be a `RunResult` with `status="succeeded"`
-- **AND** `RunResult.evidence` SHALL be a dict with non-empty `url` and `text_snippet` values
-- **AND** `RunResult.result` SHALL be the dict passed to `done`
-
-#### Scenario: Evidence is present in the RunResult
-
-- **GIVEN** a successful `done` call with `evidence={"url": "http://127.0.0.1:<port>/loop_happy_path.html", "text_snippet": "Hello, loop"}`
-- **WHEN** the loop returns
-- **THEN** `RunResult.evidence["url"]` SHALL be a non-empty string
-- **AND** `RunResult.evidence["text_snippet"]` SHALL be a non-empty string
-
-### Requirement: LLM_BASE_URL and LLM_MODEL remain configurable
-
-The loop SHALL NOT hardcode any LLM provider URL or model name. All LLM configuration SHALL come from the `LLMClient` instance passed to `loop()`. The loop SHALL pass `llm_client` through unmodified; it SHALL NOT construct its own `LLMClient` internally.
-
-#### Scenario: Loop uses caller-supplied LLMClient
-
-- **WHEN** `loop(task, browser, llm_client)` is called with a custom `LLMClient` configured to use a specific `base_url`
-- **THEN** all LLM calls in the loop SHALL go through that `llm_client` instance
-- **AND** the loop SHALL NOT read `LLM_BASE_URL` or `LLM_MODEL` environment variables directly
-
-### Requirement: Loop self-correction via supervisor escalation
-
-When the `read` tool dispatch encounters a `LocatorMiss(reason="zero_matches")` from the initial locate attempt, the loop SHALL invoke the `Supervisor` to classify the miss and obtain an escalation decision. If the supervisor returns `next_tier="L2_dom"`, the loop SHALL retry locate at L2. If L2 succeeds, the loop SHALL use the L2 result to read the element and return the text. If the supervisor halts (no `next_tier`), the loop SHALL return an error string as the tool result and continue. This requirement is the acceptance criterion for ticket #10.
-
-The `Supervisor` instance SHALL be created once per `loop()` invocation so that attempt counters accumulate correctly across multiple locate failures within the same run.
-
-#### Scenario: L1 fails with zero_matches, L2 succeeds — loop self-corrects
-
-- **GIVEN** a fixture page where a button has `aria-label="action"` (so `get_by_role("button", name="Submit")` returns zero matches) but has visible text "Submit" (so `locate_l2` with role="button", name="Submit" succeeds)
-- **AND** a mock LLM that emits: step 1 → `goto(url=<fixture_url>)`, step 2 → `read(intent="Submit button")`, step 3 → `done(result={"clicked": true}, evidence={...})`
-- **WHEN** `loop(task, browser, mock_llm_client)` is called
-- **THEN** the loop SHALL attempt L1 locate for "Submit button", receive `LocatorMiss(reason="zero_matches")`
-- **AND** invoke the `Supervisor` which SHALL return `next_tier="L2_dom"`
-- **AND** retry via L2 which SHALL succeed
-- **AND** return `RunResult(status="succeeded")` after the `done` call
-
-#### Scenario: Supervisor escalation path is exercised — test fails without wiring
-
-- **GIVEN** `loop.py` does NOT wire the supervisor into read dispatch (supervisor is never called)
-- **WHEN** the self-correction test fixture is used and `read(intent="Submit button")` is dispatched
-- **THEN** the loop SHALL either raise an unhandled `LocatorMiss` or return an error tool result that prevents the LLM from calling `done`
-- **AND** the test SHALL fail, confirming the test is a valid regression guard
-
-#### Scenario: Supervisor max_attempts cap — loop halts gracefully after exhaustion
-
-- **GIVEN** the supervisor's `max_attempts` is reached for the `(current_tier, reason)` pair
-- **WHEN** the loop calls `supervisor.handle(miss, current_tier=...)`
-- **THEN** the supervisor SHALL return `EscalationDecision(next_tier=None, policy="halt", ...)`
-- **AND** the loop SHALL feed an error string back to the LLM as the tool result (not raise or crash)
-- **AND** continue to the next loop iteration
+## ADDED Requirements
 
 ### Requirement: done evidence guard
 
@@ -220,4 +135,3 @@ If either field is absent, not a string, or empty after stripping whitespace, th
 - **WHEN** `loop(task, browser, mock_llm_client)` is called
 - **THEN** `RunResult.status` SHALL equal `"succeeded"` (no regression from ticket #9)
 - **AND** `RunResult.evidence["url"]` and `RunResult.evidence["text_snippet"]` SHALL be non-empty strings
-

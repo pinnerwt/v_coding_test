@@ -456,3 +456,69 @@ def test_loop_self_correction_supervisor_halt(fixture_server, playwright_chromiu
         result = loop("click the Submit button", browser, fake_llm, max_steps=10)
 
     assert result.status == "succeeded"
+
+
+# ---------------------------------------------------------------------------
+# Evidence guard: done routes valid evidence to "succeeded", invalid to "unverified"
+# ---------------------------------------------------------------------------
+
+
+def _run_done(
+    done_args_factory,
+    fixture_server,
+    playwright_chromium,
+) -> RunResult:
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+        _response_with_tool_call(
+            _tool_call("done", done_args_factory(fixture_url), call_id="tc-2")
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        return loop("read the heading", browser, fake_llm)
+
+
+@pytest.mark.parametrize(
+    ("done_args_factory", "expected_reason_substr"),
+    [
+        # missing 'evidence' key entirely
+        (lambda _url: {"result": {}}, None),
+        # evidence={} → both fields missing
+        (lambda _url: {"result": {}, "evidence": {}}, None),
+        # only text_snippet present → url reason
+        (lambda _url: {"result": {}, "evidence": {"text_snippet": "Hello, loop"}}, "url"),
+        # only url present → text_snippet reason
+        (lambda url: {"result": {}, "evidence": {"url": url}}, "text_snippet"),
+    ],
+    ids=["no_evidence_key", "empty_evidence", "missing_url", "missing_text_snippet"],
+)
+def test_loop_done_without_valid_evidence_is_unverified(
+    fixture_server,
+    playwright_chromium,
+    done_args_factory,
+    expected_reason_substr,
+):
+    result = _run_done(done_args_factory, fixture_server, playwright_chromium)
+
+    assert result.status == "unverified"
+    assert result.verifier is not None
+    assert result.verifier["ok"] is False
+    assert result.verifier["reasons"]
+    if expected_reason_substr is not None:
+        assert any(expected_reason_substr in r for r in result.verifier["reasons"])
+
+
+def test_loop_done_with_valid_evidence(fixture_server, playwright_chromium):
+    result = _run_done(
+        lambda url: {
+            "result": {"heading": "Hello, loop"},
+            "evidence": {"url": url, "text_snippet": "Hello, loop"},
+        },
+        fixture_server,
+        playwright_chromium,
+    )
+
+    assert result.status == "succeeded"
+    assert result.verifier == {"ok": True, "reasons": []}

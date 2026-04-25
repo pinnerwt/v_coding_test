@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from agent.browser import Browser
     from agent.llm import LLMClient
 
-RunStatus = Literal["succeeded", "failed", "timeout"]
+RunStatus = Literal["succeeded", "unverified", "failed", "timeout"]
 ToolName = Literal["goto", "read", "done", "fail"]
 
 _BODY_TEXT_JS = "() => document.body.innerText"
@@ -109,6 +109,24 @@ class RunResult:
     status: RunStatus
     result: Any
     evidence: dict | None
+    verifier: dict | None = None
+
+
+def _check_evidence(evidence: dict | None) -> dict:
+    """Validate evidence dict for required fields; return verifier verdict."""
+    reasons: list[str] = []
+    if not isinstance(evidence, dict):
+        # Not a dict ⇒ neither required field can exist; report both.
+        reasons.append("evidence.url is missing or empty")
+        reasons.append("evidence.text_snippet is missing or empty")
+    else:
+        url = evidence.get("url")
+        if not isinstance(url, str) or not url.strip():
+            reasons.append("evidence.url is missing or empty")
+        text_snippet = evidence.get("text_snippet")
+        if not isinstance(text_snippet, str) or not text_snippet.strip():
+            reasons.append("evidence.text_snippet is missing or empty")
+    return {"ok": len(reasons) == 0, "reasons": reasons}
 
 
 def _build_system_prompt(task: str) -> str:
@@ -224,13 +242,17 @@ def loop(
                 continue
 
             if tool_call.name == "done":
+                evidence = args.get("evidence")
+                verifier = _check_evidence(evidence)
+                status: RunStatus = "succeeded" if verifier["ok"] else "unverified"
                 return RunResult(
-                    status="succeeded",
+                    status=status,
                     result=args.get("result"),
-                    evidence=args.get("evidence"),
+                    evidence=evidence,
+                    verifier=verifier,
                 )
             if tool_call.name == "fail":
-                return RunResult(status="failed", result=None, evidence=None)
+                return RunResult(status="failed", result=None, evidence=None, verifier=None)
 
             tool_result = _dispatch(tool_call.name, args, browser, supervisor)
             messages.append(
