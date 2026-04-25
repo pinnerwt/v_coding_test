@@ -287,3 +287,57 @@ def test_loop_handles_unknown_tool_name(fixture_server, playwright_chromium):
         result = loop("task", browser, fake_llm, max_steps=3)
 
     assert result.status == "succeeded"
+
+
+# ---------------------------------------------------------------------------
+# Reliability: non-dict tool arguments must not crash the loop.
+# ---------------------------------------------------------------------------
+
+
+def test_loop_handles_non_dict_arguments(fixture_server, playwright_chromium):
+    """Valid JSON that decodes to a non-dict (e.g. list) must not crash the run."""
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+
+    bad = ToolCall(id="tc-list", name="goto", arguments="[]")
+    good_done = _tool_call(
+        "done",
+        {
+            "result": {"heading": "Hello, loop"},
+            "evidence": {"url": fixture_url, "text_snippet": "Hello, loop"},
+        },
+        call_id="tc-done",
+    )
+    fake_llm = _FakeLLMClient([_response_with_tool_call(bad), _response_with_tool_call(good_done)])
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        browser.goto(fixture_url)
+        result = loop("task", browser, fake_llm, max_steps=3)
+
+    assert result.status == "succeeded"
+
+
+# ---------------------------------------------------------------------------
+# Reliability: missing required tool args must not crash the loop.
+# ---------------------------------------------------------------------------
+
+
+def test_loop_handles_goto_missing_url(fixture_server, playwright_chromium):
+    """A goto call with no 'url' key must not raise KeyError; loop continues."""
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+
+    bad = _tool_call("goto", {}, call_id="tc-empty")
+    good_done = _tool_call(
+        "done",
+        {
+            "result": {"heading": "Hello, loop"},
+            "evidence": {"url": fixture_url, "text_snippet": "Hello, loop"},
+        },
+        call_id="tc-done",
+    )
+    fake_llm = _FakeLLMClient([_response_with_tool_call(bad), _response_with_tool_call(good_done)])
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        browser.goto(fixture_url)
+        result = loop("task", browser, fake_llm, max_steps=3)
+
+    assert result.status == "succeeded"
