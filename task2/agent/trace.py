@@ -6,7 +6,6 @@ Writer: TraceWriter (append-only, strictly-increasing seq, redaction before writ
 
 from __future__ import annotations
 
-import json
 import re
 import sqlite3
 from typing import Annotated, Any, Literal
@@ -174,6 +173,7 @@ def redact(event: AnyEvent) -> AnyEvent:
     if isinstance(event, LLMCallEvent):
         old_messages: list[Any] = event.prompt.get("messages", [])
         new_messages = []
+        changed = False
         for msg in old_messages:
             if not isinstance(msg, dict):
                 new_messages.append(msg)
@@ -182,10 +182,13 @@ def redact(event: AnyEvent) -> AnyEvent:
             if isinstance(content, str) and _SECRET_HEADER_PATTERN.search(content):
                 new_content = _SECRET_HEADER_PATTERN.sub("[REDACTED]", content)
                 new_messages.append({**msg, "content": new_content})
+                changed = True
             else:
                 new_messages.append(msg)
+        if not changed:
+            return event
         new_prompt = {**event.prompt, "messages": new_messages}
-        return event.model_copy(update={"prompt": new_prompt}, deep=True)
+        return event.model_copy(update={"prompt": new_prompt})
 
     if (
         isinstance(event, DecisionEvent | ActEvent)
@@ -193,7 +196,7 @@ def redact(event: AnyEvent) -> AnyEvent:
         and "text" in event.args
     ):
         new_args = {**event.args, "text": "[REDACTED]"}
-        return event.model_copy(update={"args": new_args}, deep=True)
+        return event.model_copy(update={"args": new_args})
 
     return event
 
@@ -217,9 +220,12 @@ CREATE TABLE IF NOT EXISTS traces_events (
 )"""
 
 _INSERT_RUN_SQL = "INSERT INTO traces_runs (run_id, payload) VALUES (?, ?)"
-_RUN_STATUS_SQL = "SELECT status FROM traces_runs WHERE run_id = ?"
+_RUN_STATE_SQL = (
+    "SELECT r.status, "
+    "(SELECT MAX(seq) FROM traces_events WHERE run_id = r.run_id) "
+    "FROM traces_runs r WHERE r.run_id = ?"
+)
 _SELECT_RUN_PAYLOAD_SQL = "SELECT payload FROM traces_runs WHERE run_id = ?"
-_MAX_SEQ_SQL = "SELECT MAX(seq) FROM traces_events WHERE run_id = ?"
 _INSERT_EVENT_SQL = "INSERT INTO traces_events (run_id, seq, payload) VALUES (?, ?, ?)"
 _UPDATE_RUN_SQL = (
     "UPDATE traces_runs "
@@ -268,15 +274,14 @@ class TraceWriter:
         conn.execute(_INSERT_RUN_SQL, (run.run_id, run.model_dump_json()))
         conn.commit()
 
-    def append_event(self, event: AnyEvent) -> None:  # type: ignore[override]
+    def append_event(self, event: AnyEvent) -> None:
         conn = self._require_conn()
-        status_row = conn.execute(_RUN_STATUS_SQL, (event.run_id,)).fetchone()
-        if status_row is None:
+        state_row = conn.execute(_RUN_STATE_SQL, (event.run_id,)).fetchone()
+        if state_row is None:
             raise self._missing_run(event.run_id)
-        if status_row[0] is not None:
+        status, max_seq = state_row
+        if status is not None:
             raise self._closed_run(event.run_id)
-        max_seq_row = conn.execute(_MAX_SEQ_SQL, (event.run_id,)).fetchone()
-        max_seq: int | None = max_seq_row[0] if max_seq_row else None
         if max_seq is not None and event.seq <= max_seq:
             raise SeqError(expected_min=max_seq + 1, got=event.seq)
         clean_event = redact(event)
@@ -305,14 +310,14 @@ class TraceWriter:
         run_dict = existing.model_dump()
         run_dict.update(status=status, ended_at=ended_at, final=final, totals=totals)
         updated = Run.model_validate(run_dict)
-        updated_dump = updated.model_dump(mode="json")
+        assert updated.final is not None and updated.totals is not None
         conn.execute(
             _UPDATE_RUN_SQL,
             (
                 updated.status,
                 updated.ended_at,
-                json.dumps(updated_dump["final"]),
-                json.dumps(updated_dump["totals"]),
+                updated.final.model_dump_json(),
+                updated.totals.model_dump_json(),
                 updated.model_dump_json(),
                 run_id,
             ),

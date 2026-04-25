@@ -568,10 +568,10 @@ def test_close_run_rejects_invalid_status():
 def test_close_run_rejects_double_close():
     """close_run must refuse to rewrite an already-closed run."""
     run = _run_full()
-    closing_args = dict(
-        ended_at="2024-01-01T00:01:00Z",
-        final={"result": {"answer": "cats"}, "evidence": None, "failure": None},
-        totals={
+    closing_args = {
+        "ended_at": "2024-01-01T00:01:00Z",
+        "final": {"result": {"answer": "cats"}, "evidence": None, "failure": None},
+        "totals": {
             "steps": 1,
             "llm_calls": 0,
             "prompt_tokens": 0,
@@ -579,7 +579,7 @@ def test_close_run_rejects_double_close():
             "usd": 0.0,
             "browser_ms": 0,
         },
-    )
+    }
     with TraceWriter(":memory:") as writer:
         writer.open_run(run)
         writer.close_run(run.run_id, status="succeeded", **closing_args)
