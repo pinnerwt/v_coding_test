@@ -21,3 +21,7 @@ Update the /new_task2 skill to summon subagents for "Generate all artifacts", "I
 Update PR template to draw diagram about what was introduced in the PR, including the states before and after the PR. Update the /new_task2 skill to read from template instead of owning a template itself.
 
 /new_task2 (l4)
+
+/new_task2 (locate cache)
+
+Review /new_task2 and downgrade certain models' for the subagents that are not for planning purpose.
