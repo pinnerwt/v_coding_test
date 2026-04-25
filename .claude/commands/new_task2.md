@@ -110,13 +110,61 @@ Commit the cleanup:
 refactor(task2): simplify <change-name> per review
 ```
 
-### 9. Final report
+### 9. Push and open a pull request
+
+Push the branch and open a PR against `master` using `gh`. The PR body **must** follow `.github/PULL_REQUEST_TEMPLATE.md` (the repo template) — fill it in rather than leaving placeholder comments:
+
+- **Task** — `task2`.
+- **Summary** — 1–3 bullets describing what the ticket adds, grounded in the ticket text from `task2/plan.md`.
+- **Why** — the ticket motivation / failing test that drove the change.
+- **TDD checklist** — every box checked (red-first commit, `uv run pytest` green, `uv run ruff check .` clean, `uv run ruff format --check .` clean, no scope creep).
+- **OpenSpec** — `openspec/changes/<change-name>/`.
+- **Notes for reviewer** — anything non-obvious, deferred follow-ups, or `/opsx:verify` gaps that were intentionally left.
+
+Commands:
+```bash
+git push -u origin task2/<change-name>
+gh pr create --base master --title "feat(task2): <ticket title>" --body "$(cat <<'EOF'
+## Summary
+- <bullet 1>
+- <bullet 2>
+
+## Why
+<ticket motivation>
+
+- Task: task2
+
+## TDD checklist
+
+- [x] A failing test (or eval case) was written first and committed before the implementation
+- [x] All tests pass locally (`uv run pytest`)
+- [x] `uv run ruff check .` is clean
+- [x] `uv run ruff format --check .` is clean
+- [x] No production code added beyond what the failing test demanded
+
+## OpenSpec
+
+- Change: `openspec/changes/<change-name>/`
+
+## Notes for reviewer
+
+<non-obvious bits, follow-ups, or "none">
+EOF
+)"
+```
+
+If `gh pr create` fails because the branch already has an open PR, run `gh pr view --json url -q .url` and reuse that URL in the final report instead of opening a duplicate. If `gh` is not authenticated, stop and ask the user to run `gh auth login` rather than attempting workarounds.
+
+Capture the returned PR URL for the final report. Do **not** mark the PR ready-for-review-as-merge — leave merge to the user after `/opsx:archive`.
+
+### 10. Final report
 
 Print a short summary to the user:
 - Branch name.
 - Ticket implemented (number + title).
 - Change directory.
 - Test + ruff status (pass/clean).
+- PR URL.
 - Outstanding follow-ups, if any.
 - Suggested next step: `/opsx:archive <change-name>` (do **not** archive automatically).
 
@@ -125,7 +173,7 @@ Print a short summary to the user:
 - **Do not skip the red step.** Every new behavior must start with a failing test that fails for the right reason.
 - **Do not `git commit --no-verify`.** If a hook fails, fix the underlying issue and create a new commit.
 - **Do not switch branches or rebase** without user confirmation.
-- **Do not push** to the remote unless the user explicitly asks.
+- **Push only the dev branch** created in Step 2 (Step 9). Never push to `master` directly, never `--force` push.
 - **Do not archive the change.** Archiving is the user's call after they review the branch / PR.
 - If `/opsx:apply` or `/opsx:verify` blocks on ambiguity, stop and ask — do not guess past a design question.
 - Honor `task2/`-local `CLAUDE.md` if present and the repo-root `CLAUDE.md` (TDD, `uv`, `ruff`, configurable LLM base URL).
