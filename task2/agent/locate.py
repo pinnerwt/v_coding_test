@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, get_args
 
 if TYPE_CHECKING:
     from playwright.sync_api import Page
@@ -11,7 +11,7 @@ _SUPPORTED_ROLES: frozenset[str] = frozenset({"button", "link", "textbox", "chec
 _ARTICLES: frozenset[str] = frozenset({"the", "a", "an"})
 
 LocatorMissReason = Literal["zero_matches", "ambiguous"]
-_VALID_REASONS: frozenset[str] = frozenset({"zero_matches", "ambiguous"})
+_VALID_REASONS: frozenset[str] = frozenset(get_args(LocatorMissReason))
 
 
 class LocateError(Exception):
@@ -58,7 +58,7 @@ def parse_intent(intent: str) -> tuple[str, str | None]:
 
 
 def locate_l1(page: Page, *, role: str, name: str | None) -> LocateResult:
-    locator = page.get_by_role(role, name=name) if name else page.get_by_role(role)
+    locator = page.get_by_role(role, name=name, exact=False) if name else page.get_by_role(role)
     count = locator.count()
     if count == 0:
         raise LocatorMiss(reason="zero_matches", match_count=0)
