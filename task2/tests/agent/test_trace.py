@@ -29,6 +29,7 @@ TS = "2024-01-01T00:00:00Z"
 
 
 def _run_full() -> Run:
+    """A freshly opened run: terminal fields are None until close_run is called."""
     return Run(
         run_id=RUN_ID,
         task="search for cats",
@@ -37,17 +38,10 @@ def _run_full() -> Run:
         llm={"base_url": "http://localhost:8090", "model": "qwen3", "temperature": 0.0, "seed": 42},
         agent_version="abc123",
         started_at=TS,
-        ended_at="2024-01-01T00:01:00Z",
-        status="succeeded",
-        final={"result": {"answer": "cats"}, "evidence": {}, "failure": None},
-        totals={
-            "steps": 3,
-            "llm_calls": 2,
-            "prompt_tokens": 100,
-            "completion_tokens": 50,
-            "usd": 0.01,
-            "browser_ms": 500,
-        },
+        ended_at=None,
+        status=None,
+        final=None,
+        totals=None,
     )
 
 
@@ -568,13 +562,78 @@ def test_close_run_rejects_invalid_status():
             "SELECT payload FROM traces_runs WHERE run_id = ?", (run.run_id,)
         ).fetchone()
     payload = json.loads(row[0])
-    assert payload["status"] == "succeeded"
+    assert payload["status"] is None
 
 
 def test_close_run_unknown_run_id_raises():
     with TraceWriter(":memory:") as writer:
         with pytest.raises(LookupError):
             writer.close_run("does-not-exist", status="failed", ended_at=TS, final={}, totals={})
+
+
+def test_run_budget_rejects_missing_key():
+    """Budget must be a typed submodel — missing keys must fail validation."""
+    with pytest.raises(ValidationError):
+        Run(
+            run_id=RUN_ID,
+            task="t",
+            expect_schema=None,
+            budget={"steps": 10, "usd": 0.5},  # missing 'seconds'
+            llm={"base_url": "x", "model": "m", "temperature": 0.0, "seed": None},
+            agent_version="v1",
+            started_at=TS,
+            ended_at=None,
+            status=None,
+            final=None,
+            totals=None,
+        )
+
+
+def test_run_totals_rejects_wrong_type():
+    """Totals must be a typed submodel — wrong types must fail validation."""
+    with pytest.raises(ValidationError):
+        Run(
+            run_id=RUN_ID,
+            task="t",
+            expect_schema=None,
+            budget={"steps": 10, "usd": 0.5, "seconds": 60},
+            llm={"base_url": "x", "model": "m", "temperature": 0.0, "seed": None},
+            agent_version="v1",
+            started_at=TS,
+            ended_at=TS,
+            status="succeeded",
+            final={"result": None, "evidence": None, "failure": None},
+            totals={
+                "steps": "three",  # should be int
+                "llm_calls": 0,
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "usd": 0.0,
+                "browser_ms": 0,
+            },
+        )
+
+
+def test_open_run_rejects_run_with_terminal_status():
+    """open_run must refuse a Run whose payload already has a terminal status."""
+    closed_run = _run_full().model_copy(
+        update={
+            "status": "succeeded",
+            "ended_at": "2024-01-01T00:01:00Z",
+            "final": {"result": {"answer": "cats"}, "evidence": None, "failure": None},
+            "totals": {
+                "steps": 1,
+                "llm_calls": 0,
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "usd": 0.0,
+                "browser_ms": 0,
+            },
+        }
+    )
+    with TraceWriter(":memory:") as writer:
+        with pytest.raises(ValueError):
+            writer.open_run(closed_run)
 
 
 def test_append_event_rejects_after_close_run():
