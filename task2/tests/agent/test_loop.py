@@ -341,3 +341,118 @@ def test_loop_handles_goto_missing_url(fixture_server, playwright_chromium):
         result = loop("task", browser, fake_llm, max_steps=3)
 
     assert result.status == "succeeded"
+
+
+# ---------------------------------------------------------------------------
+# Self-correction: L1 fails → supervisor escalates → L2 succeeds
+# ---------------------------------------------------------------------------
+
+
+def test_loop_self_correction(fixture_server, playwright_chromium):
+    """Scenario: L1 misses (aria-label override) — supervisor escalates to L2 and run completes."""
+    fixture_url = f"{fixture_server}/loop_self_correction.html"
+
+    # Step 1: goto fixture, Step 2: read with intent, Step 3: done
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+        _response_with_tool_call(_tool_call("read", {"intent": "Submit button"}, call_id="tc-2")),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"clicked": True},
+                    "evidence": {
+                        "url": fixture_url,
+                        "text_snippet": "Submit",
+                    },
+                },
+                call_id="tc-3",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop("click the Submit button", browser, fake_llm)
+
+    assert result.status == "succeeded"
+
+
+# ---------------------------------------------------------------------------
+# Self-correction: L1 fails → L2 also fails → loop returns error string,
+# continues, LLM still reaches done.
+# ---------------------------------------------------------------------------
+
+
+def test_loop_self_correction_l2_also_fails(fixture_server, playwright_chromium):
+    """Scenario: L1 and L2 both miss — loop returns error string and LLM still reaches done."""
+    fixture_url = f"{fixture_server}/index.html"
+
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+        _response_with_tool_call(_tool_call("read", {"intent": "Submit button"}, call_id="tc-2")),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"note": "error was fed back"},
+                    "evidence": {
+                        "url": fixture_url,
+                        "text_snippet": "Hello",
+                    },
+                },
+                call_id="tc-3",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop("click the Submit button", browser, fake_llm)
+
+    # Loop must not crash; the error string was fed back and the LLM called done.
+    assert result.status == "succeeded"
+
+
+# ---------------------------------------------------------------------------
+# Self-correction: supervisor max_attempts exhausted — loop returns error
+# string gracefully (does not crash or raise).
+# ---------------------------------------------------------------------------
+
+
+def test_loop_self_correction_supervisor_halt(fixture_server, playwright_chromium):
+    """Scenario: supervisor max_attempts exhausted — loop returns error string gracefully."""
+    fixture_url = f"{fixture_server}/index.html"
+
+    # 4 read calls exhaust the default max_attempts=3 and trigger the halt branch.
+    read_tc = [
+        _response_with_tool_call(
+            _tool_call("read", {"intent": "Submit button"}, call_id=f"tc-r{i}")
+        )
+        for i in range(1, 5)
+    ]
+    responses = (
+        [_response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-0"))]
+        + read_tc
+        + [
+            _response_with_tool_call(
+                _tool_call(
+                    "done",
+                    {
+                        "result": {"note": "supervisor halted"},
+                        "evidence": {
+                            "url": fixture_url,
+                            "text_snippet": "Hello",
+                        },
+                    },
+                    call_id="tc-done",
+                )
+            ),
+        ]
+    )
+    fake_llm = _FakeLLMClient(responses)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop("click the Submit button", browser, fake_llm, max_steps=10)
+
+    assert result.status == "succeeded"
