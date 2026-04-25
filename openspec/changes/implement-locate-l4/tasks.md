@@ -137,24 +137,24 @@
 
 ## 6. Refactor + housekeeping
 
-- [ ] 6.1 Reread `task2/agent/locate.py`. Look for opportunities to factor common helpers:
+- [x] 6.1 Reread `task2/agent/locate.py`. Look for opportunities to factor common helpers:
   - The `_resolve_default_llm_chat` helper, if it exists in two places now (for L3 and L4), should be a single private function.
   - `_build_l3_messages` and `_build_l4_messages` are intentionally separate — do NOT merge them, but confirm both follow the same `[{system}, {user}]` shape.
-- [ ] 6.2 Reread `task2/agent/browser.py`. Confirm `screenshot` and `click_at` are placed alongside `read` (between `read` and the closing of the class), with consistent docstring style (matching `goto` / `read` if any).
-- [ ] 6.3 Confirm `LocateResult`'s field order is `tier, role, name, selector, ax_fingerprint, confidence, coords` and the dataclass remains `frozen=True`.
-- [ ] 6.4 Confirm `agent.llm` is NOT imported at module top of `agent.locate` (verify by reading the import block; the `LLMError` catch in `locate_l4` MUST be inside the function body, lazy-imported).
-- [ ] 6.5 Run `uv run ruff format .` from `task2/` (no changes after green).
-- [ ] 6.6 Run `uv run ruff check .` from `task2/` — clean.
-- [ ] 6.7 No new runtime dependencies added to `task2/pyproject.toml`. The only allowed dev-dependency addition is `pytest-httpx` if step 4.24 requires it AND it is not already present.
+- [x] 6.2 Reread `task2/agent/browser.py`. Confirm `screenshot` and `click_at` are placed alongside `read` (between `read` and the closing of the class), with consistent docstring style (matching `goto` / `read` if any).
+- [x] 6.3 Confirm `LocateResult`'s field order is `tier, role, name, selector, ax_fingerprint, confidence, coords` and the dataclass remains `frozen=True`.
+- [x] 6.4 Confirm `agent.llm` is NOT imported at module top of `agent.locate` (verify by reading the import block; the `LLMError` catch in `locate_l4` MUST be inside the function body, lazy-imported).
+- [x] 6.5 Run `uv run ruff format .` from `task2/` (no changes after green).
+- [x] 6.6 Run `uv run ruff check .` from `task2/` — clean.
+- [x] 6.7 No new runtime dependencies added to `task2/pyproject.toml`. The only allowed dev-dependency addition is `pytest-httpx` if step 4.24 requires it AND it is not already present.
 
 ## 7. Validation
 
-- [ ] 7.1 Run `openspec validate implement-locate-l4 --strict` — change SHALL be valid.
-- [ ] 7.2 Final pre-commit gate from `task2/`: `uv run ruff format .` (no changes), `uv run ruff check .` (clean), `uv run pytest` (all tests pass).
-- [ ] 7.3 Three or four conventional commits on the branch:
+- [x] 7.1 Run `openspec validate implement-locate-l4 --strict` — change SHALL be valid.
+- [x] 7.2 Final pre-commit gate from `task2/`: `uv run ruff format .` (no changes), `uv run ruff check .` (clean), `uv run pytest` (all tests pass).
+- [x] 7.3 Three or four conventional commits on the branch:
   - `chore(task2): scaffold implement-locate-l4` (created in scaffolding step — counts).
   - `feat(task2): add screenshot and click_at to Browser`.
   - `test(task2): add failing L4 vision-locator tests and fixture`.
   - `feat(task2): add L4 vision-fallback locator tier and last-tier cascade`.
   - `refactor(task2): <whatever 6.1 ends up doing>` — only if a real cleanup happens; skip if nothing worth changing.
-- [ ] 7.4 No hooks bypassed at any point. No `--no-verify` flags used.
+- [x] 7.4 No hooks bypassed at any point. No `--no-verify` flags used.
