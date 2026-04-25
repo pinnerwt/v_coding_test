@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+
 import pytest
 
 from agent.browser import Browser
@@ -54,6 +56,12 @@ def test_parse_intent_unknown_role():
     with pytest.raises(IntentParseError) as excinfo:
         parse_intent("Submit widget")
     assert "widget" in str(excinfo.value)
+
+
+def test_parse_intent_unknown_role_includes_full_intent():
+    with pytest.raises(IntentParseError) as excinfo:
+        parse_intent("do the thing")
+    assert "do the thing" in str(excinfo.value)
 
 
 def test_parse_intent_empty():
@@ -154,3 +162,15 @@ def test_ax_fingerprint_uses_matched_accessible_name(fixture_server, playwright_
         full = locate_l1(b._page, role="button", name="Save draft")
         sub = locate_l1(b._page, role="button", name="Save")
         assert full.ax_fingerprint == sub.ax_fingerprint
+
+
+def test_ax_fingerprint_resolves_label_for_association(fixture_server, playwright_chromium):
+    with Browser(playwright_browser=playwright_chromium) as b:
+        b.goto(f"{fixture_server}/locate_l1_label_for.html")
+        labelled = locate_l1(b._page, role="textbox", name="Email address")
+        b.goto(f"{fixture_server}/locate_l1_labelledby.html")
+        labelledby = locate_l1(b._page, role="textbox", name="Phone number")
+    empty = hashlib.sha256(b"textbox:").hexdigest()
+    assert labelled.ax_fingerprint != empty
+    assert labelledby.ax_fingerprint != empty
+    assert labelled.ax_fingerprint != labelledby.ax_fingerprint

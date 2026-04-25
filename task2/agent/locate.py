@@ -13,6 +13,44 @@ _ARTICLES: frozenset[str] = frozenset({"the", "a", "an"})
 LocatorMissReason = Literal["zero_matches", "ambiguous"]
 _VALID_REASONS: frozenset[str] = frozenset(get_args(LocatorMissReason))
 
+_ACCESSIBLE_NAME_JS = """
+(el) => {
+  const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim();
+  const labelledby = el.getAttribute('aria-labelledby');
+  if (labelledby) {
+    const parts = labelledby.split(/\\s+/).filter(Boolean).map((id) => {
+      const ref = el.ownerDocument.getElementById(id);
+      return ref ? norm(ref.textContent) : '';
+    });
+    const joined = norm(parts.join(' '));
+    if (joined) return joined;
+  }
+  const ariaLabel = el.getAttribute('aria-label');
+  if (ariaLabel) {
+    const t = norm(ariaLabel);
+    if (t) return t;
+  }
+  if (el.id) {
+    const lbl = el.ownerDocument.querySelector('label[for="' + CSS.escape(el.id) + '"]');
+    if (lbl) {
+      const t = norm(lbl.textContent);
+      if (t) return t;
+    }
+  }
+  const wrapping = el.closest && el.closest('label');
+  if (wrapping) {
+    const t = norm(wrapping.textContent);
+    if (t) return t;
+  }
+  const title = el.getAttribute('title');
+  if (title) {
+    const t = norm(title);
+    if (t) return t;
+  }
+  return norm(el.textContent);
+}
+"""
+
 
 class LocateError(Exception):
     pass
@@ -50,7 +88,8 @@ def parse_intent(intent: str) -> tuple[str, str | None]:
     role = tokens[-1].lower()
     if role not in _SUPPORTED_ROLES:
         raise IntentParseError(
-            f"unknown role token {tokens[-1]!r}; supported: {sorted(_SUPPORTED_ROLES)}"
+            f"unknown role token {tokens[-1]!r} in intent {intent!r}; "
+            f"supported: {sorted(_SUPPORTED_ROLES)}"
         )
     name_tokens = tokens[:-1]
     name = " ".join(name_tokens) if name_tokens else None
@@ -64,13 +103,7 @@ def locate_l1(page: Page, *, role: str, name: str | None) -> LocateResult:
         raise LocatorMiss(reason="zero_matches", match_count=0)
     if count > 1:
         raise LocatorMiss(reason="ambiguous", match_count=count)
-    matched_name_raw = locator.first.evaluate(
-        "(el) => {"
-        "  const a = el.getAttribute('aria-label');"
-        "  if (a !== null && a !== '') return a.replace(/\\s+/g, ' ').trim();"
-        "  return (el.textContent || '').replace(/\\s+/g, ' ').trim();"
-        "}"
-    )
+    matched_name_raw = locator.first.evaluate(_ACCESSIBLE_NAME_JS)
     matched_name: str | None = matched_name_raw if isinstance(matched_name_raw, str) else None
     if name:
         escaped = name.replace("\\", "\\\\").replace('"', '\\"')
