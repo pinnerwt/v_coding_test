@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from agent.llm import ChatResponse, ToolCall, Usage
-from agent.loop import loop
+from agent.loop import _build_system_prompt, loop
 from agent.replay import ReplayDivergence, ReplayResult, StubBrowser, StubLLMClient, replay_run
 from agent.trace import (
     DecisionEvent,
@@ -23,6 +23,27 @@ from agent.trace import (
 )
 
 FIXTURE_PATH = Path(__file__).parent.parent / "fixtures" / "traces" / "simple_goto_done.jsonl"
+
+
+def _default_run_dict(run_id: str, task: str) -> dict:
+    return {
+        "run_id": run_id,
+        "task": task,
+        "expect_schema": None,
+        "budget": {"steps": 20, "usd": 1.0, "seconds": 120},
+        "llm": {
+            "base_url": "http://stub.local",
+            "model": "stub-model",
+            "temperature": 0.0,
+            "seed": None,
+        },
+        "agent_version": "0.0.1-test",
+        "started_at": "2024-01-01T00:00:00Z",
+        "ended_at": None,
+        "status": None,
+        "final": None,
+        "totals": None,
+    }
 
 
 def _mutate_decision_tool(lines: list[str], old_tool: str, new_tool: str) -> list[str]:
@@ -288,24 +309,7 @@ def _record_fixture(tmp_path: Path, task: str, responses: list) -> Path:
     with StubBrowser() as br:
         loop(task=task, browser=br, llm_client=rec, max_steps=len(responses) + 2)
 
-    run = {
-        "run_id": "run-rec-001",
-        "task": task,
-        "expect_schema": None,
-        "budget": {"steps": 20, "usd": 1.0, "seconds": 120},
-        "llm": {
-            "base_url": "http://stub.local",
-            "model": "stub-model",
-            "temperature": 0.0,
-            "seed": None,
-        },
-        "agent_version": "0.0.1-test",
-        "started_at": "2024-01-01T00:00:00Z",
-        "ended_at": None,
-        "status": None,
-        "final": None,
-        "totals": None,
-    }
+    run = _default_run_dict("run-rec-001", task)
 
     events: list[dict] = []
     seq = 0
@@ -424,38 +428,13 @@ def test_replay_run_detects_extra_chat_calls(tmp_path):
     chat() until max_steps because no done/fail tool ever arrives — those extra calls
     must be reported, not silently capped at min(recorded, consumed).
     """
-    no_tool = ChatResponse(
-        content="thinking",
-        tool_calls=[],
-        finish_reason="stop",
-        model="stub",
-        usage=Usage(0, 0, 0),
-        raw={},
-    )
+    observation = {"url": "http://stub.local/", "text": ""}
+    first_prompt = [
+        {"role": "system", "content": _build_system_prompt("task")},
+        {"role": "user", "content": f"Current state: {json.dumps(observation)}"},
+    ]
 
-    capture = StubLLMClient([no_tool])
-    with StubBrowser() as br:
-        loop(task="task", browser=br, llm_client=capture, max_steps=1)
-    first_prompt = capture.prompts_consumed[0]
-
-    run = {
-        "run_id": "run-rec-001",
-        "task": "task",
-        "expect_schema": None,
-        "budget": {"steps": 20, "usd": 1.0, "seconds": 120},
-        "llm": {
-            "base_url": "http://stub.local",
-            "model": "stub-model",
-            "temperature": 0.0,
-            "seed": None,
-        },
-        "agent_version": "0.0.1-test",
-        "started_at": "2024-01-01T00:00:00Z",
-        "ended_at": None,
-        "status": None,
-        "final": None,
-        "totals": None,
-    }
+    run = _default_run_dict("run-rec-001", "task")
     events = [
         {
             "run_id": run["run_id"],
