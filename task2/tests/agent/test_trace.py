@@ -1,4 +1,5 @@
 """Tests for agent.trace module — red first, then green."""
+
 from __future__ import annotations
 
 import json
@@ -11,8 +12,8 @@ from agent.trace import (
     AnyEvent,
     DecisionEvent,
     DoneEvent,
-    LocateEvent,
     LLMCallEvent,
+    LocateEvent,
     ObservationEvent,
     PlanEvent,
     Run,
@@ -103,7 +104,9 @@ def _locate_event(run_id: str = RUN_ID, seq: int = 1) -> LocateEvent:
         intent="click the Submit button",
         tier="L1_ax",
         outcome="hit",
-        candidates=[{"ax_role": "button", "ax_name": "Submit", "selector": "#submit", "score": 0.9}],
+        candidates=[
+            {"ax_role": "button", "ax_name": "Submit", "selector": "#submit", "score": 0.9}
+        ],
         chosen={"selector": "#submit", "ax_fingerprint": "fp123", "confidence": 0.9},
         cache_action="write",
         ms=42,
@@ -166,7 +169,12 @@ def _done_event(run_id: str = RUN_ID, seq: int = 1) -> DoneEvent:
         ts=TS,
         step_id="step-5",
         result={"answer": "cats"},
-        evidence={"url": "https://example.com", "text_snippet": "cats", "screenshot_ref": None, "ax_path": None},
+        evidence={
+            "url": "https://example.com",
+            "text_snippet": "cats",
+            "screenshot_ref": None,
+            "ax_path": None,
+        },
         verifier={"ok": True, "reasons": ["result matches expected"]},
     )
 
@@ -323,7 +331,9 @@ def test_trace_writer_basic_persist():
         writer.open_run(run)
         writer.append_event(ev)
         runs = list(writer._conn.execute("SELECT run_id FROM traces_runs"))
-        events = list(writer._conn.execute("SELECT seq FROM traces_events WHERE run_id = ?", (run.run_id,)))
+        events = list(
+            writer._conn.execute("SELECT seq FROM traces_events WHERE run_id = ?", (run.run_id,))
+        )
     assert len(runs) == 1
     assert runs[0][0] == run.run_id
     assert len(events) == 1
@@ -374,7 +384,9 @@ def test_trace_writer_accepts_increasing_seq():
         writer.append_event(_observation_event(run_id=run.run_id, seq=1))
         writer.append_event(_observation_event(run_id=run.run_id, seq=2))
         writer.append_event(_observation_event(run_id=run.run_id, seq=3))
-        rows = list(writer._conn.execute("SELECT seq FROM traces_events WHERE run_id = ?", (run.run_id,)))
+        rows = list(
+            writer._conn.execute("SELECT seq FROM traces_events WHERE run_id = ?", (run.run_id,))
+        )
     assert len(rows) == 3
 
 
