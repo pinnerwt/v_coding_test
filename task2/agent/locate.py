@@ -32,6 +32,12 @@ def _escape_quoted(value: str) -> str:
     return value.replace("\\", "\\\\").replace('"', '\\"')
 
 
+def _role_selector(role: str, name: str | None) -> str:
+    if not name:
+        return f"role={role}"
+    return f'role={role}[name="{_escape_quoted(name)}" i]'
+
+
 _ACCESSIBLE_NAME_JS = """
 (el) => {
   const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim();
@@ -124,10 +130,7 @@ def locate_l1(page: Page, *, role: str, name: str | None) -> LocateResult:
         raise LocatorMiss(reason="ambiguous", match_count=count)
     matched_name_raw = locator.first.evaluate(_ACCESSIBLE_NAME_JS)
     matched_name: str | None = matched_name_raw if isinstance(matched_name_raw, str) else None
-    if name:
-        selector = f'role={role}[name="{_escape_quoted(name)}" i]'
-    else:
-        selector = f"role={role}"
+    selector = _role_selector(role, name)
     fingerprint_name = matched_name if matched_name is not None else (name or "")
     fingerprint = hashlib.sha256(f"{role}:{fingerprint_name}".encode()).hexdigest()
     return LocateResult(
@@ -175,13 +178,13 @@ def locate_l2(page: Page, *, role: str, name: str | None) -> LocateResult:
     raise LocatorMiss(reason="zero_matches", match_count=0)
 
 
-_L3_CANDIDATE_CONTEXT_JS = (
-    """
-(el, {headingChars, nearbyChars}) => {
+_L3_CANDIDATE_CONTEXT_JS = """
+(els, {headingChars, nearbyChars, maxCandidates}) => {
   const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim();
   const truncate = (s, n) => (s.length > n ? s.slice(0, n) : s);
+  const accessibleName = __ACCESSIBLE_NAME__;
 
-  const findHeading = () => {
+  const findHeading = (el) => {
     const section = el.closest && el.closest('section');
     if (section) {
       const aria = section.getAttribute('aria-label');
@@ -218,63 +221,25 @@ _L3_CANDIDATE_CONTEXT_JS = (
     return '';
   };
 
-  const findNearby = () => {
+  const findNearby = (el) => {
     const container = el.closest && el.closest('section, article, nav, aside, main, form');
     const source = container || el.parentElement || el;
     return norm(source.textContent);
   };
 
-  const accessibleName = () => {
-    const labelledby = el.getAttribute('aria-labelledby');
-    if (labelledby) {
-      const parts = labelledby.split(/\\s+/).filter(Boolean).map((id) => {
-        const ref = el.ownerDocument.getElementById(id);
-        return ref ? norm(ref.textContent) : '';
-      });
-      const joined = norm(parts.join(' '));
-      if (joined) return joined;
-    }
-    const ariaLabel = el.getAttribute('aria-label');
-    if (ariaLabel) {
-      const t = norm(ariaLabel);
-      if (t) return t;
-    }
-    if (el.id) {
-      const lbl = el.ownerDocument.querySelector('label[for="' + CSS.escape(el.id) + '"]');
-      if (lbl) {
-        const t = norm(lbl.textContent);
-        if (t) return t;
-      }
-    }
-    const wrapping = el.closest && el.closest('label');
-    if (wrapping) {
-      const t = norm(wrapping.textContent);
-      if (t) return t;
-    }
-    const title = el.getAttribute('title');
-    if (title) {
-      const t = norm(title);
-      if (t) return t;
-    }
-    return norm(el.textContent);
-  };
-
-  return {
-    accessible_name: truncate(accessibleName(), nearbyChars),
-    section_heading: truncate(findHeading(), headingChars),
-    nearby_text: truncate(findNearby(), nearbyChars),
-  };
+  return els.slice(0, maxCandidates).map((el) => ({
+    accessible_name: truncate(accessibleName(el), nearbyChars),
+    section_heading: truncate(findHeading(el), headingChars),
+    nearby_text: truncate(findNearby(el), nearbyChars),
+  }));
 }
-"""
-).strip()
+""".strip().replace("__ACCESSIBLE_NAME__", _ACCESSIBLE_NAME_JS.strip())
 
-_L3_CONTEXT_ARGS = {"headingChars": _L3_MAX_HEADING_CHARS, "nearbyChars": _L3_MAX_NEARBY_CHARS}
-
-
-def _resolve_default_llm_chat() -> Callable[..., Any]:
-    from agent.llm import chat
-
-    return chat
+_L3_CONTEXT_ARGS = {
+    "headingChars": _L3_MAX_HEADING_CHARS,
+    "nearbyChars": _L3_MAX_NEARBY_CHARS,
+    "maxCandidates": _L3_MAX_CANDIDATES,
+}
 
 
 def _build_l3_messages(
@@ -321,35 +286,21 @@ def locate_l3(
     if count == 0:
         raise LocatorMiss(reason="zero_matches", match_count=0)
 
-    capped = min(count, _L3_MAX_CANDIDATES)
-    candidates = [
-        locator.nth(i).evaluate(_L3_CANDIDATE_CONTEXT_JS, _L3_CONTEXT_ARGS) for i in range(capped)
-    ]
+    candidates = locator.evaluate_all(_L3_CANDIDATE_CONTEXT_JS, _L3_CONTEXT_ARGS)
 
-    if count == 1:
+    if len(candidates) == 1:
         chosen = 0
     else:
-        chat_fn = llm_chat if llm_chat is not None else _resolve_default_llm_chat()
-        response = chat_fn(messages=_build_l3_messages(role, name, candidates), temperature=0.0)
+        if llm_chat is None:
+            from agent.llm import chat as llm_chat
+        response = llm_chat(messages=_build_l3_messages(role, name, candidates), temperature=0.0)
         idx = _parse_l3_index(response, len(candidates))
         if idx is None:
             raise LocatorMiss(reason="ambiguous", match_count=count)
         chosen = idx
 
-    selector_prefix = f'role={role}[name="{_escape_quoted(name)}" i]' if name else f"role={role}"
-    return _build_l3_result(
-        role, name, selector_prefix, chosen, candidates[chosen]["section_heading"]
-    )
-
-
-def _build_l3_result(
-    role: str,
-    name: str | None,
-    selector_prefix: str,
-    chosen_index: int,
-    section_heading: str,
-) -> LocateResult:
-    selector = f"{selector_prefix} >> nth={chosen_index}"
+    selector = f"{_role_selector(role, name)} >> nth={chosen}"
+    section_heading = candidates[chosen]["section_heading"]
     fingerprint = hashlib.sha256(f"{role}:{name or ''}:{section_heading}".encode()).hexdigest()
     return LocateResult(
         tier="L3_rerank",
@@ -367,14 +318,14 @@ def _parse_l3_index(response: Any, candidate_count: int) -> int | None:
         return None
     try:
         data = json.loads(content)
-    except (ValueError, TypeError):
+    except ValueError:
         return None
     if not isinstance(data, dict):
         return None
     idx = data.get("index")
-    if not isinstance(idx, int) or isinstance(idx, bool):
+    if isinstance(idx, bool) or not isinstance(idx, int):
         return None
-    if idx < 0 or idx >= candidate_count:
+    if not 0 <= idx < candidate_count:
         return None
     return idx
 

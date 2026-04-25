@@ -117,9 +117,6 @@ def test_locate_orchestrator_cascades_l1_zero_to_l2(fixture_server, playwright_c
 
 
 def test_locate_orchestrator_l1_ambiguous_now_cascades_to_l3(fixture_server, playwright_chromium):
-    # Ticket #5 changes the cascade: L1 ambiguous now goes to L3, not propagation.
-    # We mock the LLM to confirm L3 is reached; the L3 test module covers the
-    # fingerprint/selector contract end-to-end.
     import json
 
     from agent.llm import ChatResponse, Usage
