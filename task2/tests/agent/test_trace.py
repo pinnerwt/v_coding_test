@@ -6,7 +6,7 @@ import json
 import sqlite3
 
 import pytest
-from pydantic import TypeAdapter
+from pydantic import TypeAdapter, ValidationError
 
 from agent.trace import (
     ActEvent,
@@ -549,6 +549,26 @@ def test_close_run_refreshes_payload_blob():
     assert payload["ended_at"] == "2024-01-01T00:01:00Z"
     assert payload["final"]["result"] == {"answer": "cats"}
     assert payload["totals"]["steps"] == 3
+
+
+def test_close_run_rejects_invalid_status():
+    """close_run must validate the merged Run so invalid status doesn't poison payload."""
+    run = _run_full()
+    with TraceWriter(":memory:") as writer:
+        writer.open_run(run)
+        with pytest.raises(ValidationError):
+            writer.close_run(
+                run.run_id,
+                status="success",
+                ended_at=TS,
+                final={},
+                totals={},
+            )
+        row = writer._conn.execute(
+            "SELECT payload FROM traces_runs WHERE run_id = ?", (run.run_id,)
+        ).fetchone()
+    payload = json.loads(row[0])
+    assert payload["status"] == "succeeded"
 
 
 def test_close_run_unknown_run_id_raises():
