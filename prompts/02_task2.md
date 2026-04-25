@@ -31,3 +31,5 @@ Review /new_task2 and downgrade certain models' for the subagents that are not f
 /new_task2 (happy path)
 
 /new_task2 (loop self correction)
+
+Create a skill with the command /done_pr which 1. run /opsx:archive and 2. commit the spec updates. Finally, 3. `git checkout master && git pull`
