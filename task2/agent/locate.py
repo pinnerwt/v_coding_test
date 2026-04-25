@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
+import math
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -13,7 +15,7 @@ if TYPE_CHECKING:
 _SUPPORTED_ROLES: frozenset[str] = frozenset({"button", "link", "textbox", "checkbox", "heading"})
 _ARTICLES: frozenset[str] = frozenset({"the", "a", "an"})
 
-LocatorMissReason = Literal["zero_matches", "ambiguous"]
+LocatorMissReason = Literal["zero_matches", "ambiguous", "vision_miss"]
 _VALID_REASONS: frozenset[str] = frozenset(get_args(LocatorMissReason))
 
 _L2_BUTTON_TAXONOMY_CSS = (
@@ -26,6 +28,22 @@ _L3_MAX_CANDIDATES = 10
 _L3_MAX_HEADING_CHARS = 100
 _L3_MAX_NEARBY_CHARS = 200
 _L3_CONFIDENCE = 0.8
+
+_L4_CONFIDENCE = 0.5
+_L4_DATA_URL_PREFIX = "data:image/png;base64,"
+_L4_SYSTEM_PROMPT = (
+    "You are a UI element localizer. Given a screenshot and an intent, return a "
+    "single bounding box around the target element. Reply with EXACTLY the JSON "
+    'object {"bbox": [x, y, w, h]} where x,y is the top-left corner in pixels '
+    "(relative to the screenshot), and w,h are width and height in pixels. Do not "
+    "wrap the JSON in code fences. Do not include any prose."
+)
+
+
+def _resolve_default_llm_chat() -> Callable[..., Any]:
+    from agent.llm import chat
+
+    return chat
 
 
 def _escape_quoted(value: str) -> str:
@@ -102,6 +120,7 @@ class LocateResult:
     selector: str
     ax_fingerprint: str
     confidence: float
+    coords: tuple[int, int] | None = None
 
 
 def parse_intent(intent: str) -> tuple[str, str | None]:
@@ -293,12 +312,9 @@ def locate_l3(
     else:
         from agent.llm import LLMError
 
-        if llm_chat is None:
-            from agent.llm import chat as llm_chat
+        chat_fn = llm_chat if llm_chat is not None else _resolve_default_llm_chat()
         try:
-            response = llm_chat(
-                messages=_build_l3_messages(role, name, candidates), temperature=0.0
-            )
+            response = chat_fn(messages=_build_l3_messages(role, name, candidates), temperature=0.0)
         except LLMError as exc:
             raise LocatorMiss(reason="ambiguous", match_count=count) from exc
         idx = _parse_l3_index(response, len(candidates))
@@ -337,6 +353,101 @@ def _parse_l3_index(response: Any, candidate_count: int) -> int | None:
     return idx
 
 
+def _build_l4_messages(
+    intent: str,
+    viewport: tuple[int, int],
+    png_b64: str,
+) -> list[dict[str, Any]]:
+    vw, vh = viewport
+    return [
+        {"role": "system", "content": _L4_SYSTEM_PROMPT},
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": f"Intent: {intent}\nViewport: {vw}x{vh}"},
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"{_L4_DATA_URL_PREFIX}{png_b64}"},
+                },
+            ],
+        },
+    ]
+
+
+def _parse_l4_bbox(
+    response: Any,
+    viewport_w: int,
+    viewport_h: int,
+) -> tuple[int, int] | None:
+    content = getattr(response, "content", None)
+    if not isinstance(content, str):
+        return None
+    try:
+        data = json.loads(content)
+    except ValueError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    bbox = data.get("bbox")
+    if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
+        return None
+    norm: list[int] = []
+    for v in bbox:
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            return None
+        if not math.isfinite(v):
+            return None
+        norm.append(int(round(v)))
+    x, y, w, h = norm
+    if x < 0 or y < 0 or w <= 0 or h <= 0:
+        return None
+    if x + w > viewport_w or y + h > viewport_h:
+        return None
+    return (x + w // 2, y + h // 2)
+
+
+def locate_l4(
+    page: Page,
+    *,
+    role: str,
+    name: str | None,
+    intent: str,
+    llm_chat: Callable[..., Any] | None = None,
+) -> LocateResult:
+    vp = page.viewport_size
+    if vp is None:
+        raise LocatorMiss(reason="vision_miss", match_count=0)
+
+    png_bytes = page.screenshot(full_page=False)
+    png_b64 = base64.b64encode(png_bytes).decode("ascii")
+
+    chat_fn = llm_chat if llm_chat is not None else _resolve_default_llm_chat()
+    messages = _build_l4_messages(intent, (vp["width"], vp["height"]), png_b64)
+
+    from agent.llm import LLMError
+
+    try:
+        response = chat_fn(messages=messages, temperature=0.0)
+    except LLMError as exc:
+        raise LocatorMiss(reason="vision_miss", match_count=0) from exc
+
+    center = _parse_l4_bbox(response, vp["width"], vp["height"])
+    if center is None:
+        raise LocatorMiss(reason="vision_miss", match_count=0)
+    cx, cy = center
+
+    fingerprint = hashlib.sha256(f"vision:{intent}:{cx}:{cy}".encode()).hexdigest()
+    return LocateResult(
+        tier="L4_vision",
+        role=role,
+        name=name,
+        selector="",
+        ax_fingerprint=fingerprint,
+        confidence=_L4_CONFIDENCE,
+        coords=(cx, cy),
+    )
+
+
 def locate(
     page: Page,
     intent: str,
@@ -348,7 +459,13 @@ def locate(
         return locate_l1(page, role=role, name=name)
     except LocatorMiss as miss:
         if miss.reason == "zero_matches":
-            return locate_l2(page, role=role, name=name)
+            try:
+                return locate_l2(page, role=role, name=name)
+            except LocatorMiss:
+                return locate_l4(page, role=role, name=name, intent=intent, llm_chat=llm_chat)
         if miss.reason == "ambiguous":
-            return locate_l3(page, role=role, name=name, llm_chat=llm_chat)
+            try:
+                return locate_l3(page, role=role, name=name, llm_chat=llm_chat)
+            except LocatorMiss:
+                return locate_l4(page, role=role, name=name, intent=intent, llm_chat=llm_chat)
         raise

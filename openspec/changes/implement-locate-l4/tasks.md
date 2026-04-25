@@ -87,14 +87,14 @@
 
 ## 5. L4 vision — implementation (green)
 
-- [ ] 5.1 In `task2/agent/locate.py`, extend `LocatorMissReason` literal: `LocatorMissReason = Literal["zero_matches", "ambiguous", "vision_miss"]`. The `_VALID_REASONS = frozenset(get_args(LocatorMissReason))` line will pick up the new value automatically.
-- [ ] 5.2 In `task2/agent/locate.py`, extend the `LocateResult` dataclass with `coords: tuple[int, int] | None = None` as the last field. Confirm the `frozen=True` decorator and existing field order are preserved (the new field is added at the end so existing positional construction sites do not break).
-- [ ] 5.3 Add module constants: `_L4_CONFIDENCE = 0.5`, `_L4_DATA_URL_PREFIX = "data:image/png;base64,"`.
-- [ ] 5.4 Add a private helper `_resolve_default_llm_chat()` (if not already present from ticket #5 — verify and DRY if duplicated) that does `from agent.llm import chat; return chat`.
-- [ ] 5.5 Add `_build_l4_messages(intent: str, viewport: tuple[int, int], png_b64: str) -> list[dict]`:
+- [x] 5.1 In `task2/agent/locate.py`, extend `LocatorMissReason` literal: `LocatorMissReason = Literal["zero_matches", "ambiguous", "vision_miss"]`. The `_VALID_REASONS = frozenset(get_args(LocatorMissReason))` line will pick up the new value automatically.
+- [x] 5.2 In `task2/agent/locate.py`, extend the `LocateResult` dataclass with `coords: tuple[int, int] | None = None` as the last field. Confirm the `frozen=True` decorator and existing field order are preserved (the new field is added at the end so existing positional construction sites do not break).
+- [x] 5.3 Add module constants: `_L4_CONFIDENCE = 0.5`, `_L4_DATA_URL_PREFIX = "data:image/png;base64,"`.
+- [x] 5.4 Add a private helper `_resolve_default_llm_chat()` (if not already present from ticket #5 — verify and DRY if duplicated) that does `from agent.llm import chat; return chat`.
+- [x] 5.5 Add `_build_l4_messages(intent: str, viewport: tuple[int, int], png_b64: str) -> list[dict]`:
   - System message: `"You are a UI element localizer. Given a screenshot and an intent, return a single bounding box around the target element. Reply with EXACTLY the JSON object {\"bbox\": [x, y, w, h]} where x,y is the top-left corner in pixels (relative to the screenshot), and w,h are width and height in pixels. Do not wrap the JSON in code fences. Do not include any prose."`.
   - User message with list-shaped content: `[{"type": "text", "text": f"Intent: {intent}\nViewport: {vw}x{vh}"}, {"type": "image_url", "image_url": {"url": f"{_L4_DATA_URL_PREFIX}{png_b64}"}}]`.
-- [ ] 5.6 Add `_parse_l4_bbox(response, viewport_w, viewport_h) -> tuple[int, int]`:
+- [x] 5.6 Add `_parse_l4_bbox(response, viewport_w, viewport_h) -> tuple[int, int]`:
   - `content = getattr(response, "content", None)`; if not `str`, return `None` sentinel (or raise an internal `ValueError` we then map to `vision_miss`).
   - `data = json.loads(content)`; on `ValueError`, signal failure.
   - Require `isinstance(data, dict)`, `"bbox" in data`, `isinstance(data["bbox"], (list, tuple))`, `len(data["bbox"]) == 4`.
@@ -102,7 +102,7 @@
   - Normalize: `int(round(v))` for each.
   - Validate bounds: `x >= 0 and y >= 0 and w > 0 and h > 0 and x + w <= viewport_w and y + h <= viewport_h`.
   - Return `(x + w // 2, y + h // 2)` on success.
-- [ ] 5.7 Implement `locate_l4(page, *, role, name, intent, llm_chat=None) -> LocateResult`:
+- [x] 5.7 Implement `locate_l4(page, *, role, name, intent, llm_chat=None) -> LocateResult`:
   - Read viewport: `vp = page.viewport_size`; if `vp is None`, raise `LocatorMiss(reason="vision_miss", match_count=0)` immediately.
   - `png_bytes = page.screenshot(full_page=False)`; `png_b64 = base64.b64encode(png_bytes).decode("ascii")`.
   - Resolve `chat_fn = llm_chat if llm_chat is not None else _resolve_default_llm_chat()`.
@@ -111,7 +111,7 @@
   - Parse: try `_parse_l4_bbox(response, vp["width"], vp["height"])`. On any failure (parse, validation), `raise LocatorMiss(reason="vision_miss", match_count=0)`. On success, unpack `(cx, cy)`.
   - Compute fingerprint: `fingerprint = hashlib.sha256(f"vision:{intent}:{cx}:{cy}".encode()).hexdigest()`.
   - Return `LocateResult(tier="L4_vision", role=role, name=name, selector="", ax_fingerprint=fingerprint, confidence=_L4_CONFIDENCE, coords=(cx, cy))`.
-- [ ] 5.8 Modify `locate(page, intent, *, llm_chat=None)` to extend the cascade:
+- [x] 5.8 Modify `locate(page, intent, *, llm_chat=None)` to extend the cascade:
   ```python
   def locate(page, intent, *, llm_chat=None):
       role, name = parse_intent(intent)
@@ -131,9 +131,9 @@
           raise
   ```
   Both L2's and L3's `LocatorMiss` (any reason) now cascades to L4. `IntentParseError` continues to propagate without invoking L4.
-- [ ] 5.9 Add `import base64` and `import math` (for `math.isfinite`) to the top of `agent/locate.py`. Confirm `agent.llm` is still NOT imported at module top (it must remain lazy in `_resolve_default_llm_chat` and in the `LLMError` catch inside `locate_l4`).
-- [ ] 5.10 From `task2/`, run `uv run pytest tests/agent/test_locate_l4.py` and confirm all new tests pass.
-- [ ] 5.11 From `task2/`, run `uv run pytest` (full suite). Confirm tickets #1–#5 tests still pass — in particular the renamed/updated tests in `test_locate.py`, `test_locate_l2.py`, and `test_locate_l3.py` reflect the new orchestrator behaviour, and L1/L2/L3 happy-path tests are unaffected.
+- [x] 5.9 Add `import base64` and `import math` (for `math.isfinite`) to the top of `agent/locate.py`. Confirm `agent.llm` is still NOT imported at module top (it must remain lazy in `_resolve_default_llm_chat` and in the `LLMError` catch inside `locate_l4`).
+- [x] 5.10 From `task2/`, run `uv run pytest tests/agent/test_locate_l4.py` and confirm all new tests pass.
+- [x] 5.11 From `task2/`, run `uv run pytest` (full suite). Confirm tickets #1–#5 tests still pass — in particular the renamed/updated tests in `test_locate.py`, `test_locate_l2.py`, and `test_locate_l3.py` reflect the new orchestrator behaviour, and L1/L2/L3 happy-path tests are unaffected.
 
 ## 6. Refactor + housekeeping
 
