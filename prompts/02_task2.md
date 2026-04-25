@@ -10,3 +10,5 @@ Let's create a skill that automate the developement process. I would need the fo
 /new_task2
 
 Make the repository more standard: 1. add CI workflow for task2/ , which apply pytest and ruff for checks. PRs are not allowed to merge if the CI is not passed. 2. Add PULL_REQUEST_TEMPLATE.md 3. Add Dependabot 4. Add pytest-cov for coverage.
+
+Update the /new_task2 skill to create a PR in the end.
