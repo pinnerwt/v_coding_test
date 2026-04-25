@@ -138,45 +138,30 @@ refactor(task2): simplify <change-name> per review
 
 ### 9. Push and open a pull request
 
-Push the branch and open a PR against `master` using `gh`. The PR body **must** follow `.github/PULL_REQUEST_TEMPLATE.md` (the repo template) — fill it in rather than leaving placeholder comments:
+Push the branch and open a PR against `master` using `gh`. **Read `.github/PULL_REQUEST_TEMPLATE.md` from the repo at this step** (with the `Read` tool) and use it as the literal skeleton for the PR body — do not rely on a hardcoded copy here, since the template evolves. Fill in every section it contains rather than leaving placeholder comments.
+
+Section guidance (apply to whichever sections the current template defines):
 
 - **Task** — `task2`.
 - **Summary** — 1–3 bullets describing what the ticket adds, grounded in the ticket text from `task2/plan.md`.
 - **Why** — the ticket motivation / failing test that drove the change.
+- **Before / After Diagram** (if present) — Mermaid (preferred — GitHub renders it) or ASCII showing the pre- and post-PR state. Keep it scoped to what this PR changed (e.g. a new module in the locator pipeline, a new step in the agent loop, a changed observation schema). Do not leave the empty skeleton from the template.
 - **TDD checklist** — every box checked (red-first commit, `uv run pytest` green, `uv run ruff check .` clean, `uv run ruff format --check .` clean, no scope creep).
 - **OpenSpec** — `openspec/changes/<change-name>/`.
 - **Notes for reviewer** — anything non-obvious, deferred follow-ups, or `/opsx:verify` gaps that were intentionally left.
 
-Commands:
+Workflow:
+
+1. `Read` `.github/PULL_REQUEST_TEMPLATE.md` to get the current skeleton.
+2. Fill it in with the values for this change.
+3. Write the rendered body to a temp file (e.g. `/tmp/pr-body-<change-name>.md`) so the HEREDOC stays clean even with backticks / Mermaid fences.
+4. Push and create the PR:
+
 ```bash
 git push -u origin task2/<change-name>
-gh pr create --base master --title "feat(task2): <ticket title>" --body "$(cat <<'EOF'
-## Summary
-- <bullet 1>
-- <bullet 2>
-
-## Why
-<ticket motivation>
-
-- Task: task2
-
-## TDD checklist
-
-- [x] A failing test (or eval case) was written first and committed before the implementation
-- [x] All tests pass locally (`uv run pytest`)
-- [x] `uv run ruff check .` is clean
-- [x] `uv run ruff format --check .` is clean
-- [x] No production code added beyond what the failing test demanded
-
-## OpenSpec
-
-- Change: `openspec/changes/<change-name>/`
-
-## Notes for reviewer
-
-<non-obvious bits, follow-ups, or "none">
-EOF
-)"
+gh pr create --base master \
+  --title "feat(task2): <ticket title>" \
+  --body-file /tmp/pr-body-<change-name>.md
 ```
 
 If `gh pr create` fails because the branch already has an open PR, run `gh pr view --json url -q .url` and reuse that URL in the final report instead of opening a duplicate. If `gh` is not authenticated, stop and ask the user to run `gh auth login` rather than attempting workarounds.
