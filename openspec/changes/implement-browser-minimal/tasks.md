@@ -41,4 +41,4 @@
 ## 6. Validation
 
 - [x] 6.1 Run `openspec validate implement-browser-minimal --strict` and resolve any spec/format issues.
-- [ ] 6.2 Stage commits in conventional-commit style (`feat(task2): ...`, `test(task2): ...`, `chore(task2): ...`) preserving real history (no squash-the-world).
+- [x] 6.2 Stage commits in conventional-commit style (`feat(task2): ...`, `test(task2): ...`, `chore(task2): ...`) preserving real history (no squash-the-world).
