@@ -856,6 +856,36 @@ def test_replay_run_uses_recorded_observation_text(tmp_path):
     assert result.matched is True, f"Expected match; got divergence={result.first_divergence!r}"
 
 
+def test_replay_run_steps_is_match_count_on_decision_divergence(tmp_path):
+    """On in-loop decision divergence, `steps` SHALL be the count of decisions
+    that matched before the mismatch — not min(n_recorded, n_replayed).
+
+    The prompt-divergence branch already returns `i`; the decision-divergence
+    branch must agree, otherwise consumers can't tell whether the first or last
+    decision diverged from `steps` alone.
+    """
+    lines = FIXTURE_PATH.read_text().strip().splitlines()
+    mutated_lines = _mutate_decision_tool(lines, "goto", "read")
+
+    mutated_file = tmp_path / "mutated_steps.jsonl"
+    mutated_file.write_text("\n".join(mutated_lines) + "\n")
+
+    result = replay_run(mutated_file)
+    assert result.matched is False
+    # First decision diverged → 0 decisions matched before it.
+    assert result.steps == 0, (
+        f"First decision diverged; expected 0 matched steps, got {result.steps}"
+    )
+
+
+def test_replay_run_raises_clear_error_for_empty_trace(tmp_path):
+    """An empty/blank trace file SHALL raise a clear error, not IndexError."""
+    empty = tmp_path / "empty.jsonl"
+    empty.write_text("")
+    with pytest.raises(ValueError, match="empty"):
+        replay_run(empty)
+
+
 def test_stub_browser_no_playwright_import():
     """agent.replay SHALL NOT directly import playwright.
 

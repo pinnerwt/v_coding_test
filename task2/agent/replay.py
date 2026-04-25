@@ -279,6 +279,8 @@ def replay_run(trace_path: str | Path) -> ReplayResult:
     """
     path = Path(trace_path)
     lines = [ln for ln in path.read_text().splitlines() if ln.strip()]
+    if not lines:
+        raise ValueError(f"Trace file {str(path)!r} is empty; expected a Run header line.")
 
     run = Run.model_validate_json(lines[0])
     events: list[AnyEvent] = [_any_event_adapter.validate_json(ln) for ln in lines[1:]]
@@ -363,7 +365,7 @@ def replay_run(trace_path: str | Path) -> ReplayResult:
         if rec.tool != rep_tool or rec.args != rep_args:
             return ReplayResult(
                 matched=False,
-                steps=steps,
+                steps=i,
                 first_divergence=ReplayDivergence(
                     step_id=rec.step_id,
                     expected={"tool": rec.tool, "args": rec.args},
