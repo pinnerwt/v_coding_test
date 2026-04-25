@@ -200,11 +200,13 @@ def test_locate_orchestrator_cascades_l1_ambiguous_to_l3(fixture_server, playwri
         assert result.name == "Save"
 
 
-def test_locate_orchestrator_surfaces_l3_ambiguous(fixture_server, playwright_chromium):
+def test_locate_orchestrator_l3_ambiguous_now_cascades_to_l4(fixture_server, playwright_chromium):
+    """L3 ambiguous (malformed JSON) cascades to L4. Stub returns malformed for both
+    text-only (L3) and multimodal (L4) shapes; final outcome is vision_miss."""
     stub = _make_chat_stub(content="not JSON at all")
     with Browser(playwright_browser=playwright_chromium) as b:
         b.goto(f"{fixture_server}/locate_l3_three_save.html")
         with pytest.raises(LocatorMiss) as ei:
             locate(b._page, "Save button", llm_chat=stub)
-        assert ei.value.reason == "ambiguous"
-        assert ei.value.match_count == 3
+        assert ei.value.reason == "vision_miss"
+        assert ei.value.match_count == 0

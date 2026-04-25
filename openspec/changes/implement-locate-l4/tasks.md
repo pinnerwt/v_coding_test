@@ -24,66 +24,66 @@
 
 ## 4. L4 vision — failing tests (red)
 
-- [ ] 4.1 Add `task2/tests/agent/test_locate_l4.py`. Import `locate, locate_l1, locate_l2, locate_l3, locate_l4, LocateResult, LocatorMiss` from `agent.locate` so the import alone fails until `locate_l4` exists. Also import `ChatResponse, Usage, LLMError` from `agent.llm`.
-- [ ] 4.2 Reuse the `_make_chat_stub` helper pattern from `test_locate_l3.py` — a callable conforming to `agent.llm.chat`'s signature, returning a `ChatResponse(content=..., tool_calls=[], finish_reason="stop", model="stub", usage=Usage(0,0,0), raw={})`. Add `_make_chat_stub_raising(exc)` that raises `exc` when invoked, and `_make_recording_chat_stub(content)` that captures the `messages` argument for inspection and returns the configured response.
-- [ ] 4.3 Write `test_locate_l4_happy_path_clicks_target_center` against `locate_l4_no_metadata.html`:
+- [x] 4.1 Add `task2/tests/agent/test_locate_l4.py`. Import `locate, locate_l1, locate_l2, locate_l3, locate_l4, LocateResult, LocatorMiss` from `agent.locate` so the import alone fails until `locate_l4` exists. Also import `ChatResponse, Usage, LLMError` from `agent.llm`.
+- [x] 4.2 Reuse the `_make_chat_stub` helper pattern from `test_locate_l3.py` — a callable conforming to `agent.llm.chat`'s signature, returning a `ChatResponse(content=..., tool_calls=[], finish_reason="stop", model="stub", usage=Usage(0,0,0), raw={})`. Add `_make_chat_stub_raising(exc)` that raises `exc` when invoked, and `_make_recording_chat_stub(content)` that captures the `messages` argument for inspection and returns the configured response.
+- [x] 4.3 Write `test_locate_l4_happy_path_clicks_target_center` against `locate_l4_no_metadata.html`:
   - Open Browser, navigate, set viewport to `1280×800` (or whatever the conftest default is — record it).
   - Stub returns `{"bbox": [100, 200, 80, 40]}`.
   - Call `result = locate_l4(b._page, role="button", name=None, intent="Submit button", llm_chat=stub)`.
   - Assert `result.tier == "L4_vision"`, `result.confidence == 0.5`, `result.coords == (140, 220)`, `result.selector == ""`, `result.ax_fingerprint` is non-empty.
   - Then act on the result: `b.click_at(*result.coords)`.
   - Assert `b._page.evaluate("() => window.__l4_click")` reads back `{"x": 140, "y": 220, "target": "target"}` — proves the bbox center landed on the painted target.
-- [ ] 4.4 Write `test_locate_l4_malformed_json_raises_vision_miss` — same fixture, stub returns `content="not even close to JSON"`. Assert `LocatorMiss(reason="vision_miss", match_count=0)`.
-- [ ] 4.5 Write `test_locate_l4_missing_bbox_field_raises_vision_miss` — stub returns `{"box": [10, 20, 30, 40]}` (wrong key). Assert `vision_miss`.
-- [ ] 4.6 Write `test_locate_l4_wrong_arity_raises_vision_miss` — stub returns `{"bbox": [10, 20, 30]}`. Assert `vision_miss`.
-- [ ] 4.7 Write `test_locate_l4_zero_width_raises_vision_miss` — stub returns `{"bbox": [10, 20, 0, 40]}`. Assert `vision_miss`.
-- [ ] 4.8 Write `test_locate_l4_zero_height_raises_vision_miss` — stub returns `{"bbox": [10, 20, 30, 0]}`. Assert `vision_miss`.
-- [ ] 4.9 Write `test_locate_l4_negative_origin_raises_vision_miss` — stub returns `{"bbox": [-1, 20, 30, 40]}`. Assert `vision_miss`.
-- [ ] 4.10 Write `test_locate_l4_out_of_viewport_raises_vision_miss` — set viewport to `1280×800`, stub returns `{"bbox": [1200, 750, 200, 200]}`. Assert `vision_miss`.
-- [ ] 4.11 Write `test_locate_l4_non_numeric_bbox_raises_vision_miss` — stub returns `{"bbox": ["10", 20, 30, 40]}`. Assert `vision_miss`. (Documents that string-formatted numerics are rejected; `bool`s are also rejected.)
-- [ ] 4.12 Write `test_locate_l4_nan_bbox_raises_vision_miss` — stub returns content built from a Python dict with `float("nan")` serialized through `json.dumps` (which produces `NaN` — not strict JSON, so this also exercises the parse failure path; confirm by `json.loads('{"bbox": [NaN, 20, 30, 40]}')` raising). Assert `vision_miss`.
-- [ ] 4.13 Write `test_locate_l4_float_bbox_is_rounded` — stub returns `{"bbox": [99.6, 200.4, 80.0, 40.0]}`. Assert `result.coords == (140, 220)`.
-- [ ] 4.14 Write `test_locate_l4_llm_transport_error_raises_vision_miss` — stub raises `LLMError("transport boom", kind="transport")`. Assert `LocatorMiss(reason="vision_miss", match_count=0)`. Assert that `exc.__cause__` is the original `LLMError`.
-- [ ] 4.15 Write `test_locate_l4_prompt_shape_carries_image_data_url` — recording stub captures the `messages` list and returns a valid bbox. Assertions:
+- [x] 4.4 Write `test_locate_l4_malformed_json_raises_vision_miss` — same fixture, stub returns `content="not even close to JSON"`. Assert `LocatorMiss(reason="vision_miss", match_count=0)`.
+- [x] 4.5 Write `test_locate_l4_missing_bbox_field_raises_vision_miss` — stub returns `{"box": [10, 20, 30, 40]}` (wrong key). Assert `vision_miss`.
+- [x] 4.6 Write `test_locate_l4_wrong_arity_raises_vision_miss` — stub returns `{"bbox": [10, 20, 30]}`. Assert `vision_miss`.
+- [x] 4.7 Write `test_locate_l4_zero_width_raises_vision_miss` — stub returns `{"bbox": [10, 20, 0, 40]}`. Assert `vision_miss`.
+- [x] 4.8 Write `test_locate_l4_zero_height_raises_vision_miss` — stub returns `{"bbox": [10, 20, 30, 0]}`. Assert `vision_miss`.
+- [x] 4.9 Write `test_locate_l4_negative_origin_raises_vision_miss` — stub returns `{"bbox": [-1, 20, 30, 40]}`. Assert `vision_miss`.
+- [x] 4.10 Write `test_locate_l4_out_of_viewport_raises_vision_miss` — set viewport to `1280×800`, stub returns `{"bbox": [1200, 750, 200, 200]}`. Assert `vision_miss`.
+- [x] 4.11 Write `test_locate_l4_non_numeric_bbox_raises_vision_miss` — stub returns `{"bbox": ["10", 20, 30, 40]}`. Assert `vision_miss`. (Documents that string-formatted numerics are rejected; `bool`s are also rejected.)
+- [x] 4.12 Write `test_locate_l4_nan_bbox_raises_vision_miss` — stub returns content built from a Python dict with `float("nan")` serialized through `json.dumps` (which produces `NaN` — not strict JSON, so this also exercises the parse failure path; confirm by `json.loads('{"bbox": [NaN, 20, 30, 40]}')` raising). Assert `vision_miss`.
+- [x] 4.13 Write `test_locate_l4_float_bbox_is_rounded` — stub returns `{"bbox": [99.6, 200.4, 80.0, 40.0]}`. Assert `result.coords == (140, 220)`.
+- [x] 4.14 Write `test_locate_l4_llm_transport_error_raises_vision_miss` — stub raises `LLMError("transport boom", kind="transport")`. Assert `LocatorMiss(reason="vision_miss", match_count=0)`. Assert that `exc.__cause__` is the original `LLMError`.
+- [x] 4.15 Write `test_locate_l4_prompt_shape_carries_image_data_url` — recording stub captures the `messages` list and returns a valid bbox. Assertions:
   - `len(messages) == 2`.
   - `messages[0]["role"] == "system"` and `"bbox" in messages[0]["content"]`.
   - `messages[1]["role"] == "user"` and `isinstance(messages[1]["content"], list)`.
   - The user content list contains exactly one `{"type": "text", ...}` entry whose `text` includes the substring `"Submit button"`.
   - The user content list contains exactly one `{"type": "image_url", ...}` entry whose `image_url.url` starts with `"data:image/png;base64,"`.
   - Decoding the base64 portion yields bytes that begin with the PNG signature `b'\x89PNG\r\n\x1a\n'`.
-- [ ] 4.16 Write `test_locate_l4_viewport_size_none_raises_vision_miss_without_calling_llm` — monkeypatch `b._page.viewport_size` (or a wrapper) to return `None`; pass a `fail_if_called` stub. Assert `LocatorMiss(reason="vision_miss")` is raised and the stub was never invoked. (If monkeypatching `viewport_size` directly is awkward in Playwright, this test can use `unittest.mock.patch.object` on the page object; document the choice in a comment.)
-- [ ] 4.17 Write `test_locate_l4_fingerprint_stable_for_same_intent_and_center` — call `locate_l4` twice with the same intent and same stub bbox; assert the two `LocateResult.ax_fingerprint` values are equal.
-- [ ] 4.18 Write `test_locate_l4_fingerprint_changes_with_center` — call `locate_l4` twice with the same intent but stubs returning two different in-bounds bboxes whose centers differ; assert the two fingerprints differ.
-- [ ] 4.19 Write `test_locate_orchestrator_cascades_l1_zero_l2_miss_to_l4` against `locate_l4_no_metadata.html`:
+- [x] 4.16 Write `test_locate_l4_viewport_size_none_raises_vision_miss_without_calling_llm` — monkeypatch `b._page.viewport_size` (or a wrapper) to return `None`; pass a `fail_if_called` stub. Assert `LocatorMiss(reason="vision_miss")` is raised and the stub was never invoked. (If monkeypatching `viewport_size` directly is awkward in Playwright, this test can use `unittest.mock.patch.object` on the page object; document the choice in a comment.)
+- [x] 4.17 Write `test_locate_l4_fingerprint_stable_for_same_intent_and_center` — call `locate_l4` twice with the same intent and same stub bbox; assert the two `LocateResult.ax_fingerprint` values are equal.
+- [x] 4.18 Write `test_locate_l4_fingerprint_changes_with_center` — call `locate_l4` twice with the same intent but stubs returning two different in-bounds bboxes whose centers differ; assert the two fingerprints differ.
+- [x] 4.19 Write `test_locate_orchestrator_cascades_l1_zero_l2_miss_to_l4` against `locate_l4_no_metadata.html`:
   - Stub returns a valid bbox.
   - Call `result = locate(b._page, "Submit button", llm_chat=stub)`.
   - Assert `result.tier == "L4_vision"` (L1 zero → L2 zero → L4 happy).
-- [ ] 4.20 Write `test_locate_orchestrator_cascades_l1_ambiguous_l3_malformed_to_l4` against `locate_l3_three_save.html`:
+- [x] 4.20 Write `test_locate_orchestrator_cascades_l1_ambiguous_l3_malformed_to_l4` against `locate_l3_three_save.html`:
   - Stub is dispatch-aware: when the `messages` look like the L3 rerank prompt (text-only, mentions "rerank"/"index"), return malformed JSON; when they look like the L4 vision prompt (multimodal, has image_url), return a valid bbox.
   - Call `result = locate(b._page, "Save button", llm_chat=stub)`.
   - Assert `result.tier == "L4_vision"`.
-- [ ] 4.21 Write `test_locate_orchestrator_l1_success_does_not_invoke_llm` against `locate_l1.html` (existing fixture with one `<button>Submit</button>`):
+- [x] 4.21 Write `test_locate_orchestrator_l1_success_does_not_invoke_llm` against `locate_l1.html` (existing fixture with one `<button>Submit</button>`):
   - Stub is `fail_if_called`.
   - Call `result = locate(b._page, "Submit button", llm_chat=stub)`.
   - Assert `result.tier == "L1_ax"` and stub was never invoked.
-- [ ] 4.22 Write `test_locate_orchestrator_intent_parse_error_does_not_invoke_llm`:
+- [x] 4.22 Write `test_locate_orchestrator_intent_parse_error_does_not_invoke_llm`:
   - Stub is `fail_if_called`.
   - Call `locate(b._page, "do the thing", llm_chat=stub)`.
   - Assert `IntentParseError` is raised and the stub was never invoked.
-- [ ] 4.23 Write `test_locate_orchestrator_surfaces_vision_miss_when_all_tiers_fail`:
+- [x] 4.23 Write `test_locate_orchestrator_surfaces_vision_miss_when_all_tiers_fail`:
   - Use `locate_l4_no_metadata.html`.
   - Stub returns malformed JSON (so L4 also fails).
   - Call `locate(b._page, "Submit button", llm_chat=stub)`.
   - Assert `LocatorMiss(reason="vision_miss", match_count=0)`.
-- [ ] 4.24 Write `test_locate_l4_default_chat_honors_llm_base_url` — a unit-style test (no Playwright) that:
+- [x] 4.24 Write `test_locate_l4_default_chat_honors_llm_base_url` — a unit-style test (no Playwright) that:
   - Monkeypatches `os.environ["LLM_BASE_URL"]` to `"http://vision.example.test"`.
   - Uses `pytest-httpx` (or `httpx.MockTransport` if `pytest-httpx` is not on the dev deps — confirm by checking `task2/pyproject.toml` `[tool.uv.dev-dependencies]`; if absent, add it via `uv add --dev pytest-httpx`) to capture the outbound request.
   - Calls `locate_l4(...)` with `llm_chat=None` (default-resolution path) using a minimal Playwright page (or stubs `page.viewport_size` and `page.screenshot()` directly to avoid Playwright dependence).
   - Asserts the captured request URL begins with `"http://vision.example.test/v1/chat/completions"`.
   - **Implementation note for the apply step**: this test will likely require a thin seam — if `locate_l4` builds a fresh `LLMClient` internally on the default path, the test must arrange a mock transport for that client. Easiest path: have `_resolve_default_llm_chat` return `agent.llm.chat` (the module-level function), which in turn constructs an `LLMClient` whose `_client` is `httpx.Client(timeout=...)`. Patch `httpx.Client` (or use the existing `agent.llm` test pattern) to capture URL.
-- [ ] 4.25 Update `task2/tests/agent/test_locate_l3.py::test_locate_orchestrator_surfaces_l3_ambiguous` — the assertion that `locate(...)` raises `LocatorMiss(reason="ambiguous")` is no longer correct (L3 ambiguous now cascades to L4). Either rename to `test_locate_orchestrator_l3_ambiguous_now_cascades_to_l4` and update the assertion to expect an L4 result (when the stub returns a valid L4 bbox) OR an L4 `vision_miss` (when the stub returns malformed for L4 too), OR delete it as redundant with the new cascade tests in step 4.20 / 4.23. Document the rename in the commit message.
-- [ ] 4.26 Update `task2/tests/agent/test_locate.py` and `tests/agent/test_locate_l2.py` — search for any test asserting that `locate()` raises `LocatorMiss(reason="zero_matches")` after L1+L2 miss. Those tests must now pass an `llm_chat` stub and either assert L4 success (if the stub returns a valid bbox) or L4 `vision_miss` (if the stub returns malformed). Pick the simplest assertion per test.
-- [ ] 4.27 From `task2/`, run `uv run pytest tests/agent/test_locate_l4.py -x` and confirm every test fails for the expected reason (missing `locate_l4` symbol, missing `coords` field on `LocateResult`, orchestrator not yet cascading to L4, missing `vision_miss` reason). Run `uv run pytest tests/agent/` and confirm the renamed/updated L2/L3 tests fail in the new expected way (cascade to L4 not yet wired).
+- [x] 4.25 Update `task2/tests/agent/test_locate_l3.py::test_locate_orchestrator_surfaces_l3_ambiguous` — the assertion that `locate(...)` raises `LocatorMiss(reason="ambiguous")` is no longer correct (L3 ambiguous now cascades to L4). Either rename to `test_locate_orchestrator_l3_ambiguous_now_cascades_to_l4` and update the assertion to expect an L4 result (when the stub returns a valid L4 bbox) OR an L4 `vision_miss` (when the stub returns malformed for L4 too), OR delete it as redundant with the new cascade tests in step 4.20 / 4.23. Document the rename in the commit message.
+- [x] 4.26 Update `task2/tests/agent/test_locate.py` and `tests/agent/test_locate_l2.py` — search for any test asserting that `locate()` raises `LocatorMiss(reason="zero_matches")` after L1+L2 miss. Those tests must now pass an `llm_chat` stub and either assert L4 success (if the stub returns a valid bbox) or L4 `vision_miss` (if the stub returns malformed). Pick the simplest assertion per test.
+- [x] 4.27 From `task2/`, run `uv run pytest tests/agent/test_locate_l4.py -x` and confirm every test fails for the expected reason (missing `locate_l4` symbol, missing `coords` field on `LocateResult`, orchestrator not yet cascading to L4, missing `vision_miss` reason). Run `uv run pytest tests/agent/` and confirm the renamed/updated L2/L3 tests fail in the new expected way (cascade to L4 not yet wired).
 
 ## 5. L4 vision — implementation (green)
 

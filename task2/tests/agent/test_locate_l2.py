@@ -139,12 +139,27 @@ def test_locate_orchestrator_l1_ambiguous_now_cascades_to_l3(fixture_server, pla
         assert result.name == "Save"
 
 
-def test_locate_orchestrator_surfaces_l2_zero_match(fixture_server, playwright_chromium):
+def test_locate_orchestrator_l2_miss_cascades_to_l4(fixture_server, playwright_chromium):
+    """After L2 misses, locate() cascades to L4. With a stub returning a valid bbox,
+    the orchestrator returns an L4 result; with a malformed stub it surfaces vision_miss."""
+    import json
+
+    from agent.llm import ChatResponse, Usage
+
+    def stub(messages, **kwargs):
+        return ChatResponse(
+            content=json.dumps({"bbox": [10, 20, 30, 40]}),
+            tool_calls=[],
+            finish_reason="stop",
+            model="stub",
+            usage=Usage(prompt_tokens=0, completion_tokens=0, total_tokens=0),
+            raw={},
+        )
+
     with Browser(playwright_browser=playwright_chromium) as b:
         b.goto(f"{fixture_server}/locate_l2_placeholder.html")
-        with pytest.raises(LocatorMiss) as excinfo:
-            locate(b._page, "Refund button")
-        assert excinfo.value.reason == "zero_matches"
+        result = locate(b._page, "Refund button", llm_chat=stub)
+        assert result.tier == "L4_vision"
 
 
 def test_locate_l2_text_contains_selector_round_trips(fixture_server, playwright_chromium):
