@@ -8,7 +8,6 @@ import pytest
 from agent.locate import LocatorMiss, locate_l1, locate_l2
 from agent.supervisor import EscalationDecision, Supervisor
 
-
 # ---------------------------------------------------------------------------
 # Task 1.2 – construction
 # ---------------------------------------------------------------------------
@@ -121,14 +120,18 @@ def test_supervisor_does_not_accept_page():
 def test_l1_miss_supervisor_escalate_l2_succeeds(fixture_server, playwright_chromium):
     from agent.browser import Browser
 
+    # locate_l2_nonsemantic.html has a <div class="btn">Submit</div> — no semantic
+    # button role, so locate_l1 raises LocatorMiss(zero_matches), while locate_l2
+    # succeeds via CSS taxonomy matching.
     with Browser(playwright_browser=playwright_chromium) as b:
-        b.goto(f"{fixture_server}/locate_l2_placeholder.html")
+        b.goto(f"{fixture_server}/locate_l2_nonsemantic.html")
         page = b._page
 
-        # Step 1: L1 misses because the input has no accessible name
+        # Step 1: L1 misses because the element has no semantic button role
         with pytest.raises(LocatorMiss) as excinfo:
-            locate_l1(page, role="textbox", name="Email address")
+            locate_l1(page, role="button", name="Submit")
         miss = excinfo.value
+        assert miss.reason == "zero_matches"
 
         # Step 2: Supervisor decides to escalate to L2
         sup = Supervisor()
@@ -136,5 +139,5 @@ def test_l1_miss_supervisor_escalate_l2_succeeds(fixture_server, playwright_chro
         assert decision.next_tier == "L2_dom"
 
         # Step 3: Executing the escalation via locate_l2 succeeds
-        result = locate_l2(page, role="textbox", name="Email address")
+        result = locate_l2(page, role="button", name="Submit")
         assert result.tier == "L2_dom"
