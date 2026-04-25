@@ -221,3 +221,69 @@ def test_loop_read_with_intent(fixture_server, playwright_chromium):
 
     assert result.status == "succeeded"
     assert result.result == {"heading": "Hello, loop"}
+
+
+# ---------------------------------------------------------------------------
+# Reliability: malformed tool arguments must not crash the loop.
+# ---------------------------------------------------------------------------
+
+
+def test_loop_handles_malformed_tool_arguments(fixture_server, playwright_chromium):
+    """A model that emits non-JSON tool-call arguments must not crash the run.
+
+    The loop must feed an error back to the model (as a tool-result message)
+    and continue, so a single bad payload does not bypass max_steps and the
+    RunResult contract.
+    """
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+
+    bad_call = ToolCall(id="tc-bad", name="goto", arguments="{not valid json")
+    good_done = _tool_call(
+        "done",
+        {
+            "result": {"heading": "Hello, loop"},
+            "evidence": {"url": fixture_url, "text_snippet": "Hello, loop"},
+        },
+        call_id="tc-done",
+    )
+    fake_llm = _FakeLLMClient(
+        [_response_with_tool_call(bad_call), _response_with_tool_call(good_done)]
+    )
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        browser.goto(fixture_url)
+        result = loop("task", browser, fake_llm, max_steps=3)
+
+    assert result.status == "succeeded"
+
+
+# ---------------------------------------------------------------------------
+# Reliability: unknown tool names must not crash the loop.
+# ---------------------------------------------------------------------------
+
+
+def test_loop_handles_unknown_tool_name(fixture_server, playwright_chromium):
+    """A model that emits a hallucinated tool name must not crash the run.
+
+    The loop must feed an error back as a tool-result message and continue.
+    """
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+
+    unknown = _tool_call("frobnicate", {"x": 1}, call_id="tc-unk")
+    good_done = _tool_call(
+        "done",
+        {
+            "result": {"heading": "Hello, loop"},
+            "evidence": {"url": fixture_url, "text_snippet": "Hello, loop"},
+        },
+        call_id="tc-done",
+    )
+    fake_llm = _FakeLLMClient(
+        [_response_with_tool_call(unknown), _response_with_tool_call(good_done)]
+    )
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        browser.goto(fixture_url)
+        result = loop("task", browser, fake_llm, max_steps=3)
+
+    assert result.status == "succeeded"
