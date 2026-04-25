@@ -133,6 +133,16 @@ def test_locate_orchestrator_surfaces_l2_zero_match(fixture_server, playwright_c
         assert excinfo.value.reason == "zero_matches"
 
 
+def test_locate_l2_text_contains_selector_round_trips(fixture_server, playwright_chromium):
+    with Browser(playwright_browser=playwright_chromium) as b:
+        b.goto(f"{fixture_server}/locate_l2_substring.html")
+        result = locate_l2(b._page, role="button", name="Save")
+        loc = b._page.locator(result.selector)
+        assert loc.count() == 1
+        text = (loc.first.text_content() or "").strip()
+        assert text == "Save changes"
+
+
 def test_l2_fingerprint_independent_of_dom_path(fixture_server, playwright_chromium):
     with Browser(playwright_browser=playwright_chromium) as b:
         b.goto(f"{fixture_server}/locate_l2_nonsemantic.html")

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, get_args
 
@@ -136,16 +137,18 @@ def locate_l2(page: Page, *, role: str, name: str | None) -> LocateResult:
     if not name:
         raise LocatorMiss(reason="zero_matches", match_count=0)
 
-    escaped = _escape_quoted(name)
     if role == "textbox":
         strategy = "placeholder"
         locator = page.get_by_placeholder(name, exact=False)
-        selector = f'[placeholder*="{escaped}" i]'
+        selector = f'[placeholder*="{_escape_quoted(name)}" i]'
     elif role in ("button", "link"):
         strategy = "text_contains"
         taxonomy = _L2_BUTTON_TAXONOMY_CSS if role == "button" else _L2_LINK_TAXONOMY_CSS
         locator = page.locator(taxonomy).filter(has_text=name)
-        selector = f'{taxonomy} >> text="{escaped}"'
+        # filter(has_text=...) is substring + case-insensitive; mirror that with text=/.../i
+        # so the stored selector re-resolves to the same node.
+        pattern = re.escape(name).replace("/", r"\/")
+        selector = f"{taxonomy} >> text=/{pattern}/i"
     else:
         raise LocatorMiss(reason="zero_matches", match_count=0)
 
