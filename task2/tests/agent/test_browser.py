@@ -64,3 +64,61 @@ def test_exception_hierarchy():
     assert issubclass(NavigationError, BrowserError)
     assert issubclass(ElementNotFound, BrowserError)
     assert issubclass(BrowserClosed, BrowserError)
+
+
+_PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+
+
+def test_screenshot_returns_png_bytes_in_with_block(fixture_server, playwright_chromium):
+    with Browser(playwright_browser=playwright_chromium) as b:
+        b.goto(f"{fixture_server}/index.html")
+        png = b.screenshot()
+        assert isinstance(png, bytes)
+        assert len(png) > 0
+        assert png.startswith(_PNG_SIGNATURE)
+
+
+def test_screenshot_after_exit_raises_browser_closed(fixture_server, playwright_chromium):
+    with Browser(playwright_browser=playwright_chromium) as b:
+        b.goto(f"{fixture_server}/index.html")
+    with pytest.raises(BrowserClosed):
+        b.screenshot()
+
+
+def test_screenshot_full_page_is_at_least_viewport_sized(fixture_server, playwright_chromium):
+    with Browser(playwright_browser=playwright_chromium) as b:
+        b.goto(f"{fixture_server}/index.html")
+        # Shrink the viewport so the document is taller than the viewport.
+        b._page.set_viewport_size({"width": 200, "height": 200})
+        b._page.evaluate("() => { document.body.style.height = '4000px'; }")
+        viewport_png = b.screenshot()
+        full_png = b.screenshot(full_page=True)
+        assert viewport_png.startswith(_PNG_SIGNATURE)
+        assert full_png.startswith(_PNG_SIGNATURE)
+        assert len(full_png) >= len(viewport_png)
+
+
+def test_click_at_fires_document_click_handler(fixture_server, playwright_chromium):
+    with Browser(playwright_browser=playwright_chromium) as b:
+        b.goto(f"{fixture_server}/locate_l4_no_metadata.html")
+        b.click_at(150, 250)
+        click = b._page.evaluate("() => window.__l4_click")
+        assert click is not None
+        assert click["x"] == 150
+        assert click["y"] == 250
+
+
+def test_click_at_inside_target_fires_target_handler(fixture_server, playwright_chromium):
+    with Browser(playwright_browser=playwright_chromium) as b:
+        b.goto(f"{fixture_server}/locate_l4_no_metadata.html")
+        b.click_at(140, 220)
+        click = b._page.evaluate("() => window.__l4_click")
+        assert click is not None
+        assert click["target"] == "target"
+
+
+def test_click_at_after_exit_raises_browser_closed(fixture_server, playwright_chromium):
+    with Browser(playwright_browser=playwright_chromium) as b:
+        b.goto(f"{fixture_server}/index.html")
+    with pytest.raises(BrowserClosed):
+        b.click_at(10, 20)
