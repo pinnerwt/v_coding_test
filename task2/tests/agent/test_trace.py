@@ -565,6 +565,61 @@ def test_close_run_rejects_invalid_status():
     assert payload["status"] is None
 
 
+def test_close_run_rejects_double_close():
+    """close_run must refuse to rewrite an already-closed run."""
+    run = _run_full()
+    closing_args = dict(
+        ended_at="2024-01-01T00:01:00Z",
+        final={"result": {"answer": "cats"}, "evidence": None, "failure": None},
+        totals={
+            "steps": 1,
+            "llm_calls": 0,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "usd": 0.0,
+            "browser_ms": 0,
+        },
+    )
+    with TraceWriter(":memory:") as writer:
+        writer.open_run(run)
+        writer.close_run(run.run_id, status="succeeded", **closing_args)
+        with pytest.raises(ValueError):
+            writer.close_run(run.run_id, status="failed", **closing_args)
+        row = writer._conn.execute(
+            "SELECT status FROM traces_runs WHERE run_id = ?", (run.run_id,)
+        ).fetchone()
+    assert row[0] == "succeeded"
+
+
+def test_close_run_normalizes_helper_columns():
+    """close_run must persist helper columns from the validated Run, not raw inputs."""
+    run = _run_full()
+    with TraceWriter(":memory:") as writer:
+        writer.open_run(run)
+        writer.close_run(
+            run.run_id,
+            status="succeeded",
+            ended_at="2024-01-01T00:01:00Z",
+            final={"result": {"answer": "cats"}, "evidence": None, "failure": None},
+            totals={
+                "steps": "3",  # coercible string -> int
+                "llm_calls": 2,
+                "prompt_tokens": 100,
+                "completion_tokens": 50,
+                "usd": 0.01,
+                "browser_ms": 500,
+            },
+        )
+        row = writer._conn.execute(
+            "SELECT payload, totals_json FROM traces_runs WHERE run_id = ?", (run.run_id,)
+        ).fetchone()
+    payload_totals = json.loads(row[0])["totals"]
+    totals_json = json.loads(row[1])
+    assert payload_totals["steps"] == 3
+    assert totals_json["steps"] == 3
+    assert totals_json == payload_totals
+
+
 def test_close_run_unknown_run_id_raises():
     with TraceWriter(":memory:") as writer:
         with pytest.raises(LookupError):
