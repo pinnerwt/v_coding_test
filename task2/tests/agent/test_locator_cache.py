@@ -295,6 +295,24 @@ def test_origin_lowercases_scheme_and_host():
     assert _origin_from_url("HTTP://X.TEST/") == "http://x.test"
 
 
+def test_origin_brackets_ipv6_host_with_port():
+    assert _origin_from_url("http://[::1]:8080/") == "http://[::1]:8080"
+
+
+def test_origin_brackets_ipv6_host_default_port():
+    assert _origin_from_url("http://[::1]:80/") == "http://[::1]"
+
+
+def test_origin_distinguishes_ipv6_host_from_host_with_embedded_port():
+    a = _origin_from_url("http://[::1]:8080/")
+    b = _origin_from_url("http://[::1:8080]/")
+    assert a != b
+
+
+def test_origin_brackets_full_ipv6_address():
+    assert _origin_from_url("http://[2001:db8::1]/") == "http://[2001:db8::1]"
+
+
 # ---------------------------------------------------------------------------
 # Section 4 — locate() cache integration
 # ---------------------------------------------------------------------------
@@ -377,6 +395,30 @@ def test_drift_invalidates_cache_and_replaces_row(fixture_server, playwright_chr
         assert replaced is not None
         assert replaced.ax_fingerprint == second.ax_fingerprint
         assert replaced.selector == second.selector
+    finally:
+        cache.close()
+
+
+def test_ambiguous_cached_selector_invalidates_and_falls_through(
+    fixture_server, playwright_chromium
+):
+    cache = LocatorCache()
+    try:
+        with Browser(playwright_browser=playwright_chromium) as b:
+            b.goto(f"{fixture_server}/cache_drift.html")
+            origin = _origin_from_url(b._page.url)
+
+            first = locate(b._page, "Submit button", cache=cache)
+            assert first.tier == "L1_ax"
+
+            b._page.evaluate("__add('Submit')")
+
+            rerank_stub = _make_chat_stub(content=json.dumps({"index": 0}))
+            second = locate(b._page, "Submit button", llm_chat=rerank_stub, cache=cache)
+        assert second.tier != "cache"
+        replaced = cache.get(origin=origin, intent="Submit button")
+        assert replaced is not None
+        assert replaced.tier == second.tier
     finally:
         cache.close()
 
