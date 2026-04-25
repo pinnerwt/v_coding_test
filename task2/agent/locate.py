@@ -291,9 +291,16 @@ def locate_l3(
     if len(candidates) == 1:
         chosen = 0
     else:
+        from agent.llm import LLMError
+
         if llm_chat is None:
             from agent.llm import chat as llm_chat
-        response = llm_chat(messages=_build_l3_messages(role, name, candidates), temperature=0.0)
+        try:
+            response = llm_chat(
+                messages=_build_l3_messages(role, name, candidates), temperature=0.0
+            )
+        except LLMError as exc:
+            raise LocatorMiss(reason="ambiguous", match_count=count) from exc
         idx = _parse_l3_index(response, len(candidates))
         if idx is None:
             raise LocatorMiss(reason="ambiguous", match_count=count)

@@ -6,7 +6,7 @@ from collections.abc import Callable
 import pytest
 
 from agent.browser import Browser
-from agent.llm import ChatResponse, Usage
+from agent.llm import ChatResponse, LLMError, Usage
 from agent.locate import (
     LocateResult,
     LocatorMiss,
@@ -176,6 +176,18 @@ def test_locate_l3_prompt_contains_intent_and_candidates(fixture_server, playwri
     assert "button" in blob
     for heading in ("Profile", "Settings", "Documents"):
         assert heading in blob
+
+
+def test_locate_l3_llm_error_raises_ambiguous(fixture_server, playwright_chromium):
+    def raising_stub(messages, **kwargs):
+        raise LLMError("transport blew up", kind="transport")
+
+    with Browser(playwright_browser=playwright_chromium) as b:
+        b.goto(f"{fixture_server}/locate_l3_three_save.html")
+        with pytest.raises(LocatorMiss) as ei:
+            locate_l3(b._page, role="button", name="Save", llm_chat=raising_stub)
+        assert ei.value.reason == "ambiguous"
+        assert ei.value.match_count == 3
 
 
 def test_locate_orchestrator_cascades_l1_ambiguous_to_l3(fixture_server, playwright_chromium):
