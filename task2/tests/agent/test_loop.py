@@ -152,3 +152,81 @@ def test_loop_fail(fixture_server, playwright_chromium):
 
     assert result.status == "failed"
     assert result.result is None
+
+
+# ---------------------------------------------------------------------------
+# Read tool dispatch — without intent (full body text)
+# ---------------------------------------------------------------------------
+
+
+def test_loop_read_no_intent(fixture_server, playwright_chromium):
+    """Scenario: LLM calls read without intent — returns body text and loop continues."""
+    from agent.browser import Browser
+
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+
+    # Step 1: goto, Step 2: read (no intent), Step 3: done
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+        _response_with_tool_call(_tool_call("read", {}, call_id="tc-2")),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"heading": "Hello, loop"},
+                    "evidence": {
+                        "url": fixture_url,
+                        "text_snippet": "Hello, loop",
+                    },
+                },
+                call_id="tc-3",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop("read the heading", browser, fake_llm)
+
+    assert result.status == "succeeded"
+    assert result.result == {"heading": "Hello, loop"}
+
+
+# ---------------------------------------------------------------------------
+# Read tool dispatch — with intent (locate-based element read)
+# ---------------------------------------------------------------------------
+
+
+def test_loop_read_with_intent(fixture_server, playwright_chromium):
+    """Scenario: LLM calls read with intent — uses locate to find element and returns text."""
+    from agent.browser import Browser
+
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+
+    # Step 1: goto, Step 2: read with intent targeting the h1, Step 3: done
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+        _response_with_tool_call(
+            _tool_call("read", {"intent": "Hello, loop heading"}, call_id="tc-2")
+        ),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"heading": "Hello, loop"},
+                    "evidence": {
+                        "url": fixture_url,
+                        "text_snippet": "Hello, loop",
+                    },
+                },
+                call_id="tc-3",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop("read the heading", browser, fake_llm)
+
+    assert result.status == "succeeded"
+    assert result.result == {"heading": "Hello, loop"}
