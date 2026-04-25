@@ -207,7 +207,7 @@ def _response_from_recorded(resp: dict) -> ChatResponse:
         )
 
     content_raw = resp.get("content")
-    content: str | None = content_raw if isinstance(content_raw, str) and content_raw else None
+    content: str | None = content_raw if isinstance(content_raw, str) else None
     finish_reason: str = resp.get("finish_reason") or ""
 
     return ChatResponse(

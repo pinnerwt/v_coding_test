@@ -748,6 +748,34 @@ def test_replay_run_handles_intent_based_read_without_crashing(tmp_path):
     assert result.matched is True, f"Expected match; got divergence={result.first_divergence!r}"
 
 
+def test_replay_run_preserves_empty_string_assistant_content(tmp_path):
+    """A recorded response with content="" must replay as content="".
+
+    Coercing "" to None changes the next prompt's assistant message
+    (`{"content": ""}` vs `{"content": null}`) and produces a false prompt
+    divergence even though loop's behaviour is unchanged.
+    """
+    task = "empty content"
+    empty_then_done = ChatResponse(
+        content="",
+        tool_calls=[ToolCall(id="tc-1", name="goto", arguments=json.dumps({"url": "http://x"}))],
+        finish_reason="tool_calls",
+        model="stub",
+        usage=Usage(0, 0, 0),
+        raw={},
+    )
+    done_args = {
+        "result": {},
+        "evidence": {"url": "http://x", "text_snippet": "ok"},
+    }
+    done_response = _make_chat_response("done", done_args)
+
+    fixture_path = _record_fixture(tmp_path, task, [empty_then_done, done_response])
+
+    result = replay_run(fixture_path)
+    assert result.matched is True, f"Expected match; got divergence={result.first_divergence!r}"
+
+
 def test_stub_browser_no_playwright_import():
     """agent.replay SHALL NOT directly import playwright.
 
