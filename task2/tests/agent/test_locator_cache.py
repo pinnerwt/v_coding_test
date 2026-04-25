@@ -7,11 +7,11 @@ from collections.abc import Callable
 from urllib.parse import urlsplit
 
 import pytest
-from agent.locator_cache import CacheEntry, LocatorCache, _origin_from_url
 
 from agent.browser import Browser
 from agent.llm import ChatResponse, Usage
 from agent.locate import LocatorMiss, locate
+from agent.locator_cache import CacheEntry, LocatorCache, _origin_from_url
 
 # ---------------------------------------------------------------------------
 # Helpers (mirrored from test_locate_l4.py)
@@ -356,18 +356,32 @@ def test_second_resolve_hits_cache_skips_llm(fixture_server, playwright_chromium
 
 
 def test_drift_invalidates_cache_and_replaces_row(fixture_server, playwright_chromium):
+    """Drift = cached selector still resolves but to an element with a different
+    accessible name. The canonical L1-style fingerprint is `(role, accessible_name)`,
+    so we exercise drift by pre-seeding the cache with a structural selector
+    (`#target`) that pins to a specific DOM node — the form an L2 / pre-warm path
+    would emit. After mutating so `#target`'s name is `Send` AND adding a fresh
+    `Submit` button so L1 has a clean unique resolve, the second `locate(...)` MUST
+    see the live `(button, Send)` fingerprint mismatch the stored `Submit`
+    fingerprint, invalidate, fall through to L1, and replace the row.
+    """
     cache = LocatorCache()
     try:
         with Browser(playwright_browser=playwright_chromium) as b:
             b.goto(f"{fixture_server}/cache_drift.html")
             origin = _origin_of(b._page.url)
-            first = locate(b._page, "Submit button", cache=cache)
-            assert first.tier == "L1_ax"
-            first_entry = cache.get(origin=origin, intent="Submit button")
-            assert first_entry is not None
+            cache.put(
+                _entry_for(
+                    origin=origin,
+                    intent="Submit button",
+                    selector="#target",
+                    # canonical L1-style fingerprint of the original "Submit" button.
+                    ax_fingerprint=(
+                        "deadbeefcafebabefeedfacefeedfacefeedfacefeedfacefeedfacefeedface"
+                    ),
+                )
+            )
 
-            # Rename the original button (so cached selector no longer matches)
-            # AND add a NEW Submit button so L1 still resolves uniquely.
             b._page.evaluate("__rename('Send')")
             b._page.evaluate("__add('Submit')")
 
@@ -377,19 +391,33 @@ def test_drift_invalidates_cache_and_replaces_row(fixture_server, playwright_chr
         replaced = cache.get(origin=origin, intent="Submit button")
         assert replaced is not None
         assert replaced.ax_fingerprint == second.ax_fingerprint
+        assert replaced.selector == second.selector
     finally:
         cache.close()
 
 
 def test_removed_element_invalidates_cache_and_falls_through(fixture_server, playwright_chromium):
+    """Cached selector resolving to zero elements (cached element removed from the
+    DOM) SHALL invalidate the row and fall through to the ladder. Pre-seed with
+    `#target` so the cached selector's identity is tied to a specific DOM node;
+    `__remove()` makes that selector resolve to zero, and `__add('Submit')` gives
+    L1 a fresh unique element to resolve against.
+    """
     cache = LocatorCache()
     try:
         with Browser(playwright_browser=playwright_chromium) as b:
             b.goto(f"{fixture_server}/cache_drift.html")
             origin = _origin_of(b._page.url)
-            first = locate(b._page, "Submit button", cache=cache)
-            assert first.tier == "L1_ax"
-            assert cache.get(origin=origin, intent="Submit button") is not None
+            cache.put(
+                _entry_for(
+                    origin=origin,
+                    intent="Submit button",
+                    selector="#target",
+                    ax_fingerprint=(
+                        "deadbeefcafebabefeedfacefeedfacefeedfacefeedfacefeedfacefeedface"
+                    ),
+                )
+            )
 
             b._page.evaluate("__remove()")
             b._page.evaluate("__add('Submit')")

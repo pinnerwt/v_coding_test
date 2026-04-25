@@ -7,10 +7,13 @@ import math
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Literal, get_args
 
 if TYPE_CHECKING:
     from playwright.sync_api import Page
+
+    from agent.locator_cache import LocatorCache
 
 _SUPPORTED_ROLES: frozenset[str] = frozenset({"button", "link", "textbox", "checkbox", "heading"})
 _ARTICLES: frozenset[str] = frozenset({"the", "a", "an"})
@@ -448,13 +451,29 @@ def locate_l4(
     )
 
 
-def locate(
+def _canonical_ax_fingerprint(page: Page, *, role: str, selector: str) -> str | None:
+    """Compute the L1-style canonical fingerprint of the element a selector resolves to.
+
+    Returns ``None`` if the selector does not resolve to any element. Otherwise hashes
+    ``role:accessible_name`` of ``locator.first`` using the same accessible-name JS as
+    L1. This is the single revalidation rule used by the locator cache.
+    """
+    locator = page.locator(selector)
+    if locator.count() == 0:
+        return None
+    matched_name_raw = locator.first.evaluate(_ACCESSIBLE_NAME_JS)
+    accessible_name = matched_name_raw if isinstance(matched_name_raw, str) else ""
+    return hashlib.sha256(f"{role}:{accessible_name}".encode()).hexdigest()
+
+
+def _resolve_via_ladder(
     page: Page,
-    intent: str,
     *,
-    llm_chat: Callable[..., Any] | None = None,
+    role: str,
+    name: str | None,
+    intent: str,
+    llm_chat: Callable[..., Any] | None,
 ) -> LocateResult:
-    role, name = parse_intent(intent)
     try:
         return locate_l1(page, role=role, name=name)
     except LocatorMiss as miss:
@@ -469,3 +488,63 @@ def locate(
             except LocatorMiss:
                 return locate_l4(page, role=role, name=name, intent=intent, llm_chat=llm_chat)
         raise
+
+
+def locate(
+    page: Page,
+    intent: str,
+    *,
+    llm_chat: Callable[..., Any] | None = None,
+    cache: LocatorCache | None = None,
+) -> LocateResult:
+    role, name = parse_intent(intent)
+
+    origin: str | None = None
+    if cache is not None:
+        from agent.locator_cache import CacheEntry, _origin_from_url
+
+        origin = _origin_from_url(page.url)
+        entry = cache.get(origin=origin, intent=intent)
+        if entry is not None:
+            if entry.tier == "L4_vision":
+                cache.invalidate(origin=origin, intent=intent)
+            else:
+                live_fp = _canonical_ax_fingerprint(page, role=entry.role, selector=entry.selector)
+                if live_fp is None or live_fp != entry.ax_fingerprint:
+                    cache.invalidate(origin=origin, intent=intent)
+                else:
+                    return LocateResult(
+                        tier="cache",
+                        role=entry.role,
+                        name=entry.name,
+                        selector=entry.selector,
+                        ax_fingerprint=entry.ax_fingerprint,
+                        confidence=entry.confidence,
+                        coords=entry.coords,
+                    )
+
+    result = _resolve_via_ladder(page, role=role, name=name, intent=intent, llm_chat=llm_chat)
+
+    if cache is not None and origin is not None:
+        if result.tier == "L4_vision":
+            stored_fingerprint = result.ax_fingerprint
+        else:
+            canonical = _canonical_ax_fingerprint(page, role=result.role, selector=result.selector)
+            stored_fingerprint = canonical if canonical is not None else result.ax_fingerprint
+        written_at = datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
+        cache.put(
+            CacheEntry(
+                origin=origin,
+                intent=intent,
+                role=result.role,
+                name=result.name,
+                selector=result.selector,
+                ax_fingerprint=stored_fingerprint,
+                confidence=result.confidence,
+                tier=result.tier,
+                coords=result.coords,
+                written_at_utc=written_at,
+            )
+        )
+
+    return result

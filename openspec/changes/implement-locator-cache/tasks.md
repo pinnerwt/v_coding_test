@@ -62,9 +62,9 @@
 
 ## 6. Implementation (green) — `locate()` integration
 
-- [ ] 6.1 In `task2/agent/locate.py`, add `coords: tuple[int, int] | None = None` to the `LocateResult` dataclass *if it is not already present* (it was added by ticket #6 — verify, do not duplicate).
-- [ ] 6.2 In `task2/agent/locate.py`, modify the `locate(...)` signature to add a keyword-only parameter `cache: LocatorCache | None = None`. Use a `TYPE_CHECKING` import for `LocatorCache` to avoid pulling `sqlite3` in at module load when callers do not pass a cache.
-- [ ] 6.3 Inside `locate()`:
+- [x] 6.1 In `task2/agent/locate.py`, add `coords: tuple[int, int] | None = None` to the `LocateResult` dataclass *if it is not already present* (it was added by ticket #6 — verify, do not duplicate).
+- [x] 6.2 In `task2/agent/locate.py`, modify the `locate(...)` signature to add a keyword-only parameter `cache: LocatorCache | None = None`. Use a `TYPE_CHECKING` import for `LocatorCache` to avoid pulling `sqlite3` in at module load when callers do not pass a cache.
+- [x] 6.3 Inside `locate()`:
   - Compute `role, name = parse_intent(intent)`.
   - If `cache is not None`: compute `origin = _origin_from_url(page.url)` (import the helper lazily from `agent.locator_cache`); call `cache.get(origin=origin, intent=intent)`. If a row exists, attempt cache-hit logic per design.md:
     - If `entry.tier == "L4_vision"`: `cache.invalidate(origin=origin, intent=intent)`. Continue to ladder.
@@ -72,10 +72,10 @@
   - Run the existing L1 → L2/L3/L4 cascade unchanged. Catch exceptions, return result.
   - If `cache is not None` and the ladder succeeded: build a `CacheEntry` from the result. For non-L4 results, recompute the canonical L1-style fingerprint over the resolved element via `page.locator(result.selector).first`; for L4 results, reuse the L4 vision fingerprint as the stored value. Use `datetime.now(UTC).isoformat(timespec="seconds")` (with `Z` suffix replacement of `+00:00`) for `written_at_utc`. Call `cache.put(entry)`.
   - Return the result.
-- [ ] 6.4 Add a small private helper `_canonical_ax_fingerprint(page: Page, *, role: str, selector: str) -> str | None` that re-resolves the selector, returns `None` if `count() == 0`, otherwise runs `_ACCESSIBLE_NAME_JS` against `.first` and returns `sha256(f"{role}:{accessible_name}".encode()).hexdigest()`. Used both for cache probe revalidation and for write-time fingerprinting.
-- [ ] 6.5 Update the `LocateResult.tier` Literal annotation (if one was introduced in ticket #6 — verify) to include `"cache"`. If `tier` is currently typed as `str`, leave it as `str`; the spec already permits the new value at the `str` level.
-- [ ] 6.6 From `task2/`, run `uv run pytest tests/agent/test_locator_cache.py` and confirm all integration tests in section 4 now pass.
-- [ ] 6.7 From `task2/`, run `uv run pytest` (full suite) and confirm tickets #1–#6 tests still pass — in particular `test_locate.py`, `test_locate_l2.py`, `test_locate_l3.py`, `test_locate_l4.py`, and `test_browser.py` are unaffected.
+- [x] 6.4 Add a small private helper `_canonical_ax_fingerprint(page: Page, *, role: str, selector: str) -> str | None` that re-resolves the selector, returns `None` if `count() == 0`, otherwise runs `_ACCESSIBLE_NAME_JS` against `.first` and returns `sha256(f"{role}:{accessible_name}".encode()).hexdigest()`. Used both for cache probe revalidation and for write-time fingerprinting.
+- [x] 6.5 Update the `LocateResult.tier` Literal annotation (if one was introduced in ticket #6 — verify) to include `"cache"`. If `tier` is currently typed as `str`, leave it as `str`; the spec already permits the new value at the `str` level.
+- [x] 6.6 From `task2/`, run `uv run pytest tests/agent/test_locator_cache.py` and confirm all integration tests in section 4 now pass.
+- [x] 6.7 From `task2/`, run `uv run pytest` (full suite) and confirm tickets #1–#6 tests still pass — in particular `test_locate.py`, `test_locate_l2.py`, `test_locate_l3.py`, `test_locate_l4.py`, and `test_browser.py` are unaffected.
 
 ## 7. Refactor + housekeeping
 
