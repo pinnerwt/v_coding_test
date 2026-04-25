@@ -45,15 +45,32 @@ _ZERO_MATCH = _ZeroMatchLocator()
 
 
 class _StubPage:
-    def __init__(self, url: str = "") -> None:
+    def __init__(
+        self,
+        url: str = "",
+        *,
+        observations: list[dict] | None = None,
+    ) -> None:
+        self._observations: list[dict] = list(observations or [])
+        self._idx: int = -1
         self._url: str = url
+        self._text: str = ""
 
     @property
     def url(self) -> str:
+        # loop._observe reads page.url first, then page.evaluate; advance the
+        # observation cursor here so the matching evaluate() returns the same
+        # iteration's body text. This keeps real recordings (with non-empty
+        # text) from false-diverging on the prompt comparison.
+        if self._observations and self._idx + 1 < len(self._observations):
+            self._idx += 1
+            obs = self._observations[self._idx]
+            self._url = str(obs.get("url", ""))
+            self._text = str(obs.get("text", ""))
         return self._url
 
     def evaluate(self, js: str, *args: Any) -> str:  # noqa: ARG002
-        return ""
+        return self._text
 
     def get_by_role(
         self,
@@ -82,8 +99,13 @@ class StubBrowser:
     Does NOT subclass agent.browser.Browser to avoid importing Playwright.
     """
 
-    def __init__(self, *, initial_url: str = "") -> None:
-        self._page: _StubPage = _StubPage(url=initial_url)
+    def __init__(
+        self,
+        *,
+        initial_url: str = "",
+        observations: list[dict] | None = None,
+    ) -> None:
+        self._page: _StubPage = _StubPage(url=initial_url, observations=observations)
 
     def goto(self, url: str) -> None:
         self._page._url = url
@@ -194,6 +216,34 @@ def _replayed_pair(tc: ToolCall) -> tuple[str, dict] | None:
     return tc.name, args
 
 
+_STATE_PREFIX = "Current state: "
+
+
+def _observation_from_call(call: LLMCallEvent) -> dict:
+    """Reconstruct the observation loop.py emitted just before this chat() call.
+
+    loop.py appends `{"role": "user", "content": "Current state: {JSON}"}` right
+    before each chat(); the last user message in this call's prompt is that
+    payload. Parsing it back lets the stub page replay the same url/text so the
+    user message we send during replay byte-matches the recording.
+    """
+    messages = call.prompt.get("messages") or []
+    for msg in reversed(messages):
+        if not isinstance(msg, dict) or msg.get("role") != "user":
+            continue
+        content = msg.get("content")
+        if not isinstance(content, str) or not content.startswith(_STATE_PREFIX):
+            continue
+        try:
+            payload = json.loads(content[len(_STATE_PREFIX) :])
+        except json.JSONDecodeError:
+            return {"url": "", "text": ""}
+        if not isinstance(payload, dict):
+            return {"url": "", "text": ""}
+        return {"url": str(payload.get("url", "")), "text": str(payload.get("text", ""))}
+    return {"url": "", "text": ""}
+
+
 def _response_from_recorded(resp: dict) -> ChatResponse:
     tool_calls: list[ToolCall] = []
     for tc in resp.get("tool_calls") or []:
@@ -245,11 +295,13 @@ def replay_run(trace_path: str | Path) -> ReplayResult:
         _response_from_recorded(lc.response) for lc in decide_llm_calls
     ]
 
-    # Seed the stub's URL from the first recorded observation so the initial
-    # `_observe()` prompt matches the recording rather than a fixed default.
+    # Drive the stub page from the recorded observations so each `_observe()`
+    # produces the same {url, text} the LLM saw at recording time. Falls back
+    # to the first ObservationEvent's url when no decide call exists yet.
+    observations = [_observation_from_call(lc) for lc in decide_llm_calls]
     first_obs = next((e for e in events if isinstance(e, ObservationEvent)), None)
     initial_url = first_obs.url if first_obs is not None else ""
-    stub_browser = StubBrowser(initial_url=initial_url)
+    stub_browser = StubBrowser(initial_url=initial_url, observations=observations)
     stub_llm = StubLLMClient(responses)
 
     loop(

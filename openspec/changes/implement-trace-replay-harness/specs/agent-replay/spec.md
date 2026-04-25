@@ -95,24 +95,27 @@ The function SHALL NOT make any HTTP calls, SHALL NOT launch a Playwright browse
 
 The system SHALL provide `agent.replay.StubBrowser` — a class that satisfies the duck-type contract `loop.py` relies on for `agent.browser.Browser`. It SHALL:
 
-- Expose a `_page` attribute set to an inner `_StubPage` instance whose `.url` property returns `"http://stub.local/"` and whose `.evaluate(js)` method returns `""`.
-- Implement `goto(url: str) -> None` as a no-op.
+- Expose a `_page` attribute set to an inner `_StubPage` instance whose `.url` property and `.evaluate(js)` method return strings (defaults `""`); when `replay_run` constructs the stub from a recording, both SHALL replay the recorded `{url, text}` per `_observe()` so prompt comparison byte-matches the trace.
+- Accept an optional `initial_url: str` and `observations: list[dict] | None` keyword argument (each observation dict has `url: str` and `text: str`); when omitted, behave like an unconfigured stub.
+- Implement `goto(url: str) -> None` to update `_page._url`. When `observations` are supplied, the next `_observe()` overwrites this — making `goto` effectively a no-op under replay; without observations, it lets non-replay callers track URL transitions.
 - Implement `read(selector: str) -> str` returning `""`.
 - Implement `screenshot(*, full_page: bool = False) -> bytes` returning `b""`.
 - Implement `click_at(x: int, y: int) -> None` as a no-op.
+- Expose a locator surface (`get_by_role`, `get_by_placeholder`, `locator`) that resolves to a zero-match locator so intent-based reads fail cleanly via `LocatorMiss(zero_matches)` instead of `AttributeError`.
 - NOT subclass `agent.browser.Browser` (to avoid pulling in Playwright).
 - Support use as a context manager (`__enter__` returns `self`, `__exit__` is a no-op).
 
 #### Scenario: StubBrowser._page provides url and evaluate
 
 - **WHEN** `stub = StubBrowser()` is constructed
-- **THEN** `stub._page.url` SHALL return a non-empty string
+- **THEN** `stub._page.url` SHALL return a string (default `""`)
 - **AND** `stub._page.evaluate("() => document.body.innerText")` SHALL return a string (may be empty)
 
-#### Scenario: StubBrowser.goto is a no-op
+#### Scenario: StubBrowser.goto updates page url
 
-- **WHEN** `stub.goto("http://example.com")` is called
+- **WHEN** `stub.goto("http://example.com")` is called on a stub built without observations
 - **THEN** it SHALL return without raising
+- **AND** `stub._page.url` SHALL subsequently return `"http://example.com"`
 
 #### Scenario: StubBrowser does not import playwright
 

@@ -776,6 +776,86 @@ def test_replay_run_preserves_empty_string_assistant_content(tmp_path):
     assert result.matched is True, f"Expected match; got divergence={result.first_divergence!r}"
 
 
+def test_replay_run_uses_recorded_observation_text(tmp_path):
+    """Recorded body text in 'Current state: {...}' must be served back to loop.
+
+    Without this, any real trace whose observations captured page text would
+    false-diverge on prompt comparison even when loop's decisions are unchanged
+    — the stub would always emit text="" while the recording has actual text.
+    """
+    task = "read body"
+    obs = {"url": "http://x/", "text": "Hello world"}
+    state_msg = {"role": "user", "content": f"Current state: {json.dumps(obs)}"}
+    system_msg = {"role": "system", "content": _build_system_prompt(task)}
+
+    done_args = {
+        "result": {"text": obs["text"]},
+        "evidence": {"url": obs["url"], "text_snippet": obs["text"]},
+    }
+    response_dict = {
+        "content": None,
+        "finish_reason": "tool_calls",
+        "tool_calls": [
+            {
+                "id": "tc-1",
+                "type": "function",
+                "function": {"name": "done", "arguments": json.dumps(done_args)},
+            }
+        ],
+    }
+
+    run = _default_run_dict("run-text", task)
+    events = [
+        {
+            "run_id": run["run_id"],
+            "seq": 1,
+            "ts": "2024-01-01T00:00:01Z",
+            "step_id": "step-1",
+            "kind": "observation",
+            "url": obs["url"],
+            "title": "",
+            "ax_tree_digest": "",
+            "ax_fingerprint": "",
+            "screenshot_ref": "",
+            "viewport": {"width": 1280, "height": 720},
+        },
+        {
+            "run_id": run["run_id"],
+            "seq": 2,
+            "ts": "2024-01-01T00:00:02Z",
+            "step_id": "step-1",
+            "kind": "llm_call",
+            "llm_call_id": "lc-1",
+            "purpose": "decide",
+            "model": "stub-model",
+            "base_url": "http://stub.local",
+            "prompt": {"messages": [system_msg, state_msg]},
+            "response": response_dict,
+            "tokens": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+            "usd": 0.0,
+            "ms": 0,
+        },
+        {
+            "run_id": run["run_id"],
+            "seq": 3,
+            "ts": "2024-01-01T00:00:03Z",
+            "step_id": "step-1",
+            "kind": "decision",
+            "intent": "done",
+            "tool": "done",
+            "args": done_args,
+            "rationale": "captured",
+            "llm_call_id": "lc-1",
+        },
+    ]
+
+    fixture_path = tmp_path / "trace_with_text.jsonl"
+    fixture_path.write_text("\n".join([json.dumps(run)] + [json.dumps(e) for e in events]) + "\n")
+
+    result = replay_run(fixture_path)
+    assert result.matched is True, f"Expected match; got divergence={result.first_divergence!r}"
+
+
 def test_stub_browser_no_playwright_import():
     """agent.replay SHALL NOT directly import playwright.
 
