@@ -319,11 +319,17 @@ def replay_run(trace_path: str | Path) -> ReplayResult:
     stub_browser = StubBrowser(initial_url=initial_url, observations=observations)
     stub_llm = StubLLMClient(responses)
 
+    # When the recording closed cleanly (terminal status — done/fail/timeout/etc.),
+    # cap replay at the recorded chat-call count: enough for natural termination on
+    # done/fail, exact-fit for timeout traces (no false chat-call-count divergence).
+    # When status is None the recording was truncated mid-flight; give loop headroom
+    # so the surplus chat() calls are surfaced as a divergence rather than hidden.
+    headroom = 0 if run.status is not None else 2
     loop(
         task=run.task,
         browser=stub_browser,
         llm_client=stub_llm,
-        max_steps=len(decide_llm_calls) + 2,
+        max_steps=len(decide_llm_calls) + headroom,
     )
 
     # Prompt drift: compare what loop.py actually sent against what was recorded.
