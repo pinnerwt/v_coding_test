@@ -16,6 +16,8 @@ from agent.llm import ChatResponse, ToolCall, Usage
 from agent.loop import loop
 from agent.trace import AnyEvent, DecisionEvent, LLMCallEvent, Run, _any_event_adapter
 
+_TERMINAL_TOOLS = frozenset({"done", "fail"})
+
 
 class _StubPage:
     @property
@@ -112,6 +114,36 @@ class ReplayResult:
     matched: bool
     steps: int
     first_divergence: ReplayDivergence | None
+
+
+def _iter_replayed_pairs(responses: list[ChatResponse]):
+    """Yield (tool_name, args) pairs loop.py would emit DecisionEvents for.
+
+    Stops at the first `done`/`fail` because loop.py returns there.
+    """
+    for cr in responses:
+        for tc in cr.tool_calls:
+            pair = _replayed_pair(tc)
+            if pair is None:
+                continue
+            yield pair
+            if pair[0] in _TERMINAL_TOOLS:
+                return
+
+
+def _replayed_pair(tc: ToolCall) -> tuple[str, dict] | None:
+    """(tool_name, args) for tool calls loop.py would actually dispatch.
+
+    Mirrors loop.py: malformed JSON or non-object args are recoverable — no
+    DecisionEvent is emitted for them, so replay must not count them either.
+    """
+    try:
+        args = json.loads(tc.arguments) if tc.arguments else {}
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(args, dict):
+        return None
+    return tc.name, args
 
 
 def _response_from_recorded(resp: dict) -> ChatResponse:
@@ -215,16 +247,7 @@ def replay_run(trace_path: str | Path) -> ReplayResult:
             ),
         )
 
-    # Decision diff is over tool-call responses only. A no-tool 'decide' turn produces
-    # an LLMCallEvent but no DecisionEvent in the recording, so its consumed counterpart
-    # must not occupy a slot in replayed_pairs.
-    replayed_pairs: list[tuple[str, dict]] = []
-    for cr in stub_llm.responses_consumed:
-        if not cr.tool_calls:
-            continue
-        tc = cr.tool_calls[0]
-        args = json.loads(tc.arguments) if tc.arguments else {}
-        replayed_pairs.append((tc.name, args))
+    replayed_pairs = list(_iter_replayed_pairs(stub_llm.responses_consumed))
 
     n_rec = len(recorded_decisions)
     n_rep = len(replayed_pairs)

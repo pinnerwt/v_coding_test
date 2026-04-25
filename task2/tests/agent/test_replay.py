@@ -504,6 +504,184 @@ def test_replay_run_compares_messages_only_not_full_prompt_payload(tmp_path):
     assert result.first_divergence is None
 
 
+def test_replay_run_skips_malformed_tool_arguments(tmp_path):
+    """Recorded tool_call.arguments that aren't valid JSON or aren't a JSON object
+    SHALL NOT raise during replay. loop.py treats both as recoverable and does not
+    dispatch the tool, so the trace records the LLMCallEvent without a paired
+    DecisionEvent — replay must mirror that, not crash on json.loads.
+    """
+    task = "malformed-args"
+    run = _default_run_dict("run-rec-001", task)
+
+    bad_response = ChatResponse(
+        content=None,
+        tool_calls=[ToolCall(id="tc-bad", name="goto", arguments="{not json")],
+        finish_reason="tool_calls",
+        model="stub",
+        usage=Usage(0, 0, 0),
+        raw={},
+    )
+    done_args = {
+        "result": {},
+        "evidence": {"url": "http://stub.local/", "text_snippet": "ok"},
+    }
+    done_response = _make_chat_response("done", done_args)
+
+    rec = StubLLMClient([bad_response, done_response])
+    with StubBrowser() as br:
+        loop(task=task, browser=br, llm_client=rec, max_steps=4)
+
+    events: list[dict] = []
+    for i, (prompt_msgs, resp) in enumerate(
+        zip(rec.prompts_consumed, [bad_response, done_response], strict=True)
+    ):
+        seq = i * 2 + 1
+        events.append(
+            {
+                "run_id": run["run_id"],
+                "seq": seq,
+                "ts": f"2024-01-01T00:00:{seq:02d}Z",
+                "step_id": f"step-{i + 1}",
+                "kind": "llm_call",
+                "llm_call_id": f"lc-{i + 1}",
+                "purpose": "decide",
+                "model": "stub-model",
+                "base_url": "http://stub.local",
+                "prompt": {"messages": prompt_msgs},
+                "response": {
+                    "content": resp.content,
+                    "finish_reason": resp.finish_reason,
+                    "tool_calls": [
+                        {
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {"name": tc.name, "arguments": tc.arguments},
+                        }
+                        for tc in resp.tool_calls
+                    ],
+                },
+                "tokens": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+                "usd": 0.0,
+                "ms": 0,
+            }
+        )
+    events.append(
+        {
+            "run_id": run["run_id"],
+            "seq": 4,
+            "ts": "2024-01-01T00:00:04Z",
+            "step_id": "step-2",
+            "kind": "decision",
+            "intent": "decision-1",
+            "tool": "done",
+            "args": done_args,
+            "rationale": "after recovering from malformed args",
+            "llm_call_id": "lc-2",
+        }
+    )
+
+    fixture = tmp_path / "malformed_args.jsonl"
+    fixture.write_text("\n".join([json.dumps(run)] + [json.dumps(e) for e in events]) + "\n")
+
+    result = replay_run(fixture)
+    assert result.matched is True, f"Expected match; got divergence={result.first_divergence!r}"
+
+
+def test_replay_run_handles_multiple_tool_calls_per_response(tmp_path):
+    """loop.py iterates every tool_call in response.tool_calls. Replay must too.
+
+    Build a fixture where a single decide LLMCallEvent carries two tool_calls
+    (a `read` followed by `done`) with a DecisionEvent for each — the recorded
+    trace shape that emerges when an LLM batches calls. Replay's old behaviour
+    only looked at tool_calls[0], so the second decision would go missing and
+    produce a false count divergence; the fix must surface a match.
+    """
+    task = "batch task"
+    run = _default_run_dict("run-rec-001", task)
+
+    read_call = {"id": "tc-1", "type": "function", "function": {"name": "read", "arguments": "{}"}}
+    done_args = {
+        "result": {"v": 1},
+        "evidence": {"url": "http://stub.local/", "text_snippet": "x"},
+    }
+    done_call = {
+        "id": "tc-2",
+        "type": "function",
+        "function": {"name": "done", "arguments": json.dumps(done_args)},
+    }
+
+    observation = {"url": "http://stub.local/", "text": ""}
+    first_prompt = [
+        {"role": "system", "content": _build_system_prompt(task)},
+        {"role": "user", "content": f"Current state: {json.dumps(observation)}"},
+    ]
+
+    events = [
+        {
+            "run_id": run["run_id"],
+            "seq": 1,
+            "ts": "2024-01-01T00:00:01Z",
+            "step_id": "step-1",
+            "kind": "observation",
+            "url": "http://stub.local/",
+            "title": "",
+            "ax_tree_digest": "",
+            "ax_fingerprint": "",
+            "screenshot_ref": "",
+            "viewport": {"width": 1280, "height": 720},
+        },
+        {
+            "run_id": run["run_id"],
+            "seq": 2,
+            "ts": "2024-01-01T00:00:02Z",
+            "step_id": "step-1",
+            "kind": "llm_call",
+            "llm_call_id": "lc-1",
+            "purpose": "decide",
+            "model": "stub-model",
+            "base_url": "http://stub.local",
+            "prompt": {"messages": first_prompt},
+            "response": {
+                "content": None,
+                "finish_reason": "tool_calls",
+                "tool_calls": [read_call, done_call],
+            },
+            "tokens": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+            "usd": 0.0,
+            "ms": 0,
+        },
+        {
+            "run_id": run["run_id"],
+            "seq": 3,
+            "ts": "2024-01-01T00:00:03Z",
+            "step_id": "step-1",
+            "kind": "decision",
+            "intent": "decision-1",
+            "tool": "read",
+            "args": {},
+            "rationale": "batched read",
+            "llm_call_id": "lc-1",
+        },
+        {
+            "run_id": run["run_id"],
+            "seq": 4,
+            "ts": "2024-01-01T00:00:04Z",
+            "step_id": "step-1",
+            "kind": "decision",
+            "intent": "decision-2",
+            "tool": "done",
+            "args": done_args,
+            "rationale": "batched done",
+            "llm_call_id": "lc-1",
+        },
+    ]
+    fixture = tmp_path / "batched_tool_calls.jsonl"
+    fixture.write_text("\n".join([json.dumps(run)] + [json.dumps(e) for e in events]) + "\n")
+
+    result = replay_run(fixture)
+    assert result.matched is True, f"Expected match; got divergence={result.first_divergence!r}"
+
+
 def test_stub_browser_no_playwright_import():
     """agent.replay SHALL NOT directly import playwright.
 
