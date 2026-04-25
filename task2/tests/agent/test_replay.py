@@ -193,3 +193,80 @@ def test_replay_run_divergence_on_mutated_fixture(tmp_path):
     assert result.first_divergence is not None
     assert result.first_divergence.expected["tool"] == "read"
     assert result.first_divergence.actual["tool"] == "goto"
+
+
+def test_replay_run_divergence_step_id_from_recorded(tmp_path):
+    """first_divergence.step_id SHALL equal the step_id of the recorded DecisionEvent."""
+    lines = FIXTURE_PATH.read_text().strip().splitlines()
+
+    mutated_lines = []
+    mutated = False
+    for line in lines:
+        obj = json.loads(line)
+        if not mutated and obj.get("kind") == "decision" and obj.get("tool") == "goto":
+            obj["tool"] = "read"
+            mutated = True
+        mutated_lines.append(json.dumps(obj))
+
+    mutated_file = tmp_path / "mutated_stepid.jsonl"
+    mutated_file.write_text("\n".join(mutated_lines) + "\n")
+
+    result = replay_run(mutated_file)
+    assert result.matched is False
+    assert result.first_divergence is not None
+    # step_id must come from the recorded DecisionEvent (fixture has "step-1")
+    assert result.first_divergence.step_id == "step-1"
+
+
+def test_replay_run_count_mismatch_more_replayed(tmp_path):
+    """If the replay produces more decisions than recorded, matched SHALL be False.
+
+    Constructed by removing the second DecisionEvent from the fixture while keeping
+    both LLMCallEvents: recorded_decisions = 1, but loop calls chat() twice
+    (replayed_pairs = 2).  steps = min(1, 2) = 1; first match at step 0 passes;
+    then count divergence triggers matched=False.
+    """
+    lines = FIXTURE_PATH.read_text().strip().splitlines()
+
+    filtered_lines = []
+    removed = False
+    for line in lines:
+        obj = json.loads(line)
+        if not removed and obj.get("kind") == "decision" and obj.get("tool") == "done":
+            removed = True
+            continue  # drop second DecisionEvent so recorded count = 1
+        filtered_lines.append(line)
+
+    assert removed, "Expected to remove the second DecisionEvent"
+
+    short_file = tmp_path / "short_decisions.jsonl"
+    short_file.write_text("\n".join(filtered_lines) + "\n")
+
+    result = replay_run(short_file)
+    assert result.matched is False
+    assert result.steps == 1  # min(1 recorded, 2 replayed)
+
+
+def test_stub_browser_no_playwright_import():
+    """agent.replay SHALL NOT directly import playwright.
+
+    Verified by inspecting the module's import chain rather than sys.modules
+    state (which is polluted by other tests that use playwright fixtures).
+    """
+    import importlib.util
+    import types
+
+    # Walk every module imported by agent.replay (direct imports only).
+    # playwright should not appear as a direct dependency.
+    replay_spec = importlib.util.find_spec("agent.replay")
+    assert replay_spec is not None, "agent.replay must be importable"
+
+    import agent.replay as replay_mod
+
+    direct_imports = {
+        name for name, obj in vars(replay_mod).items() if isinstance(obj, types.ModuleType)
+    }
+    # None of the directly bound names should be playwright
+    assert not any("playwright" in name for name in direct_imports), (
+        f"agent.replay directly references a playwright module: {direct_imports}"
+    )
