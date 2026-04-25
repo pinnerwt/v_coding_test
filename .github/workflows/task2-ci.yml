@@ -3,7 +3,13 @@ name: task2 CI
 on:
   push:
     branches: [master]
+    paths:
+      - 'task2/**'
+      - '.github/workflows/task2-ci.yml'
   pull_request:
+    paths:
+      - 'task2/**'
+      - '.github/workflows/task2-ci.yml'
 
 permissions:
   contents: read
