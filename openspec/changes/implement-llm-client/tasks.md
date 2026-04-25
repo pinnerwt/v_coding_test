@@ -46,7 +46,7 @@
 
 ## 5. Verification
 
-- [ ] 5.1 `openspec verify implement-llm-client` passes
-- [ ] 5.2 `pytest -q` shows all `tests/agent/test_llm.py` green
-- [ ] 5.3 Confirm no hosted-provider URL or hardcoded API key appears anywhere in `agent/` (`grep -RIn "openai.com\|anthropic.com" agent/` returns nothing)
-- [ ] 5.4 Commit on a feature branch with conventional message: `feat(task2): add agent/llm.py OpenAI-compatible client (TDD)`
+- [x] 5.1 `openspec verify implement-llm-client` passes
+- [x] 5.2 `pytest -q` shows all `tests/agent/test_llm.py` green
+- [x] 5.3 Confirm no hosted-provider URL or hardcoded API key appears anywhere in `agent/` (`grep -RIn "openai.com\|anthropic.com" agent/` returns nothing)
+- [x] 5.4 Commit on a feature branch with conventional message: `feat(task2): add agent/llm.py OpenAI-compatible client (TDD)`
