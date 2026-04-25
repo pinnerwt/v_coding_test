@@ -259,11 +259,13 @@ def _response_from_recorded(resp: dict) -> ChatResponse:
     tool_calls: list[ToolCall] = []
     for tc in resp.get("tool_calls") or []:
         fn = tc.get("function") or {}
+        arguments_raw = fn.get("arguments", "")
+        arguments = arguments_raw if isinstance(arguments_raw, str) else json.dumps(arguments_raw)
         tool_calls.append(
             ToolCall(
                 id=tc.get("id", ""),
                 name=fn.get("name", ""),
-                arguments=fn.get("arguments", ""),
+                arguments=arguments,
             )
         )
 

@@ -928,6 +928,86 @@ def test_replay_run_raises_clear_error_for_empty_trace(tmp_path):
         replay_run(empty)
 
 
+def test_replay_run_normalizes_dict_form_tool_arguments(tmp_path):
+    """Recorded tool_call.function.arguments may be a dict (already-parsed object)
+    in non-conformant fixtures or older recordings. Replay SHALL normalize that
+    to a JSON string so json.loads in both _replayed_pair and loop don't raise
+    TypeError.
+    """
+    task = "dict args"
+    done_args = {
+        "result": {},
+        "evidence": {"url": "http://stub.local/", "text_snippet": "ok"},
+    }
+    observation = {"url": "http://stub.local/", "text": ""}
+    first_prompt = [
+        {"role": "system", "content": _build_system_prompt(task)},
+        {"role": "user", "content": f"Current state: {json.dumps(observation)}"},
+    ]
+
+    run = _default_run_dict("run-rec-001", task)
+    events = [
+        {
+            "run_id": run["run_id"],
+            "seq": 1,
+            "ts": "2024-01-01T00:00:01Z",
+            "step_id": "step-1",
+            "kind": "observation",
+            "url": "http://stub.local/",
+            "title": "",
+            "ax_tree_digest": "",
+            "ax_fingerprint": "",
+            "screenshot_ref": "",
+            "viewport": {"width": 1280, "height": 720},
+        },
+        {
+            "run_id": run["run_id"],
+            "seq": 2,
+            "ts": "2024-01-01T00:00:02Z",
+            "step_id": "step-1",
+            "kind": "llm_call",
+            "llm_call_id": "lc-1",
+            "purpose": "decide",
+            "model": "stub-model",
+            "base_url": "http://stub.local",
+            "prompt": {"messages": first_prompt},
+            "response": {
+                "content": None,
+                "finish_reason": "tool_calls",
+                "tool_calls": [
+                    {
+                        "id": "tc-1",
+                        "type": "function",
+                        # arguments as a dict, not a JSON string — exercises the crash path.
+                        "function": {"name": "done", "arguments": done_args},
+                    }
+                ],
+            },
+            "tokens": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+            "usd": 0.0,
+            "ms": 0,
+        },
+        {
+            "run_id": run["run_id"],
+            "seq": 3,
+            "ts": "2024-01-01T00:00:03Z",
+            "step_id": "step-1",
+            "kind": "decision",
+            "intent": "done",
+            "tool": "done",
+            "args": done_args,
+            "rationale": "captured",
+            "llm_call_id": "lc-1",
+        },
+    ]
+
+    fixture = tmp_path / "dict_args.jsonl"
+    fixture.write_text("\n".join([json.dumps(run)] + [json.dumps(e) for e in events]) + "\n")
+
+    result = replay_run(fixture)
+    assert result.matched is True, f"Expected match; got divergence={result.first_divergence!r}"
+
+
 def test_stub_browser_no_playwright_import():
     """agent.replay SHALL NOT directly import playwright.
 
