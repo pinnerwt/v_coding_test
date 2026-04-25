@@ -27,3 +27,5 @@ Update PR template to draw diagram about what was introduced in the PR, includin
 Review /new_task2 and downgrade certain models' for the subagents that are not for planning purpose.
 
 /new_task2 (supervisor)
+
+/new_task2 (happy path)
