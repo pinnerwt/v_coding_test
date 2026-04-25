@@ -64,15 +64,16 @@ def _origin_from_url(url: str) -> str:
     return f"{scheme}://{host}:{port}"
 
 
+# Columns that are nullable per the schema in design.md / spec.md. Everything else
+# is NOT NULL. The primary key is appended as a separate constraint.
+_NULLABLE_COLUMNS: frozenset[str] = frozenset({"name", "coords_x", "coords_y"})
+
+
 def _build_create_sql() -> str:
-    column_defs: list[str] = []
-    for col_name, col_type in _EXPECTED_COLUMNS:
-        if col_name in ("origin", "intent", "role", "selector", "ax_fingerprint", "tier"):
-            column_defs.append(f"{col_name} {col_type} NOT NULL")
-        elif col_name in ("confidence", "written_at_utc"):
-            column_defs.append(f"{col_name} {col_type} NOT NULL")
-        else:
-            column_defs.append(f"{col_name} {col_type}")
+    column_defs: list[str] = [
+        f"{col_name} {col_type}" + ("" if col_name in _NULLABLE_COLUMNS else " NOT NULL")
+        for col_name, col_type in _EXPECTED_COLUMNS
+    ]
     column_defs.append("PRIMARY KEY (origin, intent)")
     body = ",\n    ".join(column_defs)
     return f"CREATE TABLE {LOCATOR_CACHE_TABLE} (\n    {body}\n)"

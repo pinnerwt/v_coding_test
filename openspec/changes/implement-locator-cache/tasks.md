@@ -79,20 +79,20 @@
 
 ## 7. Refactor + housekeeping
 
-- [ ] 7.1 Reread `task2/agent/locator_cache.py`. Look for: SQL string duplication (consolidate INSERT/SELECT column lists into a constant), magic string literals (lift `LOCATOR_CACHE_TABLE = "locator_cache"`), missing type hints on private helpers.
-- [ ] 7.2 Reread `task2/agent/locate.py`. Confirm: `agent.locator_cache` is imported lazily inside `locate()` and NOT at module top level. Verify by reading the imports section. Confirm: existing L1/L2/L3/L4 functions are unchanged in body except where `coords` field was already added.
-- [ ] 7.3 Confirm `LocateResult.coords` default is `None` and existing callers do not need updates.
-- [ ] 7.4 Run `uv run ruff format .` from `task2/` (no changes after green) and `uv run ruff check .` (clean).
-- [ ] 7.5 Confirm no new dependencies were added to `task2/pyproject.toml`.
+- [x] 7.1 Reread `task2/agent/locator_cache.py`. Look for: SQL string duplication (consolidate INSERT/SELECT column lists into a constant), magic string literals (lift `LOCATOR_CACHE_TABLE = "locator_cache"`), missing type hints on private helpers.
+- [x] 7.2 Reread `task2/agent/locate.py`. Confirm: `agent.locator_cache` is imported lazily inside `locate()` and NOT at module top level. Verify by reading the imports section. Confirm: existing L1/L2/L3/L4 functions are unchanged in body except where `coords` field was already added.
+- [x] 7.3 Confirm `LocateResult.coords` default is `None` and existing callers do not need updates.
+- [x] 7.4 Run `uv run ruff format .` from `task2/` (no changes after green) and `uv run ruff check .` (clean).
+- [x] 7.5 Confirm no new dependencies were added to `task2/pyproject.toml`.
 
 ## 8. Validation
 
-- [ ] 8.1 Run `openspec validate implement-locator-cache --strict` — change SHALL be valid.
-- [ ] 8.2 Final pre-commit gate from `task2/`: `uv run ruff format .` (no changes), `uv run ruff check .` (clean), `uv run pytest` (all tests pass).
-- [ ] 8.3 Conventional commits on the branch:
+- [x] 8.1 Run `openspec validate implement-locator-cache --strict` — change SHALL be valid.
+- [x] 8.2 Final pre-commit gate from `task2/`: `uv run ruff format .` (no changes), `uv run ruff check .` (clean), `uv run pytest` (all tests pass).
+- [x] 8.3 Conventional commits on the branch:
   - `chore(task2): scaffold implement-locator-cache` (created at scaffolding — counts).
   - `test(task2): add failing locator-cache tests and drift fixture`.
   - `feat(task2): add LocatorCache module and SQLite schema`.
   - `feat(task2): wire LocatorCache into locate() with AX-fingerprint revalidation`.
   - `refactor(task2): <whatever 7.1 ends up doing>` — only if a real cleanup happens; skip otherwise.
-- [ ] 8.4 No hooks bypassed at any point.
+- [x] 8.4 No hooks bypassed at any point.
