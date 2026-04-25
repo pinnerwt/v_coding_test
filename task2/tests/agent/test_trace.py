@@ -577,6 +577,39 @@ def test_close_run_unknown_run_id_raises():
             writer.close_run("does-not-exist", status="failed", ended_at=TS, final={}, totals={})
 
 
+def test_append_event_rejects_after_close_run():
+    """append_event must fail fast once close_run has set terminal state."""
+    run = _run_full()
+    with TraceWriter(":memory:") as writer:
+        writer.open_run(run)
+        writer.append_event(_observation_event(run_id=run.run_id, seq=1))
+        writer.close_run(
+            run.run_id,
+            status="succeeded",
+            ended_at="2024-01-01T00:01:00Z",
+            final={"result": {"answer": "cats"}, "evidence": {}, "failure": None},
+            totals={
+                "steps": 1,
+                "llm_calls": 0,
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "usd": 0.0,
+                "browser_ms": 0,
+            },
+        )
+        with pytest.raises(LookupError):
+            writer.append_event(_observation_event(run_id=run.run_id, seq=2))
+
+
+def test_redact_handles_non_dict_messages():
+    """redact must not crash when prompt['messages'] entries aren't dicts."""
+    ev = _llm_call_event(messages=["a bare string", {"role": "user", "content": "ok"}])
+    redacted = redact(ev)
+    msgs = redacted.prompt["messages"]
+    assert msgs[0] == "a bare string"
+    assert msgs[1]["content"] == "ok"
+
+
 def test_trace_writer_methods_on_closed_raise():
     writer = TraceWriter(":memory:")
     writer.close()
