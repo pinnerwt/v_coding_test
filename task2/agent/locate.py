@@ -64,8 +64,21 @@ def locate_l1(page: Page, *, role: str, name: str | None) -> LocateResult:
         raise LocatorMiss(reason="zero_matches", match_count=0)
     if count > 1:
         raise LocatorMiss(reason="ambiguous", match_count=count)
-    selector = f'role={role}[name="{name}" i]' if name else f"role={role}"
-    fingerprint = hashlib.sha256(f"{role}:{name or ''}".encode()).hexdigest()
+    matched_name_raw = locator.first.evaluate(
+        "(el) => {"
+        "  const a = el.getAttribute('aria-label');"
+        "  if (a !== null && a !== '') return a.replace(/\\s+/g, ' ').trim();"
+        "  return (el.textContent || '').replace(/\\s+/g, ' ').trim();"
+        "}"
+    )
+    matched_name: str | None = matched_name_raw if isinstance(matched_name_raw, str) else None
+    if name:
+        escaped = name.replace("\\", "\\\\").replace('"', '\\"')
+        selector = f'role={role}[name="{escaped}" i]'
+    else:
+        selector = f"role={role}"
+    fingerprint_name = matched_name if matched_name is not None else (name or "")
+    fingerprint = hashlib.sha256(f"{role}:{fingerprint_name}".encode()).hexdigest()
     return LocateResult(
         tier="L1_ax",
         role=role,

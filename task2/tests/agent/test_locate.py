@@ -137,3 +137,20 @@ def test_locate_orchestrator_propagates_intent_error(fixture_server, playwright_
         b.goto(f"{fixture_server}/locate_l1.html")
         with pytest.raises(IntentParseError):
             locate(b._page, "do the thing")
+
+
+def test_locator_selector_escapes_quoted_names(fixture_server, playwright_chromium):
+    with Browser(playwright_browser=playwright_chromium) as b:
+        b.goto(f"{fixture_server}/locate_l1_quoted.html")
+        result = locate_l1(b._page, role="button", name='Say "Hi"')
+        loc = b._page.locator(result.selector)
+        assert loc.count() == 1
+        assert (loc.first.text_content() or "").strip() == 'Say "Hi"'
+
+
+def test_ax_fingerprint_uses_matched_accessible_name(fixture_server, playwright_chromium):
+    with Browser(playwright_browser=playwright_chromium) as b:
+        b.goto(f"{fixture_server}/locate_l1_substring.html")
+        full = locate_l1(b._page, role="button", name="Save draft")
+        sub = locate_l1(b._page, role="button", name="Save")
+        assert full.ax_fingerprint == sub.ax_fingerprint
