@@ -189,7 +189,7 @@ The system SHALL provide `agent.trace.TraceWriter` — a class that persists `Ru
 - Open a SQLite connection to `path` and call `_ensure_schema()` which creates `traces.runs` and `traces.events` tables if they do not exist.
 - `open_run(run: Run) -> None` — INSERT the run as a JSON blob into `traces.runs`. Raise `sqlite3.IntegrityError` if the `run_id` already exists. Raise `ValueError` if `run.status` is non-`None` (a run with terminal status cannot be opened — the writer would otherwise accept appended events whose timeline contradicts the closed state).
 - `append_event(event: AnyEvent) -> None` — verify the run exists and is still open, validate `event.seq > last_seq_for_run`, then INSERT the event's JSON into `traces.events`. Raise `LookupError` if `event.run_id` has no row in `traces.runs` OR if the run is already closed (`status` is non-NULL). Raise `SeqError` if the seq is not strictly greater than the last appended seq for this run.
-- `close_run(run_id: str, *, status: str, ended_at: str, final: dict, totals: dict) -> None` — UPDATE the `traces.runs` row to set `status`, `ended_at`, `final_json`, `totals_json`, AND rewrite the `payload` JSON blob so the canonical `Run` reflects the closed state. The merged values SHALL be re-validated against the `Run` schema before the row is written, so an invalid `status` (or any other field) raises `pydantic.ValidationError` and leaves the existing payload untouched. Raise `LookupError` if `run_id` has no row.
+- `close_run(run_id: str, *, status: str, ended_at: str, final: dict, totals: dict) -> None` — UPDATE the `traces.runs` row to set `status`, `ended_at`, `final_json`, `totals_json`, AND rewrite the `payload` JSON blob so the canonical `Run` reflects the closed state. The merged values SHALL be re-validated against the `Run` schema before the row is written, so an invalid `status` (or any other field) raises `pydantic.ValidationError` and leaves the existing payload untouched. The helper columns `final_json` and `totals_json` SHALL be serialized from the validated `Run` (not from the raw inputs) so coercible inputs cannot diverge from `payload`. Raise `LookupError` if `run_id` has no row. Raise `ValueError` if the run is already closed (`status` is non-`None` in the existing payload).
 - `close() -> None` — close the SQLite connection.
 - `__enter__` / `__exit__` context manager: call `close()` on exit.
 
@@ -291,6 +291,20 @@ The system SHALL provide `agent.trace.redact(event: AnyEvent) -> AnyEvent` — a
 - **GIVEN** a `TraceWriter` with a run opened and then closed via `close_run(...)`
 - **WHEN** `append_event(event)` is called for that `run_id`
 - **THEN** a `LookupError` SHALL be raised
+
+#### Scenario: close_run rejects double-close
+
+- **GIVEN** a `TraceWriter` with a run opened and then closed via `close_run(...)`
+- **WHEN** `close_run(...)` is called again for the same `run_id`
+- **THEN** a `ValueError` SHALL be raised
+- **AND** the `traces.runs` row for that `run_id` SHALL retain the original closing values
+
+#### Scenario: close_run normalizes helper columns from validated Run
+
+- **GIVEN** a `TraceWriter` with a run opened
+- **WHEN** `close_run` is called with a `totals` dict whose values are coercible into the `RunTotals` types (e.g. `"3"` for `steps: int`)
+- **THEN** the `totals_json` column SHALL contain the validated, normalized values (e.g. `3`)
+- **AND** the `totals_json` column SHALL parse to the same dict as `payload["totals"]`
 
 #### Scenario: open_run rejects a Run with terminal status
 

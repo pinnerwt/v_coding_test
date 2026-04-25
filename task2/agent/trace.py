@@ -254,6 +254,10 @@ class TraceWriter:
     def _closed_run(run_id: str) -> LookupError:
         return LookupError(f"Run {run_id!r} is already closed; cannot append further events.")
 
+    @staticmethod
+    def _already_closed(run_id: str) -> ValueError:
+        return ValueError(f"Run {run_id!r} is already closed; cannot close it again.")
+
     def open_run(self, run: Run) -> None:
         if run.status is not None:
             raise ValueError(
@@ -295,16 +299,20 @@ class TraceWriter:
         payload_row = conn.execute(_SELECT_RUN_PAYLOAD_SQL, (run_id,)).fetchone()
         if payload_row is None:
             raise self._missing_run(run_id)
-        run_dict = Run.model_validate_json(payload_row[0]).model_dump()
+        existing = Run.model_validate_json(payload_row[0])
+        if existing.status is not None:
+            raise self._already_closed(run_id)
+        run_dict = existing.model_dump()
         run_dict.update(status=status, ended_at=ended_at, final=final, totals=totals)
         updated = Run.model_validate(run_dict)
+        updated_dump = updated.model_dump(mode="json")
         conn.execute(
             _UPDATE_RUN_SQL,
             (
-                status,
-                ended_at,
-                json.dumps(final),
-                json.dumps(totals),
+                updated.status,
+                updated.ended_at,
+                json.dumps(updated_dump["final"]),
+                json.dumps(updated_dump["totals"]),
                 updated.model_dump_json(),
                 run_id,
             ),
