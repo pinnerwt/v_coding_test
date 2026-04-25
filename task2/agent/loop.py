@@ -133,6 +133,19 @@ def _observe(browser: Browser) -> dict:
     return {"url": page.url, "text": _body_text(page)}
 
 
+def _locate_with_supervisor(page: Page, intent: str, supervisor: Supervisor):
+    role, name = parse_intent(intent)
+    try:
+        return locate_l1(page, role=role, name=name)
+    except LocatorMiss as miss:
+        if miss.reason != "zero_matches":
+            raise
+        decision = supervisor.handle(miss, current_tier="L1_ax")
+        if decision.next_tier != "L2_dom":
+            raise
+        return locate_l2(page, role=role, name=name)
+
+
 def _dispatch(tool_name: str, args: dict, browser: Browser, supervisor: Supervisor) -> str:
     if tool_name == "goto":
         url = args.get("url")
@@ -144,23 +157,10 @@ def _dispatch(tool_name: str, args: dict, browser: Browser, supervisor: Supervis
         intent: str | None = args.get("intent")
         page = browser._page
         if intent:
-            role, name = parse_intent(intent)
             try:
-                locate_result = locate_l1(page, role=role, name=name)
+                locate_result = _locate_with_supervisor(page, intent, supervisor)
             except LocatorMiss as miss:
-                if miss.reason == "zero_matches":
-                    decision = supervisor.handle(miss, current_tier="L1_ax")
-                    if decision.next_tier == "L2_dom":
-                        try:
-                            locate_result = locate_l2(page, role=role, name=name)
-                        except LocatorMiss as l2_miss:
-                            return (
-                                f"Error: could not locate element for intent {intent!r} ({l2_miss})"
-                            )
-                    else:
-                        return f"Error: could not locate element for intent {intent!r} ({miss})"
-                else:
-                    return f"Error: could not locate element for intent {intent!r} ({miss})"
+                return f"Error: could not locate element for intent {intent!r} ({miss})"
             return browser.read(locate_result.selector)
         return _body_text(page)
     return f"Error: unknown tool {tool_name!r}"

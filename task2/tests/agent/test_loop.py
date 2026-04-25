@@ -349,11 +349,7 @@ def test_loop_handles_goto_missing_url(fixture_server, playwright_chromium):
 
 
 def test_loop_self_correction(fixture_server, playwright_chromium):
-    """Scenario: LLM calls read with intent targeting a button whose accessible
-    name is 'action' (not 'Submit'), so L1 returns zero matches. The loop must
-    invoke Supervisor, escalate to L2, find the button by visible text, and
-    continue the run to completion.
-    """
+    """Scenario: L1 misses (aria-label override) — supervisor escalates to L2 and run completes."""
     fixture_url = f"{fixture_server}/loop_self_correction.html"
 
     # Step 1: goto fixture, Step 2: read with intent, Step 3: done
@@ -389,12 +385,7 @@ def test_loop_self_correction(fixture_server, playwright_chromium):
 
 
 def test_loop_self_correction_l2_also_fails(fixture_server, playwright_chromium):
-    """Scenario: L1 raises zero_matches, L2 also raises LocatorMiss.
-    The loop must return an error string as the tool result and NOT crash.
-    The LLM can still call done afterward.
-    """
-    # index.html has no button-like element: both locate_l1 and locate_l2 raise
-    # LocatorMiss(reason="zero_matches") for role="button", name="Submit button".
+    """Scenario: L1 and L2 both miss — loop returns error string and LLM still reaches done."""
     fixture_url = f"{fixture_server}/index.html"
 
     responses = [
@@ -430,18 +421,10 @@ def test_loop_self_correction_l2_also_fails(fixture_server, playwright_chromium)
 
 
 def test_loop_self_correction_supervisor_halt(fixture_server, playwright_chromium):
-    """Scenario: Supervisor max_attempts cap reached — loop feeds error string
-    back to the LLM as the tool result and continues; the run does not crash.
-
-    index.html has no button-like elements so both locate_l1 and locate_l2 raise
-    LocatorMiss(reason="zero_matches"). The default supervisor max_attempts=3, so
-    after 4 read calls with the same (L1_ax, zero_matches) key the 4th call
-    exhausts the cap and supervisor.handle() returns next_tier=None (halt).
-    The loop must return an error string on all four reads and still reach done.
-    """
+    """Scenario: supervisor max_attempts exhausted — loop returns error string gracefully."""
     fixture_url = f"{fixture_server}/index.html"
 
-    # 4 read calls to exhaust max_attempts=3 and trigger the halt branch once.
+    # 4 read calls exhaust the default max_attempts=3 and trigger the halt branch.
     read_tc = [
         _response_with_tool_call(
             _tool_call("read", {"intent": "Submit button"}, call_id=f"tc-r{i}")
