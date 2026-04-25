@@ -12,7 +12,13 @@ from pathlib import Path
 import pytest
 
 from agent.replay import ReplayDivergence, ReplayResult, StubBrowser, StubLLMClient, replay_run
-from agent.trace import AnyEvent, DecisionEvent, LLMCallEvent, ObservationEvent, Run, _any_event_adapter
+from agent.trace import (
+    DecisionEvent,
+    LLMCallEvent,
+    ObservationEvent,
+    Run,
+    _any_event_adapter,
+)
 
 FIXTURE_PATH = Path(__file__).parent.parent / "fixtures" / "traces" / "simple_goto_done.jsonl"
 
@@ -86,9 +92,7 @@ def _make_chat_response(tool_name: str, args: dict):
 
     return ChatResponse(
         content=None,
-        tool_calls=[
-            ToolCall(id="tc-test", name=tool_name, arguments=json.dumps(args))
-        ],
+        tool_calls=[ToolCall(id="tc-test", name=tool_name, arguments=json.dumps(args))],
         finish_reason="tool_calls",
         model="stub",
         usage=Usage(0, 0, 0),
@@ -97,10 +101,12 @@ def _make_chat_response(tool_name: str, args: dict):
 
 
 def test_stub_llm_client_returns_in_order():
-    from agent.llm import ChatResponse, Usage
 
     r1 = _make_chat_response("goto", {"url": "http://a"})
-    r2 = _make_chat_response("done", {"result": {}, "evidence": {"url": "http://a", "text_snippet": "a"}})
+    r2 = _make_chat_response(
+        "done",
+        {"result": {}, "evidence": {"url": "http://a", "text_snippet": "a"}},
+    )
 
     stub = StubLLMClient([r1, r2])
     assert stub.chat([]) is r1
@@ -109,7 +115,6 @@ def test_stub_llm_client_returns_in_order():
 
 
 def test_stub_llm_client_exhausted_returns_noop():
-    from agent.llm import ChatResponse, Usage
 
     r1 = _make_chat_response("goto", {"url": "http://a"})
     stub = StubLLMClient([r1])
