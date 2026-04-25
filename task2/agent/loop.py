@@ -4,7 +4,8 @@ import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
-from agent.locate import locate_l1, parse_intent
+from agent.locate import LocatorMiss, locate_l1, locate_l2, parse_intent
+from agent.supervisor import Supervisor
 
 if TYPE_CHECKING:
     from playwright.sync_api import Page
@@ -132,7 +133,7 @@ def _observe(browser: Browser) -> dict:
     return {"url": page.url, "text": _body_text(page)}
 
 
-def _dispatch(tool_name: str, args: dict, browser: Browser) -> str:
+def _dispatch(tool_name: str, args: dict, browser: Browser, supervisor: Supervisor) -> str:
     if tool_name == "goto":
         url = args.get("url")
         if not isinstance(url, str) or not url:
@@ -144,7 +145,22 @@ def _dispatch(tool_name: str, args: dict, browser: Browser) -> str:
         page = browser._page
         if intent:
             role, name = parse_intent(intent)
-            locate_result = locate_l1(page, role=role, name=name)
+            try:
+                locate_result = locate_l1(page, role=role, name=name)
+            except LocatorMiss as miss:
+                if miss.reason == "zero_matches":
+                    decision = supervisor.handle(miss, current_tier="L1_ax")
+                    if decision.next_tier == "L2_dom":
+                        try:
+                            locate_result = locate_l2(page, role=role, name=name)
+                        except LocatorMiss as l2_miss:
+                            return (
+                                f"Error: could not locate element for intent {intent!r} ({l2_miss})"
+                            )
+                    else:
+                        return f"Error: could not locate element for intent {intent!r} ({miss})"
+                else:
+                    return f"Error: could not locate element for intent {intent!r} ({miss})"
             return browser.read(locate_result.selector)
         return _body_text(page)
     return f"Error: unknown tool {tool_name!r}"
@@ -158,6 +174,7 @@ def loop(
     max_steps: int = 20,
 ) -> RunResult:
     messages: list[dict] = [{"role": "system", "content": _build_system_prompt(task)}]
+    supervisor = Supervisor()
 
     for _ in range(max_steps):
         observation = _observe(browser)
@@ -215,7 +232,7 @@ def loop(
             if tool_call.name == "fail":
                 return RunResult(status="failed", result=None, evidence=None)
 
-            tool_result = _dispatch(tool_call.name, args, browser)
+            tool_result = _dispatch(tool_call.name, args, browser, supervisor)
             messages.append(
                 {
                     "role": "tool",
