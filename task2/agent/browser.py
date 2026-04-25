@@ -79,3 +79,13 @@ class Browser:
             raise ElementNotFound(f"no element matched selector {selector!r}")
         text = locator.first.text_content() or ""
         return text.strip()
+
+    def screenshot(self, *, full_page: bool = False) -> bytes:
+        if self._page is None:
+            raise BrowserClosed()
+        return self._page.screenshot(full_page=full_page)
+
+    def click_at(self, x: int, y: int) -> None:
+        if self._page is None:
+            raise BrowserClosed()
+        self._page.mouse.click(x, y)

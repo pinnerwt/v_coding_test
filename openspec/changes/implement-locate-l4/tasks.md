@@ -18,9 +18,9 @@
 
 ## 3. Browser tool surface — implementation (green)
 
-- [ ] 3.1 In `task2/agent/browser.py`, add `def screenshot(self, *, full_page: bool = False) -> bytes:` after `read`. The body: `if self._page is None: raise BrowserClosed()` then `return self._page.screenshot(full_page=full_page)`.
-- [ ] 3.2 In `task2/agent/browser.py`, add `def click_at(self, x: int, y: int) -> None:` after `screenshot`. The body: `if self._page is None: raise BrowserClosed()` then `self._page.mouse.click(x, y)`.
-- [ ] 3.3 From `task2/`, run `uv run pytest tests/agent/test_browser.py` — all browser tests (existing + new) SHALL pass.
+- [x] 3.1 In `task2/agent/browser.py`, add `def screenshot(self, *, full_page: bool = False) -> bytes:` after `read`. The body: `if self._page is None: raise BrowserClosed()` then `return self._page.screenshot(full_page=full_page)`.
+- [x] 3.2 In `task2/agent/browser.py`, add `def click_at(self, x: int, y: int) -> None:` after `screenshot`. The body: `if self._page is None: raise BrowserClosed()` then `self._page.mouse.click(x, y)`.
+- [x] 3.3 From `task2/`, run `uv run pytest tests/agent/test_browser.py` — all browser tests (existing + new) SHALL pass.
 
 ## 4. L4 vision — failing tests (red)
 
