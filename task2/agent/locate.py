@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, get_args
 
@@ -12,6 +13,17 @@ _ARTICLES: frozenset[str] = frozenset({"the", "a", "an"})
 
 LocatorMissReason = Literal["zero_matches", "ambiguous"]
 _VALID_REASONS: frozenset[str] = frozenset(get_args(LocatorMissReason))
+
+_L2_BUTTON_TAXONOMY_CSS = (
+    "button, input[type=button], input[type=submit], input[type=reset], "
+    '[role=button], [onclick], [class*="btn"], [class*="button"]'
+)
+_L2_LINK_TAXONOMY_CSS = "a[href], [role=link]"
+
+
+def _escape_quoted(value: str) -> str:
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
 
 _ACCESSIBLE_NAME_JS = """
 (el) => {
@@ -106,8 +118,7 @@ def locate_l1(page: Page, *, role: str, name: str | None) -> LocateResult:
     matched_name_raw = locator.first.evaluate(_ACCESSIBLE_NAME_JS)
     matched_name: str | None = matched_name_raw if isinstance(matched_name_raw, str) else None
     if name:
-        escaped = name.replace("\\", "\\\\").replace('"', '\\"')
-        selector = f'role={role}[name="{escaped}" i]'
+        selector = f'role={role}[name="{_escape_quoted(name)}" i]'
     else:
         selector = f"role={role}"
     fingerprint_name = matched_name if matched_name is not None else (name or "")
@@ -122,6 +133,46 @@ def locate_l1(page: Page, *, role: str, name: str | None) -> LocateResult:
     )
 
 
+def locate_l2(page: Page, *, role: str, name: str | None) -> LocateResult:
+    if not name:
+        raise LocatorMiss(reason="zero_matches", match_count=0)
+
+    if role == "textbox":
+        strategy = "placeholder"
+        locator = page.get_by_placeholder(name, exact=False)
+        selector = f'[placeholder*="{_escape_quoted(name)}" i]'
+    elif role in ("button", "link"):
+        strategy = "text_contains"
+        taxonomy = _L2_BUTTON_TAXONOMY_CSS if role == "button" else _L2_LINK_TAXONOMY_CSS
+        locator = page.locator(taxonomy).filter(has_text=name)
+        # filter(has_text=...) is substring + case-insensitive; mirror that with text=/.../i
+        # so the stored selector re-resolves to the same node.
+        pattern = re.escape(name).replace("/", r"\/")
+        selector = f"{taxonomy} >> text=/{pattern}/i"
+    else:
+        raise LocatorMiss(reason="zero_matches", match_count=0)
+
+    count = locator.count()
+    if count == 1:
+        fingerprint = hashlib.sha256(f"{role}:{name}:{strategy}".encode()).hexdigest()
+        return LocateResult(
+            tier="L2_dom",
+            role=role,
+            name=name,
+            selector=selector,
+            ax_fingerprint=fingerprint,
+            confidence=0.7,
+        )
+    if count > 1:
+        raise LocatorMiss(reason="ambiguous", match_count=count)
+    raise LocatorMiss(reason="zero_matches", match_count=0)
+
+
 def locate(page: Page, intent: str) -> LocateResult:
     role, name = parse_intent(intent)
-    return locate_l1(page, role=role, name=name)
+    try:
+        return locate_l1(page, role=role, name=name)
+    except LocatorMiss as miss:
+        if miss.reason == "zero_matches":
+            return locate_l2(page, role=role, name=name)
+        raise
