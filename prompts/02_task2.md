@@ -1,4 +1,5 @@
 Let's work on task 2 in @AI-Coding-Test-EN.md . Create a plan in task2/plan.md first.
+
 Add a Trace schema in the plan so that we can replay decisions for debugging/developing.
 
 ---
@@ -18,3 +19,5 @@ Update the /new_task2 skill to create a PR in the end.
 Update the /new_task2 skill to summon subagents for "Generate all artifacts", "Implement via /opsx:apply", "Verify".
 
 Update PR template to draw diagram about what was introduced in the PR, including the states before and after the PR. Update the /new_task2 skill to read from template instead of owning a template itself.
+
+/new_task2 (l4)
