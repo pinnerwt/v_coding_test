@@ -6,8 +6,6 @@ from urllib.parse import urlsplit
 
 LOCATOR_CACHE_TABLE = "locator_cache"
 
-# Column-name + SQLite-type set, in canonical order. Used both to CREATE the table
-# and to drop+recreate when an existing file's schema does not match.
 _EXPECTED_COLUMNS: tuple[tuple[str, str], ...] = (
     ("origin", "TEXT"),
     ("intent", "TEXT"),
@@ -64,8 +62,6 @@ def _origin_from_url(url: str) -> str:
     return f"{scheme}://{host}:{port}"
 
 
-# Columns that are nullable per the schema in design.md / spec.md. Everything else
-# is NOT NULL. The primary key is appended as a separate constraint.
 _NULLABLE_COLUMNS: frozenset[str] = frozenset({"name", "coords_x", "coords_y"})
 
 

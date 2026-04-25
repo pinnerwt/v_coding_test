@@ -4,7 +4,6 @@ import dataclasses
 import json
 import sqlite3
 from collections.abc import Callable
-from urllib.parse import urlsplit
 
 import pytest
 
@@ -69,20 +68,6 @@ def _entry_for(
         coords=coords,
         written_at_utc=written_at_utc,
     )
-
-
-def _origin_of(url: str) -> str:
-    parts = urlsplit(url)
-    scheme = parts.scheme.lower()
-    host = (parts.hostname or "").lower()
-    port = parts.port
-    if scheme == "http" and (port is None or port == 80):
-        return f"http://{host}"
-    if scheme == "https" and (port is None or port == 443):
-        return f"https://{host}"
-    if port is None:
-        return f"{scheme}://{host}"
-    return f"{scheme}://{host}:{port}"
 
 
 # ---------------------------------------------------------------------------
@@ -321,7 +306,7 @@ def test_first_resolve_writes_cache_returns_l1_tier(fixture_server, playwright_c
     try:
         with Browser(playwright_browser=playwright_chromium) as b:
             b.goto(f"{fixture_server}/locate_l1.html")
-            origin = _origin_of(b._page.url)
+            origin = _origin_from_url(b._page.url)
             result = locate(b._page, "Submit button", llm_chat=stub, cache=cache)
         assert result.tier == "L1_ax"
         entry = cache.get(origin=origin, intent="Submit button")
@@ -338,7 +323,7 @@ def test_second_resolve_hits_cache_skips_llm(fixture_server, playwright_chromium
     try:
         with Browser(playwright_browser=playwright_chromium) as b:
             b.goto(f"{fixture_server}/locate_l1.html")
-            origin = _origin_of(b._page.url)
+            origin = _origin_from_url(b._page.url)
             warm_stub = _make_chat_stub()
             first = locate(b._page, "Submit button", llm_chat=warm_stub, cache=cache)
             assert first.tier == "L1_ax"
@@ -369,7 +354,7 @@ def test_drift_invalidates_cache_and_replaces_row(fixture_server, playwright_chr
     try:
         with Browser(playwright_browser=playwright_chromium) as b:
             b.goto(f"{fixture_server}/cache_drift.html")
-            origin = _origin_of(b._page.url)
+            origin = _origin_from_url(b._page.url)
             cache.put(
                 _entry_for(
                     origin=origin,
@@ -407,7 +392,7 @@ def test_removed_element_invalidates_cache_and_falls_through(fixture_server, pla
     try:
         with Browser(playwright_browser=playwright_chromium) as b:
             b.goto(f"{fixture_server}/cache_drift.html")
-            origin = _origin_of(b._page.url)
+            origin = _origin_from_url(b._page.url)
             cache.put(
                 _entry_for(
                     origin=origin,
@@ -439,13 +424,13 @@ def test_origin_scoping_two_servers(fixture_server_factory, playwright_chromium)
     try:
         with Browser(playwright_browser=playwright_chromium) as b:
             b.goto(f"{server_a}/locate_l1.html")
-            origin_a = _origin_of(b._page.url)
+            origin_a = _origin_from_url(b._page.url)
             first = locate(b._page, "Submit button", cache=cache)
             assert first.tier == "L1_ax"
 
         with Browser(playwright_browser=playwright_chromium) as b:
             b.goto(f"{server_b}/locate_l1.html")
-            origin_b = _origin_of(b._page.url)
+            origin_b = _origin_from_url(b._page.url)
             second = locate(b._page, "Submit button", cache=cache)
         assert origin_a != origin_b
         assert second.tier != "cache"
@@ -476,7 +461,7 @@ def test_l4_cached_entry_forced_miss_on_read(fixture_server, playwright_chromium
     try:
         with Browser(playwright_browser=playwright_chromium) as b:
             b.goto(f"{fixture_server}/locate_l1.html")
-            origin = _origin_of(b._page.url)
+            origin = _origin_from_url(b._page.url)
             cache.put(
                 _entry_for(
                     origin=origin,
@@ -547,7 +532,7 @@ def test_cache_failure_does_not_write_row(fixture_server, playwright_chromium):
     try:
         with Browser(playwright_browser=playwright_chromium) as b:
             b.goto(f"{fixture_server}/locate_l1.html")
-            origin = _origin_of(b._page.url)
+            origin = _origin_from_url(b._page.url)
             stub = _make_chat_stub(content=json.dumps({"box": "garbage"}))
             with pytest.raises(LocatorMiss):
                 locate(b._page, "Refund button", llm_chat=stub, cache=cache)

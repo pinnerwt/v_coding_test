@@ -452,17 +452,12 @@ def locate_l4(
 
 
 def _canonical_ax_fingerprint(page: Page, *, role: str, selector: str) -> str | None:
-    """Compute the L1-style canonical fingerprint of the element a selector resolves to.
-
-    Returns ``None`` if the selector does not resolve to any element. Otherwise hashes
-    ``role:accessible_name`` of ``locator.first`` using the same accessible-name JS as
-    L1. This is the single revalidation rule used by the locator cache.
-    """
-    locator = page.locator(selector)
-    if locator.count() == 0:
+    # Single revalidation rule for the locator cache: hash role:accessible_name of
+    # the element the selector resolves to. Returns None when there is no match.
+    names = page.locator(selector).evaluate_all(f"els => els.map({_ACCESSIBLE_NAME_JS})")
+    if not names:
         return None
-    matched_name_raw = locator.first.evaluate(_ACCESSIBLE_NAME_JS)
-    accessible_name = matched_name_raw if isinstance(matched_name_raw, str) else ""
+    accessible_name = names[0] if isinstance(names[0], str) else ""
     return hashlib.sha256(f"{role}:{accessible_name}".encode()).hexdigest()
 
 
