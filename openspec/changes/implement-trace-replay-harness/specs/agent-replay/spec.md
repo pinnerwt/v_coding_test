@@ -56,10 +56,14 @@ The system SHALL provide `agent.replay.replay_run(trace_path: str | Path) -> Rep
 2. Extracts the recorded `DecisionEvent` list (filtered from the event stream, ordered by `seq`).
 3. Extracts the recorded `LLMCallEvent` list with `purpose == "decide"` (ordered by `seq`) and converts each `LLMCallEvent.response` dict to a `ChatResponse` object.
 4. Constructs a `StubBrowser` and a `StubLLMClient` loaded with the recorded `ChatResponse` sequence.
-5. Calls `agent.loop.loop(task=run.task, browser=stub_browser, llm_client=stub_llm, max_steps=len(recorded_decisions) + 2)`.
-6. After `loop()` returns, compares the tool call each `chat()` invocation returned (from `stub_llm.responses_consumed`) against the corresponding recorded `DecisionEvent`. Comparison is on `tool` (string) and `args` (dict shallow equality).
-7. If all counts match and all (`tool`, `args`) pairs are equal, returns `ReplayResult(matched=True, steps=N, first_divergence=None)`.
-8. If counts differ or any pair diverges, returns `ReplayResult(matched=False, steps=min(recorded, replayed), first_divergence=<first mismatch>)`.
+5. Calls `agent.loop.loop(task=run.task, browser=stub_browser, llm_client=stub_llm, max_steps=len(decide_llm_calls) + 2)`. The bound is keyed on recorded decide chat calls (not `DecisionEvent` count) so no-tool "thinking" turns in the recording are replayed without the loop terminating early.
+6. After `loop()` returns, performs three comparisons in order, returning the first divergence:
+   - **Prompt drift**: for each replayed `chat()` call, compare its `messages` list against the corresponding `decide` `LLMCallEvent.prompt["messages"]`. A mismatch yields `first_divergence.kind == "prompt"`.
+   - **Chat-call count**: if loop emitted more or fewer `chat()` calls than the recording, surface the count mismatch (also `kind == "prompt"`).
+   - **Decision (tool, args)**: align each replayed tool call to the recorded `DecisionEvent` list (skipping malformed-args calls and stopping at `done`/`fail`, mirroring `loop._dispatch` semantics) and compare on `tool` (string) and `args` (dict equality). A mismatch yields `first_divergence.kind == "decision"`.
+7. If all three comparisons agree, returns `ReplayResult(matched=True, steps=N, first_divergence=None)` where `N` is the number of compared decision pairs.
+8. On divergence, `steps` reports how many comparisons succeeded before the mismatch — that is, `i` for the in-loop comparisons (prompt or decision) and `min(n_recorded, n_replayed)` when one side simply runs out of items.
+9. On an empty/blank trace file, raises `ValueError` rather than `IndexError` from indexing the missing `Run` header line.
 
 The function SHALL NOT make any HTTP calls, SHALL NOT launch a Playwright browser process, and SHALL NOT read `LLM_BASE_URL` or `LLM_MODEL` environment variables.
 
