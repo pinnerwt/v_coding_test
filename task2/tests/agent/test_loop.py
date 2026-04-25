@@ -456,3 +456,79 @@ def test_loop_self_correction_supervisor_halt(fixture_server, playwright_chromiu
         result = loop("click the Submit button", browser, fake_llm, max_steps=10)
 
     assert result.status == "succeeded"
+
+
+# ---------------------------------------------------------------------------
+# Evidence guard: done called without evidence → status is unverified
+# ---------------------------------------------------------------------------
+
+
+def test_loop_done_without_evidence(fixture_server, playwright_chromium):
+    """Scenario: LLM calls done with evidence={} — loop marks run as unverified.
+
+    The done handler must validate the evidence dict and return status="unverified"
+    when required fields (url, text_snippet) are absent.
+    """
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {},
+                    "evidence": {},
+                },
+                call_id="tc-2",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop("read the heading", browser, fake_llm)
+
+    assert result.status == "unverified"
+    assert result.verifier is not None
+    assert result.verifier["ok"] is False
+    assert len(result.verifier["reasons"]) > 0
+
+
+# ---------------------------------------------------------------------------
+# Evidence guard: done called with valid evidence → status is succeeded
+# ---------------------------------------------------------------------------
+
+
+def test_loop_done_with_valid_evidence(fixture_server, playwright_chromium):
+    """Regression guard: LLM calls done with valid evidence — status remains succeeded.
+
+    Confirms the happy path still works after the evidence guard is introduced.
+    """
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"heading": "Hello, loop"},
+                    "evidence": {
+                        "url": fixture_url,
+                        "text_snippet": "Hello, loop",
+                    },
+                },
+                call_id="tc-2",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop("read the heading", browser, fake_llm)
+
+    assert result.status == "succeeded"
+    assert result.verifier is not None
+    assert result.verifier["ok"] is True
+    assert result.verifier["reasons"] == []
