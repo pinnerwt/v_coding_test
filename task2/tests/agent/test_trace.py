@@ -511,3 +511,107 @@ def test_trace_writer_context_manager_exception_exit():
         with writer:
             raise RuntimeError("boom")
     assert writer._conn is None
+
+
+# ---------------------------------------------------------------------------
+# close_run persists final fields
+# ---------------------------------------------------------------------------
+
+
+def test_trace_writer_close_run_persists_fields():
+    """close_run() updates status, ended_at, final_json, totals_json in traces_runs."""
+    run = _run_full()
+    with TraceWriter(":memory:") as writer:
+        writer.open_run(run)
+        writer.close_run(
+            run.run_id,
+            status="succeeded",
+            ended_at="2024-01-01T00:01:00Z",
+            final={"result": {"answer": "cats"}, "evidence": {}, "failure": None},
+            totals={
+                "steps": 3,
+                "llm_calls": 2,
+                "prompt_tokens": 100,
+                "completion_tokens": 50,
+                "usd": 0.01,
+                "browser_ms": 500,
+            },
+        )
+        row = writer._conn.execute(
+            "SELECT status, ended_at, final_json, totals_json FROM traces_runs WHERE run_id = ?",
+            (run.run_id,),
+        ).fetchone()
+    assert row is not None
+    assert row[0] == "succeeded"
+    assert row[1] == "2024-01-01T00:01:00Z"
+    assert json.loads(row[2]) == {"result": {"answer": "cats"}, "evidence": {}, "failure": None}
+    assert json.loads(row[3])["steps"] == 3
+
+
+# ---------------------------------------------------------------------------
+# open_run raises IntegrityError on duplicate run_id
+# ---------------------------------------------------------------------------
+
+
+def test_trace_writer_open_run_duplicate_raises():
+    """open_run() with a duplicate run_id raises sqlite3.IntegrityError."""
+    import sqlite3
+
+    run = _run_full()
+    with TraceWriter(":memory:") as writer:
+        writer.open_run(run)
+        with pytest.raises(sqlite3.IntegrityError):
+            writer.open_run(run)
+
+
+# ---------------------------------------------------------------------------
+# redact leaves clean messages untouched (covers else branch)
+# ---------------------------------------------------------------------------
+
+
+def test_redact_mixed_messages_only_dirty_redacted():
+    """redact() redacts only messages matching the secret pattern; clean messages unchanged."""
+    ev = LLMCallEvent(
+        run_id=RUN_ID,
+        seq=1,
+        ts=TS,
+        step_id=None,
+        llm_call_id="llm-1",
+        purpose="decide",
+        model="qwen3",
+        base_url="http://localhost:8090",
+        prompt={
+            "system": None,
+            "messages": [
+                {"role": "user", "content": "What do you see?"},
+                {"role": "tool", "content": "Authorization: Bearer secret-token"},
+            ],
+            "tools": None,
+        },
+        response={"content": "ok", "tool_calls": None, "finish_reason": "stop"},
+        tokens={"prompt": 10, "completion": 5},
+        usd=0.0,
+        ms=10,
+    )
+    redacted = redact(ev)
+    msgs = redacted.prompt["messages"]
+    # clean message is unchanged
+    assert msgs[0]["content"] == "What do you see?"
+    # dirty message is redacted
+    assert "[REDACTED]" in msgs[1]["content"]
+    assert "secret-token" not in msgs[1]["content"]
+
+
+# ---------------------------------------------------------------------------
+# close() is idempotent (double-close does not raise)
+# ---------------------------------------------------------------------------
+
+
+def test_trace_writer_close_idempotent():
+    """Calling close() twice does not raise; _conn remains None after first close."""
+    writer = TraceWriter(":memory:")
+    writer.close()
+    assert writer._conn is None
+    # second close must not raise
+    writer.close()
+    assert writer._conn is None
