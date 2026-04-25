@@ -29,3 +29,5 @@ Review /new_task2 and downgrade certain models' for the subagents that are not f
 /new_task2 (supervisor)
 
 /new_task2 (happy path)
+
+/new_task2 (loop self correction)
