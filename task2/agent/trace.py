@@ -117,18 +117,46 @@ AnyEvent = Annotated[
 _any_event_adapter: TypeAdapter[AnyEvent] = TypeAdapter(AnyEvent)
 
 
+class RunBudget(BaseModel):
+    steps: int
+    usd: float
+    seconds: int
+
+
+class RunLLM(BaseModel):
+    base_url: str
+    model: str
+    temperature: float
+    seed: int | None
+
+
+class RunFinal(BaseModel):
+    result: dict[str, Any] | None
+    evidence: dict[str, Any] | None
+    failure: dict[str, Any] | None
+
+
+class RunTotals(BaseModel):
+    steps: int
+    llm_calls: int
+    prompt_tokens: int
+    completion_tokens: int
+    usd: float
+    browser_ms: int
+
+
 class Run(BaseModel):
     run_id: str
     task: str
     expect_schema: dict[str, Any] | None
-    budget: dict[str, Any]
-    llm: dict[str, Any]
+    budget: RunBudget
+    llm: RunLLM
     agent_version: str
     started_at: str
     ended_at: str | None
     status: Literal["succeeded", "unverified", "failed", "blocked", "timeout"] | None
-    final: dict[str, Any] | None
-    totals: dict[str, Any] | None
+    final: RunFinal | None
+    totals: RunTotals | None
 
 
 class SeqError(ValueError):
@@ -227,6 +255,11 @@ class TraceWriter:
         return LookupError(f"Run {run_id!r} is already closed; cannot append further events.")
 
     def open_run(self, run: Run) -> None:
+        if run.status is not None:
+            raise ValueError(
+                f"open_run requires Run.status to be None; got {run.status!r}. "
+                "A run with terminal status cannot be opened."
+            )
         conn = self._require_conn()
         conn.execute(_INSERT_RUN_SQL, (run.run_id, run.model_dump_json()))
         conn.commit()

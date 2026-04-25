@@ -7,14 +7,16 @@ The system SHALL provide `agent.trace.Run` — a Pydantic `BaseModel` representi
 - `run_id: str` — unique identifier (ULID or UUID4 string); set by the caller.
 - `task: str` — verbatim NL task as given to the agent.
 - `expect_schema: dict | None` — declared output schema, if provided; `None` otherwise.
-- `budget: dict` — keys `steps: int`, `usd: float`, `seconds: int`.
-- `llm: dict` — keys `base_url: str`, `model: str`, `temperature: float`, `seed: int | None`.
+- `budget: RunBudget` — typed submodel with fields `steps: int`, `usd: float`, `seconds: int`.
+- `llm: RunLLM` — typed submodel with fields `base_url: str`, `model: str`, `temperature: float`, `seed: int | None`.
 - `agent_version: str` — git SHA or other version string of the running code.
 - `started_at: str` — ISO 8601 timestamp.
 - `ended_at: str | None` — ISO 8601 timestamp; `None` until the run closes.
 - `status: Literal["succeeded", "unverified", "failed", "blocked", "timeout"] | None` — `None` while in progress.
-- `final: dict | None` — keys `result: dict | None`, `evidence: dict | None`, `failure: dict | None`; `None` until closed.
-- `totals: dict | None` — keys `steps: int`, `llm_calls: int`, `prompt_tokens: int`, `completion_tokens: int`, `usd: float`, `browser_ms: int`; `None` until closed.
+- `final: RunFinal | None` — typed submodel with fields `result: dict | None`, `evidence: dict | None`, `failure: dict | None`; `None` until closed.
+- `totals: RunTotals | None` — typed submodel with fields `steps: int`, `llm_calls: int`, `prompt_tokens: int`, `completion_tokens: int`, `usd: float`, `browser_ms: int`; `None` until closed.
+
+`budget`, `llm`, `final`, and `totals` SHALL be Pydantic `BaseModel` subclasses (`RunBudget`, `RunLLM`, `RunFinal`, `RunTotals`) so malformed shapes (missing keys, wrong value types) raise `pydantic.ValidationError` at write time rather than persisting silently.
 
 `Run` SHALL be serializable to JSON via `model_dump_json()` and deserializable from JSON via `model_validate_json()` with round-trip equality.
 
@@ -185,7 +187,7 @@ The system SHALL provide `agent.trace.AnyEvent` — a type alias for the discrim
 The system SHALL provide `agent.trace.TraceWriter` — a class that persists `Run` and `AnyEvent` objects to SQLite. Constructor: `TraceWriter(path: str = ":memory:")`. It SHALL:
 
 - Open a SQLite connection to `path` and call `_ensure_schema()` which creates `traces.runs` and `traces.events` tables if they do not exist.
-- `open_run(run: Run) -> None` — INSERT the run as a JSON blob into `traces.runs`. Raise `sqlite3.IntegrityError` if the `run_id` already exists.
+- `open_run(run: Run) -> None` — INSERT the run as a JSON blob into `traces.runs`. Raise `sqlite3.IntegrityError` if the `run_id` already exists. Raise `ValueError` if `run.status` is non-`None` (a run with terminal status cannot be opened — the writer would otherwise accept appended events whose timeline contradicts the closed state).
 - `append_event(event: AnyEvent) -> None` — verify the run exists and is still open, validate `event.seq > last_seq_for_run`, then INSERT the event's JSON into `traces.events`. Raise `LookupError` if `event.run_id` has no row in `traces.runs` OR if the run is already closed (`status` is non-NULL). Raise `SeqError` if the seq is not strictly greater than the last appended seq for this run.
 - `close_run(run_id: str, *, status: str, ended_at: str, final: dict, totals: dict) -> None` — UPDATE the `traces.runs` row to set `status`, `ended_at`, `final_json`, `totals_json`, AND rewrite the `payload` JSON blob so the canonical `Run` reflects the closed state. The merged values SHALL be re-validated against the `Run` schema before the row is written, so an invalid `status` (or any other field) raises `pydantic.ValidationError` and leaves the existing payload untouched. Raise `LookupError` if `run_id` has no row.
 - `close() -> None` — close the SQLite connection.
@@ -289,6 +291,13 @@ The system SHALL provide `agent.trace.redact(event: AnyEvent) -> AnyEvent` — a
 - **GIVEN** a `TraceWriter` with a run opened and then closed via `close_run(...)`
 - **WHEN** `append_event(event)` is called for that `run_id`
 - **THEN** a `LookupError` SHALL be raised
+
+#### Scenario: open_run rejects a Run with terminal status
+
+- **GIVEN** a `TraceWriter`
+- **WHEN** `open_run(run)` is called with `run.status` set to a terminal value (e.g. `"succeeded"`)
+- **THEN** a `ValueError` SHALL be raised
+- **AND** the `traces.runs` table SHALL NOT contain a row for that `run_id`
 
 #### Scenario: redact tolerates non-dict prompt messages
 
