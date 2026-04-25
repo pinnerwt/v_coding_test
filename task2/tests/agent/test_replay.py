@@ -856,6 +856,48 @@ def test_replay_run_uses_recorded_observation_text(tmp_path):
     assert result.matched is True, f"Expected match; got divergence={result.first_divergence!r}"
 
 
+def test_replay_run_intent_read_with_recorded_text_reports_prompt_drift(tmp_path):
+    """Documented limitation: intent-based reads with non-empty recorded text
+    SHALL report prompt drift, not silent match.
+
+    The stub locator surface always resolves to zero matches and `browser.read`
+    always returns "", so loop dispatches an "Error: could not locate ..."
+    tool message. A recording captured against a real browser would have the
+    actual page text in that slot — so prompt comparison must surface the
+    difference rather than coerce them to look equal. This test pins that
+    behaviour so the limitation is visible if anyone changes the stub.
+    """
+    task = "find the heading"
+    read_response = _make_chat_response("read", {"intent": "the heading"})
+    done_args = {
+        "result": {},
+        "evidence": {"url": "http://stub.local/", "text_snippet": "ok"},
+    }
+    done_response = _make_chat_response("done", done_args)
+
+    # Build a self-consistent recording, then mutate the recorded read tool
+    # message content to simulate a real browser returning non-empty text.
+    fixture_path = _record_fixture(tmp_path, task, [read_response, done_response])
+    lines = fixture_path.read_text().splitlines()
+    mutated: list[str] = []
+    swapped = False
+    for line in lines:
+        obj = json.loads(line)
+        if obj.get("kind") == "llm_call":
+            for msg in obj.get("prompt", {}).get("messages", []):
+                if msg.get("role") == "tool" and msg.get("content", "").startswith("Error:"):
+                    msg["content"] = "Real Heading Text From Browser"
+                    swapped = True
+        mutated.append(json.dumps(obj))
+    assert swapped, "Expected to find a tool error message to swap"
+    fixture_path.write_text("\n".join(mutated) + "\n")
+
+    result = replay_run(fixture_path)
+    assert result.matched is False
+    assert result.first_divergence is not None
+    assert result.first_divergence.kind == "prompt"
+
+
 def test_replay_run_steps_is_match_count_on_decision_divergence(tmp_path):
     """On in-loop decision divergence, `steps` SHALL be the count of decisions
     that matched before the mismatch — not min(n_recorded, n_replayed).

@@ -65,6 +65,8 @@ The system SHALL provide `agent.replay.replay_run(trace_path: str | Path) -> Rep
 8. On divergence, `steps` reports how many comparisons succeeded before the mismatch — that is, `i` for the in-loop comparisons (prompt or decision) and `min(n_recorded, n_replayed)` when one side simply runs out of items.
 9. On an empty/blank trace file, raises `ValueError` rather than `IndexError` from indexing the missing `Run` header line.
 
+**Known limitation — intent-based reads:** the harness deliberately does not stub the locate stack. `loop._dispatch` for `read(intent=...)` therefore always falls through to `"Error: could not locate ..."` rather than serving recorded text. A trace whose `read(intent=...)` calls captured non-empty page text from a real browser will report `first_divergence.kind == "prompt"` even when loop's decision logic is unchanged. Replaying such traces faithfully is out of scope; the harness targets `goto`, `read` (no intent), `done`, and `fail`.
+
 The function SHALL NOT make any HTTP calls, SHALL NOT launch a Playwright browser process, and SHALL NOT read `LLM_BASE_URL` or `LLM_MODEL` environment variables.
 
 #### Scenario: replay_run loads a valid fixture without error

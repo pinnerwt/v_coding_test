@@ -3,6 +3,17 @@
 Given a recorded trace JSONL file, drives loop.py with a stub browser and
 stub LLM client (no real Playwright, no real HTTP) and compares emitted
 decisions against the recording.
+
+Known limitation — intent-based reads:
+    `browser.read(selector)` always returns "" and the stub locator surface
+    resolves to zero matches, so loop's `read(intent=...)` path always
+    surfaces "Error: could not locate ..." rather than the recorded text.
+    Real traces whose `read(intent=...)` calls returned non-empty text will
+    therefore report prompt drift even when loop's decisions are unchanged.
+    Replaying such traces faithfully would require stubbing the full locate
+    stack and queueing recorded tool-message contents — out of scope for
+    this harness, which targets decision-divergence detection on traces
+    that exercise `goto`, `read` (no intent), `done`, and `fail`.
 """
 
 from __future__ import annotations
