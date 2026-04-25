@@ -186,8 +186,8 @@ The system SHALL provide `agent.trace.TraceWriter` — a class that persists `Ru
 
 - Open a SQLite connection to `path` and call `_ensure_schema()` which creates `traces.runs` and `traces.events` tables if they do not exist.
 - `open_run(run: Run) -> None` — INSERT the run as a JSON blob into `traces.runs`. Raise `sqlite3.IntegrityError` if the `run_id` already exists.
-- `append_event(event: AnyEvent) -> None` — validate `event.seq > last_seq_for_run`, then INSERT the event's JSON into `traces.events`. Raise `SeqError` if the seq is not strictly greater than the last appended seq for this run.
-- `close_run(run_id: str, *, status: str, ended_at: str, final: dict, totals: dict) -> None` — UPDATE the `traces.runs` row to set `status`, `ended_at`, `final_json`, `totals_json`.
+- `append_event(event: AnyEvent) -> None` — verify the run exists, validate `event.seq > last_seq_for_run`, then INSERT the event's JSON into `traces.events`. Raise `LookupError` if `event.run_id` has no row in `traces.runs`. Raise `SeqError` if the seq is not strictly greater than the last appended seq for this run.
+- `close_run(run_id: str, *, status: str, ended_at: str, final: dict, totals: dict) -> None` — UPDATE the `traces.runs` row to set `status`, `ended_at`, `final_json`, `totals_json`, AND rewrite the `payload` JSON blob so the canonical `Run` reflects the closed state. Raise `LookupError` if `run_id` has no row.
 - `close() -> None` — close the SQLite connection.
 - `__enter__` / `__exit__` context manager: call `close()` on exit.
 
@@ -236,7 +236,7 @@ The system SHALL provide `agent.trace.SeqError` — a `ValueError` subclass rais
 The system SHALL provide `agent.trace.redact(event: AnyEvent) -> AnyEvent` — a function that returns a new event instance with secret-typed fields replaced by the string `"[REDACTED]"`. Secret fields are:
 
 - For `LLMCallEvent`: any message in `prompt.messages` whose `content` string matches the pattern `(?i)(set-cookie|cookie|authorization):\s*\S+` SHALL have the matching substring(s) replaced with `[REDACTED]`.
-- For `DecisionEvent` with `tool == "type"`: `args["text"]` SHALL be replaced with `"[REDACTED]"`.
+- For `DecisionEvent` or `ActEvent` with `tool == "type"`: `args["text"]` SHALL be replaced with `"[REDACTED]"`. Both event variants are covered because `DecisionEvent` records the LLM's intent and `ActEvent` records the executed action — leaking either persists the typed text.
 - For all other event variants: the event SHALL be returned unchanged.
 
 `redact()` SHALL NOT mutate the original event; it SHALL return a new model instance.
@@ -270,3 +270,22 @@ The system SHALL provide `agent.trace.redact(event: AnyEvent) -> AnyEvent` — a
 - **WHEN** `append_event(event)` is called
 - **THEN** the stored JSON payload in `traces.events` SHALL NOT contain the literal string `"secret"`
 - **AND** the stored JSON SHALL contain `"[REDACTED]"`
+
+#### Scenario: redact masks typed text on ActEvent
+
+- **GIVEN** an `ActEvent` with `tool="type"` and `args={"intent": "password field", "text": "MyP@ssw0rd"}`
+- **WHEN** `redact(event)` is called
+- **THEN** the returned event's `args["text"]` SHALL equal `"[REDACTED]"`
+- **AND** the original event's `args["text"]` SHALL equal `"MyP@ssw0rd"`
+
+#### Scenario: append_event rejects unknown run_id
+
+- **GIVEN** a `TraceWriter` with no run opened
+- **WHEN** `append_event(event)` is called with a `run_id` that has no row in `traces.runs`
+- **THEN** a `LookupError` SHALL be raised
+
+#### Scenario: close_run rewrites the payload blob
+
+- **GIVEN** a `TraceWriter` with a run opened via `open_run(run)` where `status`, `final`, and `totals` are `None`
+- **WHEN** `close_run(run_id, status="succeeded", ended_at=..., final={...}, totals={...})` is called
+- **THEN** the `payload` JSON in `traces.runs` for that `run_id` SHALL parse back to a `Run` whose `status`, `ended_at`, `final`, and `totals` reflect the closing values

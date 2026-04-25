@@ -156,7 +156,11 @@ def redact(event: AnyEvent) -> AnyEvent:
         new_prompt = {**event.prompt, "messages": new_messages}
         return event.model_copy(update={"prompt": new_prompt}, deep=True)
 
-    if isinstance(event, DecisionEvent) and event.tool == "type" and "text" in event.args:
+    if (
+        isinstance(event, DecisionEvent | ActEvent)
+        and event.tool == "type"
+        and "text" in event.args
+    ):
         new_args = {**event.args, "text": "[REDACTED]"}
         return event.model_copy(update={"args": new_args}, deep=True)
 
@@ -182,11 +186,12 @@ CREATE TABLE IF NOT EXISTS traces_events (
 )"""
 
 _INSERT_RUN_SQL = "INSERT INTO traces_runs (run_id, payload) VALUES (?, ?)"
+_SELECT_RUN_PAYLOAD_SQL = "SELECT payload FROM traces_runs WHERE run_id = ?"
 _MAX_SEQ_SQL = "SELECT MAX(seq) FROM traces_events WHERE run_id = ?"
 _INSERT_EVENT_SQL = "INSERT INTO traces_events (run_id, seq, payload) VALUES (?, ?, ?)"
 _UPDATE_RUN_SQL = (
     "UPDATE traces_runs "
-    "SET status = ?, ended_at = ?, final_json = ?, totals_json = ? "
+    "SET status = ?, ended_at = ?, final_json = ?, totals_json = ?, payload = ? "
     "WHERE run_id = ?"
 )
 
@@ -216,8 +221,11 @@ class TraceWriter:
 
     def append_event(self, event: AnyEvent) -> None:  # type: ignore[override]
         conn = self._require_conn()
-        row = conn.execute(_MAX_SEQ_SQL, (event.run_id,)).fetchone()
-        max_seq: int | None = row[0] if row else None
+        payload_row = conn.execute(_SELECT_RUN_PAYLOAD_SQL, (event.run_id,)).fetchone()
+        if payload_row is None:
+            raise LookupError(f"No open run with run_id={event.run_id!r}; call open_run first.")
+        max_seq_row = conn.execute(_MAX_SEQ_SQL, (event.run_id,)).fetchone()
+        max_seq: int | None = max_seq_row[0] if max_seq_row else None
         if max_seq is not None and event.seq <= max_seq:
             raise SeqError(expected_min=max_seq + 1, got=event.seq)
         clean_event = redact(event)
@@ -237,9 +245,23 @@ class TraceWriter:
         totals: dict[str, Any],
     ) -> None:
         conn = self._require_conn()
+        payload_row = conn.execute(_SELECT_RUN_PAYLOAD_SQL, (run_id,)).fetchone()
+        if payload_row is None:
+            raise LookupError(f"No open run with run_id={run_id!r}; call open_run first.")
+        run = Run.model_validate_json(payload_row[0])
+        updated = run.model_copy(
+            update={"status": status, "ended_at": ended_at, "final": final, "totals": totals}
+        )
         conn.execute(
             _UPDATE_RUN_SQL,
-            (status, ended_at, json.dumps(final), json.dumps(totals), run_id),
+            (
+                status,
+                ended_at,
+                json.dumps(final),
+                json.dumps(totals),
+                updated.model_dump_json(),
+                run_id,
+            ),
         )
         conn.commit()
 
