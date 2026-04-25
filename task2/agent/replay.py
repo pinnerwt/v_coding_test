@@ -76,6 +76,7 @@ class StubLLMClient:
         self._responses: list[ChatResponse] = list(responses)
         self._idx: int = 0
         self.responses_consumed: list[ChatResponse] = []
+        self.prompts_consumed: list[list[dict]] = []
 
     def chat(
         self,
@@ -87,6 +88,8 @@ class StubLLMClient:
         seed: int | None = None,  # noqa: ARG002
         **kwargs: Any,  # noqa: ARG002
     ) -> ChatResponse:
+        # Snapshot the messages — loop.py keeps mutating the same list across calls.
+        self.prompts_consumed.append(json.loads(json.dumps(messages)))
         if self._idx < len(self._responses):
             response = self._responses[self._idx]
             self._idx += 1
@@ -101,6 +104,7 @@ class ReplayDivergence:
     step_id: str | None
     expected: dict
     actual: dict
+    kind: str = "decision"
 
 
 @dataclass(frozen=True)
@@ -168,17 +172,38 @@ def replay_run(trace_path: str | Path) -> ReplayResult:
         task=run.task,
         browser=stub_browser,
         llm_client=stub_llm,
-        max_steps=len(recorded_decisions) + 2,
+        max_steps=len(decide_llm_calls) + 2,
     )
 
+    # Prompt drift: compare what loop.py actually sent against what was recorded.
+    # If the prompt diverges at any chat() call, surface that divergence — a matching
+    # tool-call sequence is not enough to declare the run regression-free.
+    n_prompt_pairs = min(len(decide_llm_calls), len(stub_llm.prompts_consumed))
+    for i in range(n_prompt_pairs):
+        recorded_prompt = decide_llm_calls[i].prompt
+        actual_prompt = {"messages": stub_llm.prompts_consumed[i]}
+        if recorded_prompt != actual_prompt:
+            return ReplayResult(
+                matched=False,
+                steps=i,
+                first_divergence=ReplayDivergence(
+                    step_id=decide_llm_calls[i].step_id,
+                    expected=recorded_prompt,
+                    actual=actual_prompt,
+                    kind="prompt",
+                ),
+            )
+
+    # Decision diff is over tool-call responses only. A no-tool 'decide' turn produces
+    # an LLMCallEvent but no DecisionEvent in the recording, so its consumed counterpart
+    # must not occupy a slot in replayed_pairs.
     replayed_pairs: list[tuple[str, dict]] = []
     for cr in stub_llm.responses_consumed:
-        if cr.tool_calls:
-            tc = cr.tool_calls[0]
-            args = json.loads(tc.arguments) if tc.arguments else {}
-            replayed_pairs.append((tc.name, args))
-        else:
-            replayed_pairs.append(("", {}))
+        if not cr.tool_calls:
+            continue
+        tc = cr.tool_calls[0]
+        args = json.loads(tc.arguments) if tc.arguments else {}
+        replayed_pairs.append((tc.name, args))
 
     n_rec = len(recorded_decisions)
     n_rep = len(replayed_pairs)

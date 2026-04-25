@@ -242,6 +242,197 @@ def test_replay_run_count_mismatch_more_replayed(tmp_path):
     assert result.steps == 1  # min(1 recorded, 2 replayed)
 
 
+def test_replay_run_detects_prompt_drift(tmp_path):
+    """If the prompt loop.py sends differs from the recorded prompt, replay SHALL diverge.
+
+    Mutates the recorded system prompt in the fixture; loop.py still sends the original
+    system prompt, so replay must surface a prompt-level divergence (not silently match
+    on identical tool-call sequence).
+    """
+    lines = FIXTURE_PATH.read_text().strip().splitlines()
+    out: list[str] = []
+    mutated = False
+    for line in lines:
+        obj = json.loads(line)
+        if not mutated and obj.get("kind") == "llm_call" and obj.get("purpose") == "decide":
+            messages = obj["prompt"]["messages"]
+            for m in messages:
+                if m.get("role") == "system":
+                    m["content"] = m["content"] + "\n\nADDITIONAL POLICY: do not click."
+                    mutated = True
+                    break
+        out.append(json.dumps(obj))
+    assert mutated, "Expected to mutate the system message of the first decide LLMCallEvent"
+
+    drifted = tmp_path / "drifted.jsonl"
+    drifted.write_text("\n".join(out) + "\n")
+
+    result = replay_run(drifted)
+    assert result.matched is False
+    assert result.first_divergence is not None
+    assert result.first_divergence.kind == "prompt"
+    assert result.first_divergence.step_id == "step-1"
+
+
+def _record_fixture(tmp_path: Path, task: str, responses: list) -> Path:
+    """Run loop.py with a recording LLM to produce a self-consistent trace fixture.
+
+    Captures every prompt loop.py sends and pairs it with the canned response, then
+    writes a JSONL trace whose `prompt`/`response` shape matches what TraceWriter
+    would produce. DecisionEvents are emitted only for tool-call responses (no-tool
+    turns produce an LLMCallEvent but no DecisionEvent), mirroring loop.py's
+    semantics.
+    """
+
+    class _RecordingLLM:
+        def __init__(self, responses):
+            self._responses = list(responses)
+            self._idx = 0
+            self.prompts: list[list[dict]] = []
+
+        def chat(self, messages, **kw):  # noqa: ARG002
+            # Deep-copy so subsequent mutations in loop.py don't bleed back.
+            self.prompts.append(json.loads(json.dumps(messages)))
+            resp = self._responses[self._idx]
+            self._idx += 1
+            return resp
+
+    rec = _RecordingLLM(responses)
+    with StubBrowser() as br:
+        from agent.loop import loop as _loop_fn
+
+        _loop_fn(task=task, browser=br, llm_client=rec, max_steps=len(responses) + 2)
+
+    run = {
+        "run_id": "run-rec-001",
+        "task": task,
+        "expect_schema": None,
+        "budget": {"steps": 20, "usd": 1.0, "seconds": 120},
+        "llm": {
+            "base_url": "http://stub.local",
+            "model": "stub-model",
+            "temperature": 0.0,
+            "seed": None,
+        },
+        "agent_version": "0.0.1-test",
+        "started_at": "2024-01-01T00:00:00Z",
+        "ended_at": None,
+        "status": None,
+        "final": None,
+        "totals": None,
+    }
+
+    events: list[dict] = []
+    seq = 0
+    decision_idx = 0
+    for i, (prompt_msgs, resp) in enumerate(zip(rec.prompts, responses, strict=True)):
+        step_id = f"step-{i + 1}"
+        seq += 1
+        events.append(
+            {
+                "run_id": run["run_id"],
+                "seq": seq,
+                "ts": f"2024-01-01T00:00:{seq:02d}Z",
+                "step_id": step_id,
+                "kind": "observation",
+                "url": "http://stub.local/",
+                "title": "",
+                "ax_tree_digest": "",
+                "ax_fingerprint": "",
+                "screenshot_ref": "",
+                "viewport": {"width": 1280, "height": 720},
+            }
+        )
+        seq += 1
+        llm_call_id = f"lc-{i + 1}"
+        recorded_resp_dict: dict = {
+            "content": resp.content,
+            "finish_reason": resp.finish_reason,
+            "tool_calls": [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {"name": tc.name, "arguments": tc.arguments},
+                }
+                for tc in resp.tool_calls
+            ],
+        }
+        events.append(
+            {
+                "run_id": run["run_id"],
+                "seq": seq,
+                "ts": f"2024-01-01T00:00:{seq:02d}Z",
+                "step_id": step_id,
+                "kind": "llm_call",
+                "llm_call_id": llm_call_id,
+                "purpose": "decide",
+                "model": "stub-model",
+                "base_url": "http://stub.local",
+                "prompt": {"messages": prompt_msgs},
+                "response": recorded_resp_dict,
+                "tokens": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+                "usd": 0.0,
+                "ms": 0,
+            }
+        )
+        if resp.tool_calls:
+            decision_idx += 1
+            tc = resp.tool_calls[0]
+            seq += 1
+            events.append(
+                {
+                    "run_id": run["run_id"],
+                    "seq": seq,
+                    "ts": f"2024-01-01T00:00:{seq:02d}Z",
+                    "step_id": step_id,
+                    "kind": "decision",
+                    "intent": f"decision-{decision_idx}",
+                    "tool": tc.name,
+                    "args": json.loads(tc.arguments) if tc.arguments else {},
+                    "rationale": "recorded by test helper",
+                    "llm_call_id": llm_call_id,
+                }
+            )
+
+    fixture_path = tmp_path / "recorded.jsonl"
+    fixture_path.write_text("\n".join([json.dumps(run)] + [json.dumps(e) for e in events]) + "\n")
+    return fixture_path
+
+
+def test_replay_run_ignores_no_tool_decide_turns(tmp_path):
+    """A decide LLMCallEvent with no tool_calls SHALL NOT be counted as a replayed decision.
+
+    Build a self-consistent fixture where loop.py emits a no-tool 'thinking' chat turn
+    before each tool call. Recorded DecisionEvents = 2 (goto, done); decide LLMCallEvents
+    = 3 (no-tool, goto, done). Replay must align the 2 tool-call responses to the 2
+    DecisionEvents and report match — not append ('', {}) for the no-tool turn.
+    """
+    from agent.llm import ChatResponse, Usage
+
+    no_tool = ChatResponse(
+        content="Let me think.",
+        tool_calls=[],
+        finish_reason="stop",
+        model="stub",
+        usage=Usage(0, 0, 0),
+        raw={},
+    )
+    goto = _make_chat_response("goto", {"url": "http://stub.local/"})
+    done_args = {
+        "result": {"title": "Stub"},
+        "evidence": {"url": "http://stub.local/", "text_snippet": "S"},
+    }
+    done = _make_chat_response("done", done_args)
+
+    fixture_path = _record_fixture(
+        tmp_path, "go to example and return title", [no_tool, goto, done]
+    )
+
+    result = replay_run(fixture_path)
+    assert result.matched is True, f"Expected match; got divergence={result.first_divergence!r}"
+    assert result.first_divergence is None
+
+
 def test_stub_browser_no_playwright_import():
     """agent.replay SHALL NOT directly import playwright.
 
