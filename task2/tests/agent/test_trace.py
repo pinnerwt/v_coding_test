@@ -459,6 +459,104 @@ def test_trace_writer_close_idempotent():
     assert writer._conn is None
 
 
+def test_redact_act_event_type_text():
+    """ActEvent recording an executed type action must also have args['text'] redacted."""
+    ev = ActEvent(
+        run_id=RUN_ID,
+        seq=1,
+        ts=TS,
+        step_id=None,
+        tool="type",
+        args={"intent": "password field", "text": "MyP@ssw0rd"},
+        outcome="ok",
+        diff={"url_changed": False, "ax_changed": True, "error": None},
+        ms=10,
+    )
+    redacted = redact(ev)
+    assert redacted.args["text"] == "[REDACTED]"
+    assert ev.args["text"] == "MyP@ssw0rd"
+
+
+def test_trace_writer_redacts_act_event_before_persist():
+    run = _run_full()
+    ev = ActEvent(
+        run_id=run.run_id,
+        seq=1,
+        ts=TS,
+        step_id=None,
+        tool="type",
+        args={"intent": "password field", "text": "supersecret"},
+        outcome="ok",
+        diff={"url_changed": False, "ax_changed": True, "error": None},
+        ms=10,
+    )
+    with TraceWriter(":memory:") as writer:
+        writer.open_run(run)
+        writer.append_event(ev)
+        row = writer._conn.execute(
+            "SELECT payload FROM traces_events WHERE run_id = ? AND seq = 1", (run.run_id,)
+        ).fetchone()
+    payload = row[0]
+    assert "supersecret" not in payload
+    assert "[REDACTED]" in payload
+
+
+def test_append_event_rejects_unknown_run_id():
+    """append_event must fail fast if run_id is not in traces_runs."""
+    ev = _observation_event(run_id="never-opened", seq=1)
+    with TraceWriter(":memory:") as writer:
+        with pytest.raises(LookupError):
+            writer.append_event(ev)
+
+
+def test_close_run_refreshes_payload_blob():
+    """close_run must rewrite payload so the canonical Run JSON reflects final state."""
+    run = _run_full()
+    initial = Run(
+        run_id=run.run_id,
+        task=run.task,
+        expect_schema=run.expect_schema,
+        budget=run.budget,
+        llm=run.llm,
+        agent_version=run.agent_version,
+        started_at=run.started_at,
+        ended_at=None,
+        status=None,
+        final=None,
+        totals=None,
+    )
+    with TraceWriter(":memory:") as writer:
+        writer.open_run(initial)
+        writer.close_run(
+            initial.run_id,
+            status="succeeded",
+            ended_at="2024-01-01T00:01:00Z",
+            final={"result": {"answer": "cats"}, "evidence": {}, "failure": None},
+            totals={
+                "steps": 3,
+                "llm_calls": 2,
+                "prompt_tokens": 100,
+                "completion_tokens": 50,
+                "usd": 0.01,
+                "browser_ms": 500,
+            },
+        )
+        row = writer._conn.execute(
+            "SELECT payload FROM traces_runs WHERE run_id = ?", (initial.run_id,)
+        ).fetchone()
+    payload = json.loads(row[0])
+    assert payload["status"] == "succeeded"
+    assert payload["ended_at"] == "2024-01-01T00:01:00Z"
+    assert payload["final"]["result"] == {"answer": "cats"}
+    assert payload["totals"]["steps"] == 3
+
+
+def test_close_run_unknown_run_id_raises():
+    with TraceWriter(":memory:") as writer:
+        with pytest.raises(LookupError):
+            writer.close_run("does-not-exist", status="failed", ended_at=TS, final={}, totals={})
+
+
 def test_trace_writer_methods_on_closed_raise():
     writer = TraceWriter(":memory:")
     writer.close()
