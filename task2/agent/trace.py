@@ -252,10 +252,9 @@ class TraceWriter:
         payload_row = conn.execute(_SELECT_RUN_PAYLOAD_SQL, (run_id,)).fetchone()
         if payload_row is None:
             raise self._missing_run(run_id)
-        run = Run.model_validate_json(payload_row[0])
-        updated = run.model_copy(
-            update={"status": status, "ended_at": ended_at, "final": final, "totals": totals}
-        )
+        run_dict = Run.model_validate_json(payload_row[0]).model_dump()
+        run_dict.update(status=status, ended_at=ended_at, final=final, totals=totals)
+        updated = Run.model_validate(run_dict)
         conn.execute(
             _UPDATE_RUN_SQL,
             (

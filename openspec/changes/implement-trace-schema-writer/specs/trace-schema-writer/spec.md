@@ -187,7 +187,7 @@ The system SHALL provide `agent.trace.TraceWriter` — a class that persists `Ru
 - Open a SQLite connection to `path` and call `_ensure_schema()` which creates `traces.runs` and `traces.events` tables if they do not exist.
 - `open_run(run: Run) -> None` — INSERT the run as a JSON blob into `traces.runs`. Raise `sqlite3.IntegrityError` if the `run_id` already exists.
 - `append_event(event: AnyEvent) -> None` — verify the run exists, validate `event.seq > last_seq_for_run`, then INSERT the event's JSON into `traces.events`. Raise `LookupError` if `event.run_id` has no row in `traces.runs`. Raise `SeqError` if the seq is not strictly greater than the last appended seq for this run.
-- `close_run(run_id: str, *, status: str, ended_at: str, final: dict, totals: dict) -> None` — UPDATE the `traces.runs` row to set `status`, `ended_at`, `final_json`, `totals_json`, AND rewrite the `payload` JSON blob so the canonical `Run` reflects the closed state. Raise `LookupError` if `run_id` has no row.
+- `close_run(run_id: str, *, status: str, ended_at: str, final: dict, totals: dict) -> None` — UPDATE the `traces.runs` row to set `status`, `ended_at`, `final_json`, `totals_json`, AND rewrite the `payload` JSON blob so the canonical `Run` reflects the closed state. The merged values SHALL be re-validated against the `Run` schema before the row is written, so an invalid `status` (or any other field) raises `pydantic.ValidationError` and leaves the existing payload untouched. Raise `LookupError` if `run_id` has no row.
 - `close() -> None` — close the SQLite connection.
 - `__enter__` / `__exit__` context manager: call `close()` on exit.
 
@@ -283,6 +283,13 @@ The system SHALL provide `agent.trace.redact(event: AnyEvent) -> AnyEvent` — a
 - **GIVEN** a `TraceWriter` with no run opened
 - **WHEN** `append_event(event)` is called with a `run_id` that has no row in `traces.runs`
 - **THEN** a `LookupError` SHALL be raised
+
+#### Scenario: close_run rejects invalid Run state
+
+- **GIVEN** a `TraceWriter` with a run opened
+- **WHEN** `close_run` is called with `status="success"` (not in the `Run.status` Literal)
+- **THEN** `pydantic.ValidationError` SHALL be raised
+- **AND** the existing `payload` row in `traces.runs` SHALL be unchanged
 
 #### Scenario: close_run rewrites the payload blob
 
