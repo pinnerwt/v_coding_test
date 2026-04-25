@@ -186,6 +186,7 @@ CREATE TABLE IF NOT EXISTS traces_events (
 )"""
 
 _INSERT_RUN_SQL = "INSERT INTO traces_runs (run_id, payload) VALUES (?, ?)"
+_RUN_EXISTS_SQL = "SELECT 1 FROM traces_runs WHERE run_id = ?"
 _SELECT_RUN_PAYLOAD_SQL = "SELECT payload FROM traces_runs WHERE run_id = ?"
 _MAX_SEQ_SQL = "SELECT MAX(seq) FROM traces_events WHERE run_id = ?"
 _INSERT_EVENT_SQL = "INSERT INTO traces_events (run_id, seq, payload) VALUES (?, ?, ?)"
@@ -214,6 +215,10 @@ class TraceWriter:
             raise sqlite3.ProgrammingError("Cannot operate on a closed TraceWriter.")
         return self._conn
 
+    @staticmethod
+    def _missing_run(run_id: str) -> LookupError:
+        return LookupError(f"No open run with run_id={run_id!r}; call open_run first.")
+
     def open_run(self, run: Run) -> None:
         conn = self._require_conn()
         conn.execute(_INSERT_RUN_SQL, (run.run_id, run.model_dump_json()))
@@ -221,9 +226,8 @@ class TraceWriter:
 
     def append_event(self, event: AnyEvent) -> None:  # type: ignore[override]
         conn = self._require_conn()
-        payload_row = conn.execute(_SELECT_RUN_PAYLOAD_SQL, (event.run_id,)).fetchone()
-        if payload_row is None:
-            raise LookupError(f"No open run with run_id={event.run_id!r}; call open_run first.")
+        if conn.execute(_RUN_EXISTS_SQL, (event.run_id,)).fetchone() is None:
+            raise self._missing_run(event.run_id)
         max_seq_row = conn.execute(_MAX_SEQ_SQL, (event.run_id,)).fetchone()
         max_seq: int | None = max_seq_row[0] if max_seq_row else None
         if max_seq is not None and event.seq <= max_seq:
@@ -247,7 +251,7 @@ class TraceWriter:
         conn = self._require_conn()
         payload_row = conn.execute(_SELECT_RUN_PAYLOAD_SQL, (run_id,)).fetchone()
         if payload_row is None:
-            raise LookupError(f"No open run with run_id={run_id!r}; call open_run first.")
+            raise self._missing_run(run_id)
         run = Run.model_validate_json(payload_row[0])
         updated = run.model_copy(
             update={"status": status, "ended_at": ended_at, "final": final, "totals": totals}
