@@ -14,3 +14,5 @@ Make the repository more standard: 1. add CI workflow for task2/ , which apply p
 Update the /new_task2 skill to create a PR in the end.
 
 /new_task2 (l3)
+
+Update the /new_task2 skill to summon subagents for "Generate all artifacts", "Implement via /opsx:apply", "Verify".
