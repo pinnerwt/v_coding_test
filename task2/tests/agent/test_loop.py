@@ -380,3 +380,96 @@ def test_loop_self_correction(fixture_server, playwright_chromium):
         result = loop("click the Submit button", browser, fake_llm)
 
     assert result.status == "succeeded"
+
+
+# ---------------------------------------------------------------------------
+# Self-correction: L1 fails → L2 also fails → loop returns error string,
+# continues, LLM still reaches done.
+# ---------------------------------------------------------------------------
+
+
+def test_loop_self_correction_l2_also_fails(fixture_server, playwright_chromium):
+    """Scenario: L1 raises zero_matches, L2 also raises LocatorMiss.
+    The loop must return an error string as the tool result and NOT crash.
+    The LLM can still call done afterward.
+    """
+    # index.html has no button-like element: both locate_l1 and locate_l2 raise
+    # LocatorMiss(reason="zero_matches") for role="button", name="Submit button".
+    fixture_url = f"{fixture_server}/index.html"
+
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+        _response_with_tool_call(_tool_call("read", {"intent": "Submit button"}, call_id="tc-2")),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"note": "error was fed back"},
+                    "evidence": {
+                        "url": fixture_url,
+                        "text_snippet": "Hello",
+                    },
+                },
+                call_id="tc-3",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop("click the Submit button", browser, fake_llm)
+
+    # Loop must not crash; the error string was fed back and the LLM called done.
+    assert result.status == "succeeded"
+
+
+# ---------------------------------------------------------------------------
+# Self-correction: supervisor max_attempts exhausted — loop returns error
+# string gracefully (does not crash or raise).
+# ---------------------------------------------------------------------------
+
+
+def test_loop_self_correction_supervisor_halt(fixture_server, playwright_chromium):
+    """Scenario: Supervisor max_attempts cap reached — loop feeds error string
+    back to the LLM as the tool result and continues; the run does not crash.
+
+    index.html has no button-like elements so both locate_l1 and locate_l2 raise
+    LocatorMiss(reason="zero_matches"). The default supervisor max_attempts=3, so
+    after 4 read calls with the same (L1_ax, zero_matches) key the 4th call
+    exhausts the cap and supervisor.handle() returns next_tier=None (halt).
+    The loop must return an error string on all four reads and still reach done.
+    """
+    fixture_url = f"{fixture_server}/index.html"
+
+    # 4 read calls to exhaust max_attempts=3 and trigger the halt branch once.
+    read_tc = [
+        _response_with_tool_call(
+            _tool_call("read", {"intent": "Submit button"}, call_id=f"tc-r{i}")
+        )
+        for i in range(1, 5)
+    ]
+    responses = (
+        [_response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-0"))]
+        + read_tc
+        + [
+            _response_with_tool_call(
+                _tool_call(
+                    "done",
+                    {
+                        "result": {"note": "supervisor halted"},
+                        "evidence": {
+                            "url": fixture_url,
+                            "text_snippet": "Hello",
+                        },
+                    },
+                    call_id="tc-done",
+                )
+            ),
+        ]
+    )
+    fake_llm = _FakeLLMClient(responses)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop("click the Submit button", browser, fake_llm, max_steps=10)
+
+    assert result.status == "succeeded"
