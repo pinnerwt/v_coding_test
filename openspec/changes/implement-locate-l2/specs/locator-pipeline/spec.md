@@ -2,12 +2,12 @@
 
 ### Requirement: L2 DOM-heuristic resolution
 
-The system SHALL provide `agent.locate.locate_l2(page, *, role, name) -> LocateResult` that resolves an element via DOM heuristics, intended to catch the cases L1 misses (elements with no accessible name). `locate_l2` SHALL run an ordered list of strategies and return the first strategy that yields exactly one matching element. When no strategy yields a match, `locate_l2` SHALL raise `LocatorMiss(reason="zero_matches", match_count=0)`. When at least one strategy yields more than one match and no strategy yields exactly one, `locate_l2` SHALL raise `LocatorMiss(reason="ambiguous", match_count=N)` where `N` is the count from the first non-empty strategy. `locate_l2` SHALL NOT pick arbitrarily.
+The system SHALL provide `agent.locate.locate_l2(page, *, role, name) -> LocateResult` that resolves an element via DOM heuristics, intended to catch the cases L1 misses (elements with no accessible name). For each supported role, `locate_l2` SHALL run the role's L2 strategy (currently exactly one per role; future tickets may add additional strategies per role). When the role's strategy yields exactly one element, `locate_l2` SHALL return a `LocateResult`. When the strategy yields zero elements, `locate_l2` SHALL raise `LocatorMiss(reason="zero_matches", match_count=0)`. When the strategy yields more than one element, `locate_l2` SHALL raise `LocatorMiss(reason="ambiguous", match_count=N)` where `N` is the strategy's match count. `locate_l2` SHALL NOT pick arbitrarily.
 
-The supported strategies, in this order:
+The supported role-to-strategy mapping:
 
-1. **Placeholder strategy** — only for `role == "textbox"` and only when `name` is non-empty. Uses Playwright's placeholder query (`page.get_by_placeholder(name, exact=False)`).
-2. **Text-contains over a clickable taxonomy** — only for `role` in `{"button", "link"}` and only when `name` is non-empty. Restricts the candidate set to a per-role CSS taxonomy that includes non-semantic clickables (for `button`: `button, input[type=button], input[type=submit], input[type=reset], [role=button], [onclick], [class*="btn"], [class*="button"]`; for `link`: `a[href], [role=link]`), then filters by visible text via `Locator.filter(has_text=name)`.
+1. **Placeholder strategy** — for `role == "textbox"` (with non-empty `name`). Uses Playwright's placeholder query (`page.get_by_placeholder(name, exact=False)`).
+2. **Text-contains over a clickable taxonomy** — for `role` in `{"button", "link"}` (with non-empty `name`). Restricts the candidate set to a per-role CSS taxonomy that includes non-semantic clickables (for `button`: `button, input[type=button], input[type=submit], input[type=reset], [role=button], [onclick], [class*="btn"], [class*="button"]`; for `link`: `a[href], [role=link]`), then filters by visible text via `Locator.filter(has_text=name)`.
 
 Roles outside the supported set (`heading`, `checkbox`, plus any role added later that L2 does not know how to handle) SHALL cause `locate_l2` to raise `LocatorMiss(reason="zero_matches", match_count=0)` immediately, without running any strategy. Calls with an empty `name` for roles that require one SHALL likewise short-circuit with `zero_matches`.
 
@@ -29,7 +29,7 @@ On success, `LocateResult` SHALL be populated with `tier="L2_dom"`, the queried 
 - **THEN** the call SHALL return a `LocateResult` with `tier == "L2_dom"`
 - **AND** `page.locator(result.selector)` SHALL resolve to that single `<div>` element
 
-#### Scenario: Ambiguous L2 raises with the first non-empty strategy's count
+#### Scenario: Ambiguous L2 raises with the strategy's match count
 
 - **GIVEN** a page containing two `<div class="btn">Save</div>` elements in distinct sections and no other elements matching the `button` taxonomy with text `"Save"`
 - **WHEN** a caller invokes `locate_l2(page, role="button", name="Save")`
@@ -37,7 +37,7 @@ On success, `LocateResult` SHALL be populated with `tier="L2_dom"`, the queried 
 - **AND** `LocatorMiss.reason` SHALL equal `"ambiguous"`
 - **AND** `LocatorMiss.match_count` SHALL equal `2`
 
-#### Scenario: All strategies miss raises zero_matches
+#### Scenario: Strategy misses raises zero_matches
 
 - **GIVEN** a page containing no element whose placeholder, accessible name, or visible text within the relevant taxonomy contains `"Refund"`
 - **WHEN** a caller invokes `locate_l2(page, role="button", name="Refund")`

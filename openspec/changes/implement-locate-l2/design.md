@@ -46,6 +46,8 @@ Order:
 
 If strategy 1 finds a unique element we return immediately; we do not "also try" strategy 2 to confirm. The ordering reflects which heuristic is least likely to false-positive.
 
+> **Implementation note (post-refactor):** ticket #4 ships exactly one strategy per role (placeholder for `textbox`; text-contains for `button`/`link`), so the runtime branches on role and runs that strategy directly rather than iterating a list. The list-of-strategies framing is preserved as the design contract — the moment a role gets a second strategy (e.g. ticket #6 vision rerank candidates feeding back into L2, or ticket #12 needing per-strategy trace candidates), the loop scaffold returns.
+
 ### Per-role DOM taxonomy for the text-contains strategy
 
 For `button`, the taxonomy is:
