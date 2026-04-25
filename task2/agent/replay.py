@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from agent.llm import ChatResponse, ToolCall, Usage
 from agent.loop import loop
@@ -104,7 +104,7 @@ class ReplayDivergence:
     step_id: str | None
     expected: dict
     actual: dict
-    kind: str = "decision"
+    kind: Literal["decision", "prompt"] = "decision"
 
 
 @dataclass(frozen=True)

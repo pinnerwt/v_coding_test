@@ -11,6 +11,8 @@ from pathlib import Path
 
 import pytest
 
+from agent.llm import ChatResponse, ToolCall, Usage
+from agent.loop import loop
 from agent.replay import ReplayDivergence, ReplayResult, StubBrowser, StubLLMClient, replay_run
 from agent.trace import (
     DecisionEvent,
@@ -100,10 +102,8 @@ def test_stub_browser_context_manager():
 # ---------------------------------------------------------------------------
 
 
-def _make_chat_response(tool_name: str, args: dict):
+def _make_chat_response(tool_name: str, args: dict) -> ChatResponse:
     """Helper to create a minimal ChatResponse for testing."""
-    from agent.llm import ChatResponse, ToolCall, Usage
-
     return ChatResponse(
         content=None,
         tool_calls=[ToolCall(id="tc-test", name=tool_name, arguments=json.dumps(args))],
@@ -284,24 +284,9 @@ def _record_fixture(tmp_path: Path, task: str, responses: list) -> Path:
     semantics.
     """
 
-    class _RecordingLLM:
-        def __init__(self, responses):
-            self._responses = list(responses)
-            self._idx = 0
-            self.prompts: list[list[dict]] = []
-
-        def chat(self, messages, **kw):  # noqa: ARG002
-            # Deep-copy so subsequent mutations in loop.py don't bleed back.
-            self.prompts.append(json.loads(json.dumps(messages)))
-            resp = self._responses[self._idx]
-            self._idx += 1
-            return resp
-
-    rec = _RecordingLLM(responses)
+    rec = StubLLMClient(responses)
     with StubBrowser() as br:
-        from agent.loop import loop as _loop_fn
-
-        _loop_fn(task=task, browser=br, llm_client=rec, max_steps=len(responses) + 2)
+        loop(task=task, browser=br, llm_client=rec, max_steps=len(responses) + 2)
 
     run = {
         "run_id": "run-rec-001",
@@ -325,7 +310,7 @@ def _record_fixture(tmp_path: Path, task: str, responses: list) -> Path:
     events: list[dict] = []
     seq = 0
     decision_idx = 0
-    for i, (prompt_msgs, resp) in enumerate(zip(rec.prompts, responses, strict=True)):
+    for i, (prompt_msgs, resp) in enumerate(zip(rec.prompts_consumed, responses, strict=True)):
         step_id = f"step-{i + 1}"
         seq += 1
         events.append(
@@ -407,8 +392,6 @@ def test_replay_run_ignores_no_tool_decide_turns(tmp_path):
     = 3 (no-tool, goto, done). Replay must align the 2 tool-call responses to the 2
     DecisionEvents and report match — not append ('', {}) for the no-tool turn.
     """
-    from agent.llm import ChatResponse, Usage
-
     no_tool = ChatResponse(
         content="Let me think.",
         tool_calls=[],
