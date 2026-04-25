@@ -36,11 +36,11 @@
 
 ## 4. Refactor + housekeeping
 
-- [ ] 4.1 Re-read `task2/agent/locate.py` for one-shot helpers, dead branches, or premature abstractions; inline anything called once. Specifically check that `_l2_strategies` is justified (more than one caller or clarity benefit) — if only `locate_l2` uses it and the tier list is short, consider inlining.
-- [ ] 4.2 Confirm L1 `locate_l1` is unmodified (cascade lives in `locate`, not in `locate_l1`).
-- [ ] 4.3 Confirm `LocateResult`'s field order and frozen-ness are unchanged from ticket #3.
-- [ ] 4.4 From `task2/`, run `uv run ruff format .` and stage any changes; run `uv run ruff check .` and resolve findings.
-- [ ] 4.5 Confirm no new dependencies were added to `task2/pyproject.toml`.
+- [x] 4.1 Reread `task2/agent/locate.py`. Collapsed the per-role strategies list and `first_non_empty_count` bookkeeping into a single match — only one strategy fires per role today, so the loop was premature abstraction. Reused the existing `_escape_quoted` helper inside `locate_l1` to dedup the quote-escape inline.
+- [x] 4.2 `locate_l1`'s control flow is unchanged; the cascade lives in `locate`.
+- [x] 4.3 `LocateResult`'s field order and `@dataclass(frozen=True)` are unchanged.
+- [x] 4.4 Ran `uv run ruff format .` (no further changes after the green commit) and `uv run ruff check .` (clean).
+- [x] 4.5 No new dependencies added to `task2/pyproject.toml`.
 
 ## 5. Validation
 

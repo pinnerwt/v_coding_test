@@ -13,6 +13,17 @@ _ARTICLES: frozenset[str] = frozenset({"the", "a", "an"})
 LocatorMissReason = Literal["zero_matches", "ambiguous"]
 _VALID_REASONS: frozenset[str] = frozenset(get_args(LocatorMissReason))
 
+_L2_BUTTON_TAXONOMY_CSS = (
+    "button, input[type=button], input[type=submit], input[type=reset], "
+    '[role=button], [onclick], [class*="btn"], [class*="button"]'
+)
+_L2_LINK_TAXONOMY_CSS = "a[href], [role=link]"
+
+
+def _escape_quoted(value: str) -> str:
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
 _ACCESSIBLE_NAME_JS = """
 (el) => {
   const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim();
@@ -106,8 +117,7 @@ def locate_l1(page: Page, *, role: str, name: str | None) -> LocateResult:
     matched_name_raw = locator.first.evaluate(_ACCESSIBLE_NAME_JS)
     matched_name: str | None = matched_name_raw if isinstance(matched_name_raw, str) else None
     if name:
-        escaped = name.replace("\\", "\\\\").replace('"', '\\"')
-        selector = f'role={role}[name="{escaped}" i]'
+        selector = f'role={role}[name="{_escape_quoted(name)}" i]'
     else:
         selector = f"role={role}"
     fingerprint_name = matched_name if matched_name is not None else (name or "")
@@ -122,58 +132,36 @@ def locate_l1(page: Page, *, role: str, name: str | None) -> LocateResult:
     )
 
 
-_L2_BUTTON_TAXONOMY_CSS = (
-    "button, input[type=button], input[type=submit], input[type=reset], "
-    '[role=button], [onclick], [class*="btn"], [class*="button"]'
-)
-_L2_LINK_TAXONOMY_CSS = "a[href], [role=link]"
-
-
-def _escape_quoted(value: str) -> str:
-    return value.replace("\\", "\\\\").replace('"', '\\"')
-
-
 def locate_l2(page: Page, *, role: str, name: str | None) -> LocateResult:
     if not name:
         raise LocatorMiss(reason="zero_matches", match_count=0)
 
+    escaped = _escape_quoted(name)
     if role == "textbox":
-        strategies: list[tuple[str, str]] = [("placeholder", "")]
-    elif role == "button":
-        strategies = [("text_contains", _L2_BUTTON_TAXONOMY_CSS)]
-    elif role == "link":
-        strategies = [("text_contains", _L2_LINK_TAXONOMY_CSS)]
+        strategy = "placeholder"
+        locator = page.get_by_placeholder(name, exact=False)
+        selector = f'[placeholder*="{escaped}" i]'
+    elif role in ("button", "link"):
+        strategy = "text_contains"
+        taxonomy = _L2_BUTTON_TAXONOMY_CSS if role == "button" else _L2_LINK_TAXONOMY_CSS
+        locator = page.locator(taxonomy).filter(has_text=name)
+        selector = f'{taxonomy} >> text="{escaped}"'
     else:
         raise LocatorMiss(reason="zero_matches", match_count=0)
 
-    first_non_empty_count: int | None = None
-
-    for strategy_id, taxonomy_css in strategies:
-        if strategy_id == "placeholder":
-            locator = page.get_by_placeholder(name, exact=False)
-            escaped = _escape_quoted(name)
-            selector = f'[placeholder*="{escaped}" i]'
-        else:
-            locator = page.locator(taxonomy_css).filter(has_text=name)
-            escaped = _escape_quoted(name)
-            selector = f'{taxonomy_css} >> text="{escaped}"'
-
-        count = locator.count()
-        if count == 1:
-            fingerprint = hashlib.sha256(f"{role}:{name}:{strategy_id}".encode()).hexdigest()
-            return LocateResult(
-                tier="L2_dom",
-                role=role,
-                name=name,
-                selector=selector,
-                ax_fingerprint=fingerprint,
-                confidence=0.7,
-            )
-        if count > 1 and first_non_empty_count is None:
-            first_non_empty_count = count
-
-    if first_non_empty_count is not None:
-        raise LocatorMiss(reason="ambiguous", match_count=first_non_empty_count)
+    count = locator.count()
+    if count == 1:
+        fingerprint = hashlib.sha256(f"{role}:{name}:{strategy}".encode()).hexdigest()
+        return LocateResult(
+            tier="L2_dom",
+            role=role,
+            name=name,
+            selector=selector,
+            ax_fingerprint=fingerprint,
+            confidence=0.7,
+        )
+    if count > 1:
+        raise LocatorMiss(reason="ambiguous", match_count=count)
     raise LocatorMiss(reason="zero_matches", match_count=0)
 
 
