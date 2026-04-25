@@ -1,0 +1,142 @@
+from __future__ import annotations
+
+import pytest
+
+from agent.browser import Browser
+from agent.locate import (
+    LocateResult,
+    LocatorMiss,
+    locate,
+    locate_l2,
+)
+
+
+def test_locate_l2_placeholder_unique(fixture_server, playwright_chromium):
+    with Browser(playwright_browser=playwright_chromium) as b:
+        b.goto(f"{fixture_server}/locate_l2_placeholder.html")
+        result = locate_l2(b._page, role="textbox", name="Email address")
+        assert isinstance(result, LocateResult)
+        assert result.tier == "L2_dom"
+        assert result.role == "textbox"
+        assert result.name == "Email address"
+        assert result.confidence == 0.7
+        assert result.ax_fingerprint
+        loc = b._page.locator(result.selector)
+        assert loc.count() == 1
+        tag = loc.first.evaluate("el => el.tagName")
+        assert tag == "INPUT"
+        placeholder = loc.first.evaluate("el => el.getAttribute('placeholder')")
+        assert placeholder == "Email address"
+
+
+def test_locate_l2_nonsemantic_clickable_unique(fixture_server, playwright_chromium):
+    with Browser(playwright_browser=playwright_chromium) as b:
+        b.goto(f"{fixture_server}/locate_l2_nonsemantic.html")
+        result = locate_l2(b._page, role="button", name="Submit")
+        assert result.tier == "L2_dom"
+        assert result.role == "button"
+        assert result.name == "Submit"
+        loc = b._page.locator(result.selector)
+        assert loc.count() == 1
+        tag = loc.first.evaluate("el => el.tagName")
+        assert tag == "DIV"
+        cls = loc.first.evaluate("el => el.getAttribute('class')")
+        assert cls == "btn"
+
+
+def test_locate_l2_ambiguous(fixture_server, playwright_chromium):
+    with Browser(playwright_browser=playwright_chromium) as b:
+        b.goto(f"{fixture_server}/locate_l2_ambiguous.html")
+        with pytest.raises(LocatorMiss) as excinfo:
+            locate_l2(b._page, role="button", name="Save")
+        assert excinfo.value.reason == "ambiguous"
+        assert excinfo.value.match_count == 2
+
+
+def test_locate_l2_zero_matches(fixture_server, playwright_chromium):
+    with Browser(playwright_browser=playwright_chromium) as b:
+        b.goto(f"{fixture_server}/locate_l2_placeholder.html")
+        with pytest.raises(LocatorMiss) as excinfo:
+            locate_l2(b._page, role="button", name="Refund")
+        assert excinfo.value.reason == "zero_matches"
+        assert excinfo.value.match_count == 0
+
+
+def test_locate_l2_unsupported_role_short_circuits(
+    fixture_server, playwright_chromium, monkeypatch
+):
+    import agent.locate as locate_module
+
+    with Browser(playwright_browser=playwright_chromium) as b:
+        b.goto(f"{fixture_server}/locate_l2_placeholder.html")
+
+        original_locator = b._page.locator
+        original_get_by_placeholder = b._page.get_by_placeholder
+        original_get_by_role = b._page.get_by_role
+        calls: list[str] = []
+
+        def spy_locator(*args, **kwargs):
+            calls.append("locator")
+            return original_locator(*args, **kwargs)
+
+        def spy_placeholder(*args, **kwargs):
+            calls.append("get_by_placeholder")
+            return original_get_by_placeholder(*args, **kwargs)
+
+        def spy_role(*args, **kwargs):
+            calls.append("get_by_role")
+            return original_get_by_role(*args, **kwargs)
+
+        monkeypatch.setattr(b._page, "locator", spy_locator)
+        monkeypatch.setattr(b._page, "get_by_placeholder", spy_placeholder)
+        monkeypatch.setattr(b._page, "get_by_role", spy_role)
+
+        with pytest.raises(LocatorMiss) as excinfo:
+            locate_module.locate_l2(b._page, role="heading", name="Welcome")
+        assert excinfo.value.reason == "zero_matches"
+        assert excinfo.value.match_count == 0
+        assert calls == []
+
+
+def test_locate_l2_empty_name_short_circuits(fixture_server, playwright_chromium):
+    with Browser(playwright_browser=playwright_chromium) as b:
+        b.goto(f"{fixture_server}/locate_l2_nonsemantic.html")
+        with pytest.raises(LocatorMiss) as excinfo:
+            locate_l2(b._page, role="button", name=None)
+        assert excinfo.value.reason == "zero_matches"
+        assert excinfo.value.match_count == 0
+
+
+def test_locate_orchestrator_cascades_l1_zero_to_l2(fixture_server, playwright_chromium):
+    with Browser(playwright_browser=playwright_chromium) as b:
+        b.goto(f"{fixture_server}/locate_l2_cascade.html")
+        result = locate(b._page, "Phone number textbox")
+        assert result.tier == "L2_dom"
+        assert result.role == "textbox"
+        assert result.name == "Phone number"
+
+
+def test_locate_orchestrator_does_not_cascade_on_l1_ambiguous(fixture_server, playwright_chromium):
+    with Browser(playwright_browser=playwright_chromium) as b:
+        b.goto(f"{fixture_server}/locate_l1.html")
+        with pytest.raises(LocatorMiss) as excinfo:
+            locate(b._page, "Save button")
+        assert excinfo.value.reason == "ambiguous"
+        assert excinfo.value.match_count == 2
+
+
+def test_locate_orchestrator_surfaces_l2_zero_match(fixture_server, playwright_chromium):
+    with Browser(playwright_browser=playwright_chromium) as b:
+        b.goto(f"{fixture_server}/locate_l2_placeholder.html")
+        with pytest.raises(LocatorMiss) as excinfo:
+            locate(b._page, "Refund button")
+        assert excinfo.value.reason == "zero_matches"
+
+
+def test_l2_fingerprint_independent_of_dom_path(fixture_server, playwright_chromium):
+    with Browser(playwright_browser=playwright_chromium) as b:
+        b.goto(f"{fixture_server}/locate_l2_nonsemantic.html")
+        a = locate_l2(b._page, role="button", name="Submit")
+        b.goto(f"{fixture_server}/locate_l2_nonsemantic_alt.html")
+        c = locate_l2(b._page, role="button", name="Submit")
+    assert a.ax_fingerprint == c.ax_fingerprint
