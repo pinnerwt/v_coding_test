@@ -33,9 +33,13 @@ def fixture_server() -> Iterator[str]:
         host, port = server.server_address[:2]
         yield f"http://{host}:{port}"
     finally:
-        server.shutdown()
-        server.server_close()
-        thread.join(timeout=5)
+        try:
+            server.shutdown()
+        finally:
+            try:
+                server.server_close()
+            finally:
+                thread.join(timeout=5)
 
 
 @pytest.fixture(scope="session")

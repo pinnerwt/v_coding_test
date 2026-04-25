@@ -27,50 +27,53 @@ class BrowserClosed(BrowserError):
 
 class Browser:
     def __init__(self, playwright_browser: PlaywrightBrowser | None = None):
-        self._owns_runtime = playwright_browser is None
         self._playwright = None
         self._browser = playwright_browser
         self._context = None
         self._page = None
-        self._closed = False
 
     def __enter__(self) -> Browser:
-        if self._owns_runtime:
-            self._playwright = sync_playwright().start()
-            self._browser = self._playwright.chromium.launch(headless=True)
-        self._context = self._browser.new_context()
-        self._page = self._context.new_page()
-        return self
+        try:
+            if self._browser is None:
+                self._playwright = sync_playwright().start()
+                self._browser = self._playwright.chromium.launch(headless=True)
+            self._context = self._browser.new_context()
+            self._page = self._context.new_page()
+            return self
+        except BaseException:
+            self.__exit__(None, None, None)
+            raise
 
     def __exit__(self, exc_type, exc, tb) -> None:
-        self._closed = True
+        context, playwright = self._context, self._playwright
+        owned_browser = self._browser if playwright is not None else None
+        self._context = None
+        self._page = None
+        self._playwright = None
+        if playwright is not None:
+            self._browser = None
         try:
-            if self._context is not None:
-                self._context.close()
+            if context is not None:
+                context.close()
         finally:
-            self._context = None
-            self._page = None
-            if self._owns_runtime:
-                try:
-                    if self._browser is not None:
-                        self._browser.close()
-                finally:
-                    self._browser = None
-                    if self._playwright is not None:
-                        self._playwright.stop()
-                        self._playwright = None
+            try:
+                if owned_browser is not None:
+                    owned_browser.close()
+            finally:
+                if playwright is not None:
+                    playwright.stop()
 
     def goto(self, url: str) -> None:
-        if self._closed or self._page is None:
-            raise BrowserClosed("Browser is closed")
+        if self._page is None:
+            raise BrowserClosed()
         try:
             self._page.goto(url, wait_until="load")
         except PlaywrightError as e:
             raise NavigationError(f"failed to navigate to {url}: {e}") from e
 
     def read(self, selector: str) -> str:
-        if self._closed or self._page is None:
-            raise BrowserClosed("Browser is closed")
+        if self._page is None:
+            raise BrowserClosed()
         locator = self._page.locator(selector)
         if locator.count() == 0:
             raise ElementNotFound(f"no element matched selector {selector!r}")
