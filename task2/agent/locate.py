@@ -122,6 +122,66 @@ def locate_l1(page: Page, *, role: str, name: str | None) -> LocateResult:
     )
 
 
+_L2_BUTTON_TAXONOMY_CSS = (
+    "button, input[type=button], input[type=submit], input[type=reset], "
+    '[role=button], [onclick], [class*="btn"], [class*="button"]'
+)
+_L2_LINK_TAXONOMY_CSS = "a[href], [role=link]"
+
+
+def _escape_quoted(value: str) -> str:
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def locate_l2(page: Page, *, role: str, name: str | None) -> LocateResult:
+    if not name:
+        raise LocatorMiss(reason="zero_matches", match_count=0)
+
+    if role == "textbox":
+        strategies: list[tuple[str, str]] = [("placeholder", "")]
+    elif role == "button":
+        strategies = [("text_contains", _L2_BUTTON_TAXONOMY_CSS)]
+    elif role == "link":
+        strategies = [("text_contains", _L2_LINK_TAXONOMY_CSS)]
+    else:
+        raise LocatorMiss(reason="zero_matches", match_count=0)
+
+    first_non_empty_count: int | None = None
+
+    for strategy_id, taxonomy_css in strategies:
+        if strategy_id == "placeholder":
+            locator = page.get_by_placeholder(name, exact=False)
+            escaped = _escape_quoted(name)
+            selector = f'[placeholder*="{escaped}" i]'
+        else:
+            locator = page.locator(taxonomy_css).filter(has_text=name)
+            escaped = _escape_quoted(name)
+            selector = f'{taxonomy_css} >> text="{escaped}"'
+
+        count = locator.count()
+        if count == 1:
+            fingerprint = hashlib.sha256(f"{role}:{name}:{strategy_id}".encode()).hexdigest()
+            return LocateResult(
+                tier="L2_dom",
+                role=role,
+                name=name,
+                selector=selector,
+                ax_fingerprint=fingerprint,
+                confidence=0.7,
+            )
+        if count > 1 and first_non_empty_count is None:
+            first_non_empty_count = count
+
+    if first_non_empty_count is not None:
+        raise LocatorMiss(reason="ambiguous", match_count=first_non_empty_count)
+    raise LocatorMiss(reason="zero_matches", match_count=0)
+
+
 def locate(page: Page, intent: str) -> LocateResult:
     role, name = parse_intent(intent)
-    return locate_l1(page, role=role, name=name)
+    try:
+        return locate_l1(page, role=role, name=name)
+    except LocatorMiss as miss:
+        if miss.reason == "zero_matches":
+            return locate_l2(page, role=role, name=name)
+        raise

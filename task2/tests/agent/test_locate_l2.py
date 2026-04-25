@@ -109,11 +109,11 @@ def test_locate_l2_empty_name_short_circuits(fixture_server, playwright_chromium
 
 def test_locate_orchestrator_cascades_l1_zero_to_l2(fixture_server, playwright_chromium):
     with Browser(playwright_browser=playwright_chromium) as b:
-        b.goto(f"{fixture_server}/locate_l2_cascade.html")
-        result = locate(b._page, "Phone number textbox")
+        b.goto(f"{fixture_server}/locate_l2_nonsemantic.html")
+        result = locate(b._page, "Submit button")
         assert result.tier == "L2_dom"
-        assert result.role == "textbox"
-        assert result.name == "Phone number"
+        assert result.role == "button"
+        assert result.name == "Submit"
 
 
 def test_locate_orchestrator_does_not_cascade_on_l1_ambiguous(fixture_server, playwright_chromium):
