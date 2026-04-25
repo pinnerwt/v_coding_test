@@ -928,6 +928,40 @@ def test_replay_run_raises_clear_error_for_empty_trace(tmp_path):
         replay_run(empty)
 
 
+def test_replay_run_surfaces_goto_no_op_regression(tmp_path, monkeypatch):
+    """A loop regression where goto stops updating browser URL SHALL surface as
+    prompt drift, not be hidden by recorded observations.
+
+    The stub feeds recorded *text* (so non-empty page bodies don't false-diverge
+    against the always-empty stub), but URL must reflect actual browser state.
+    If the stub replayed both URL and text from the recording, a goto-no-op
+    regression in loop would still see the next observation byte-match the
+    recording — silently masking the bug.
+    """
+    task = "navigate then done"
+    target = "http://example.com/page"
+    goto_resp = _make_chat_response("goto", {"url": target})
+    done_args = {
+        "result": {},
+        "evidence": {"url": target, "text_snippet": "ok"},
+    }
+    done_resp = _make_chat_response("done", done_args)
+
+    fixture_path = _record_fixture(tmp_path, task, [goto_resp, done_resp])
+
+    # Simulate a goto regression: StubBrowser.goto becomes a no-op so the URL
+    # never advances. Replay must surface this as a prompt-drift divergence.
+    monkeypatch.setattr(StubBrowser, "goto", lambda self, url: None)
+
+    result = replay_run(fixture_path)
+    assert result.matched is False, (
+        "Goto-no-op regression must surface; the stub is masking it by "
+        "overwriting URL from the recording."
+    )
+    assert result.first_divergence is not None
+    assert result.first_divergence.kind == "prompt"
+
+
 def test_replay_run_matches_timeout_recording_without_done(tmp_path):
     """A recording that ended by hitting its step budget (no done/fail) SHALL replay
     cleanly when loop's behaviour is unchanged.

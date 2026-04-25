@@ -101,9 +101,9 @@ The function SHALL NOT make any HTTP calls, SHALL NOT launch a Playwright browse
 
 The system SHALL provide `agent.replay.StubBrowser` — a class that satisfies the duck-type contract `loop.py` relies on for `agent.browser.Browser`. It SHALL:
 
-- Expose a `_page` attribute set to an inner `_StubPage` instance whose `.url` property and `.evaluate(js)` method return strings (defaults `""`); when `replay_run` constructs the stub from a recording, both SHALL replay the recorded `{url, text}` per `_observe()` so prompt comparison byte-matches the trace.
+- Expose a `_page` attribute set to an inner `_StubPage` instance whose `.url` property and `.evaluate(js)` method return strings (defaults `""`). When `replay_run` constructs the stub from a recording, `_page.evaluate` SHALL return the recorded body text for each `_observe()` cycle (so non-empty page bodies don't false-diverge against an always-empty stub), but `_page.url` SHALL be driven solely by browser state (`initial_url` + `goto()`) — the recording's URL is NOT replayed back through `_page.url`. This ensures a `goto`-side-effect regression in `loop.py` (e.g. URL no longer advances) surfaces as prompt drift instead of being masked.
 - Accept an optional `initial_url: str` and `observations: list[dict] | None` keyword argument (each observation dict has `url: str` and `text: str`); when omitted, behave like an unconfigured stub.
-- Implement `goto(url: str) -> None` to update `_page._url`. When `observations` are supplied, the next `_observe()` overwrites this — making `goto` effectively a no-op under replay; without observations, it lets non-replay callers track URL transitions.
+- Implement `goto(url: str) -> None` to update `_page._url`. The next `_observe()` SHALL read this updated URL — both with and without observations, since `_page.url` is no longer overwritten from the recording.
 - Implement `read(selector: str) -> str` returning `""`.
 - Implement `screenshot(*, full_page: bool = False) -> bytes` returning `b""`.
 - Implement `click_at(x: int, y: int) -> None` as a no-op.

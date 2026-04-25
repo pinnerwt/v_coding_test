@@ -71,13 +71,13 @@ class _StubPage:
     def url(self) -> str:
         # loop._observe reads page.url first, then page.evaluate; advance the
         # observation cursor here so the matching evaluate() returns the same
-        # iteration's body text. This keeps real recordings (with non-empty
-        # text) from false-diverging on the prompt comparison.
+        # iteration's body text. Only _text is replayed from the recording —
+        # _url is driven by goto() so a goto regression (e.g. URL no longer
+        # advances) surfaces as prompt drift rather than being masked by the
+        # recorded observations.
         if self._observations and self._idx + 1 < len(self._observations):
             self._idx += 1
-            obs = self._observations[self._idx]
-            self._url = str(obs.get("url", ""))
-            self._text = str(obs.get("text", ""))
+            self._text = str(self._observations[self._idx].get("text", ""))
         return self._url
 
     def evaluate(self, js: str, *args: Any) -> str:  # noqa: ARG002
