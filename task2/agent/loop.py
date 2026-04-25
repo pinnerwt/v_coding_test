@@ -134,8 +134,11 @@ def _observe(browser: Browser) -> dict:
 
 def _dispatch(tool_name: str, args: dict, browser: Browser) -> str:
     if tool_name == "goto":
-        browser.goto(args["url"])
-        return f"Navigated to {args['url']}"
+        url = args.get("url")
+        if not isinstance(url, str) or not url:
+            return "Error: goto requires a non-empty 'url' string argument"
+        browser.goto(url)
+        return f"Navigated to {url}"
     if tool_name == "read":
         intent: str | None = args.get("intent")
         page = browser._page
@@ -184,6 +187,19 @@ def loop(
                         "role": "tool",
                         "tool_call_id": tool_call.id,
                         "content": f"Error: invalid JSON arguments ({exc.msg})",
+                    }
+                )
+                continue
+
+            if not isinstance(args, dict):
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": (
+                            "Error: tool arguments must be a JSON object, "
+                            f"got {type(args).__name__}"
+                        ),
                     }
                 )
                 continue
