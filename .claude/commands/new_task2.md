@@ -47,6 +47,7 @@ Spawn a `general-purpose` subagent via the **Agent** tool to run `/opsx:ff` and 
 
 Agent call:
 - `subagent_type`: `general-purpose`
+- `model`: `sonnet` — artifact generation translates a defined ticket into structured files; Opus-grade planning is not needed here and is reserved for the orchestrator.
 - `description`: `Generate opsx artifacts for <change-name>`
 - `prompt`: include all of the following so the subagent can run autonomously:
   - The exact change name (kebab-case, derived in Step 1).
@@ -74,6 +75,7 @@ Spawn a `general-purpose` subagent via the **Agent** tool to drive `/opsx:apply`
 
 Agent call:
 - `subagent_type`: `general-purpose`
+- `model`: `sonnet` — TDD implementation is the canonical Sonnet workhorse task (Anthropic Advisor Strategy: Opus plans/reviews, Sonnet executes). Cheaper, faster, and benchmark-comparable on code-gen following an existing plan.
 - `description`: `Apply opsx change <change-name>`
 - `prompt`: must include:
   - The exact change name and the path `openspec/changes/<change-name>/`.
@@ -109,6 +111,7 @@ Once `tasks.md` is fully checked off, spawn a `general-purpose` subagent via the
 
 Agent call:
 - `subagent_type`: `general-purpose`
+- `model`: `sonnet` — verification follows a defined rubric (`/opsx:verify` output → close gap → re-run); the orchestrator re-runs the verifier itself in the main thread for the final judgment call.
 - `description`: `Verify opsx change <change-name>`
 - `prompt`: must include:
   - The change name and the path `openspec/changes/<change-name>/`.
