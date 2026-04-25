@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, get_args
+from typing import TYPE_CHECKING, Any, Literal, get_args
 
 if TYPE_CHECKING:
     from playwright.sync_api import Page
@@ -20,9 +22,20 @@ _L2_BUTTON_TAXONOMY_CSS = (
 )
 _L2_LINK_TAXONOMY_CSS = "a[href], [role=link]"
 
+_L3_MAX_CANDIDATES = 10
+_L3_MAX_HEADING_CHARS = 100
+_L3_MAX_NEARBY_CHARS = 200
+_L3_CONFIDENCE = 0.8
+
 
 def _escape_quoted(value: str) -> str:
     return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _role_selector(role: str, name: str | None) -> str:
+    if not name:
+        return f"role={role}"
+    return f'role={role}[name="{_escape_quoted(name)}" i]'
 
 
 _ACCESSIBLE_NAME_JS = """
@@ -117,10 +130,7 @@ def locate_l1(page: Page, *, role: str, name: str | None) -> LocateResult:
         raise LocatorMiss(reason="ambiguous", match_count=count)
     matched_name_raw = locator.first.evaluate(_ACCESSIBLE_NAME_JS)
     matched_name: str | None = matched_name_raw if isinstance(matched_name_raw, str) else None
-    if name:
-        selector = f'role={role}[name="{_escape_quoted(name)}" i]'
-    else:
-        selector = f"role={role}"
+    selector = _role_selector(role, name)
     fingerprint_name = matched_name if matched_name is not None else (name or "")
     fingerprint = hashlib.sha256(f"{role}:{fingerprint_name}".encode()).hexdigest()
     return LocateResult(
@@ -168,11 +178,177 @@ def locate_l2(page: Page, *, role: str, name: str | None) -> LocateResult:
     raise LocatorMiss(reason="zero_matches", match_count=0)
 
 
-def locate(page: Page, intent: str) -> LocateResult:
+_L3_CANDIDATE_CONTEXT_JS = """
+(els, {headingChars, nearbyChars, maxCandidates}) => {
+  const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim();
+  const truncate = (s, n) => (s.length > n ? s.slice(0, n) : s);
+  const accessibleName = __ACCESSIBLE_NAME__;
+
+  const findHeading = (el) => {
+    const section = el.closest && el.closest('section');
+    if (section) {
+      const aria = section.getAttribute('aria-label');
+      if (aria) {
+        const t = norm(aria);
+        if (t) return t;
+      }
+      const inner = section.querySelector('h1, h2, h3, h4, h5, h6');
+      if (inner) {
+        const t = norm(inner.textContent);
+        if (t) return t;
+      }
+    }
+    let cur = el.previousElementSibling;
+    while (cur) {
+      if (/^H[1-6]$/.test(cur.tagName)) {
+        const t = norm(cur.textContent);
+        if (t) return t;
+      }
+      cur = cur.previousElementSibling;
+    }
+    let parent = el.parentElement;
+    while (parent) {
+      let sib = parent.previousElementSibling;
+      while (sib) {
+        if (/^H[1-6]$/.test(sib.tagName)) {
+          const t = norm(sib.textContent);
+          if (t) return t;
+        }
+        sib = sib.previousElementSibling;
+      }
+      parent = parent.parentElement;
+    }
+    return '';
+  };
+
+  const findNearby = (el) => {
+    const container = el.closest && el.closest('section, article, nav, aside, main, form');
+    const source = container || el.parentElement || el;
+    return norm(source.textContent);
+  };
+
+  return els.slice(0, maxCandidates).map((el) => ({
+    accessible_name: truncate(accessibleName(el), nearbyChars),
+    section_heading: truncate(findHeading(el), headingChars),
+    nearby_text: truncate(findNearby(el), nearbyChars),
+  }));
+}
+""".strip().replace("__ACCESSIBLE_NAME__", _ACCESSIBLE_NAME_JS.strip())
+
+_L3_CONTEXT_ARGS = {
+    "headingChars": _L3_MAX_HEADING_CHARS,
+    "nearbyChars": _L3_MAX_NEARBY_CHARS,
+    "maxCandidates": _L3_MAX_CANDIDATES,
+}
+
+
+def _build_l3_messages(
+    role: str,
+    name: str | None,
+    candidates: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    intent = f"{name} {role}" if name else role
+    lines = [
+        f"Intent: {intent}",
+        f"Candidate count: {len(candidates)}",
+        "",
+        "Candidates:",
+    ]
+    for i, c in enumerate(candidates):
+        lines.append(
+            f"[{i}] section={c['section_heading']!r} "
+            f"text={c['accessible_name']!r} "
+            f"nearby={c['nearby_text']!r}"
+        )
+    user_content = "\n".join(lines)
+    system_content = (
+        "You are a DOM disambiguator. Given a user intent and a numbered list of "
+        "candidate elements, pick the candidate that best matches the intent. "
+        'Reply with EXACTLY the JSON object {"index": N} where N is the integer '
+        "index of the chosen candidate. Do not wrap the JSON in code fences. "
+        "Do not include any prose."
+    )
+    return [
+        {"role": "system", "content": system_content},
+        {"role": "user", "content": user_content},
+    ]
+
+
+def locate_l3(
+    page: Page,
+    *,
+    role: str,
+    name: str | None,
+    llm_chat: Callable[..., Any] | None = None,
+) -> LocateResult:
+    locator = page.get_by_role(role, name=name, exact=False) if name else page.get_by_role(role)
+    count = locator.count()
+    if count == 0:
+        raise LocatorMiss(reason="zero_matches", match_count=0)
+
+    candidates = locator.evaluate_all(_L3_CANDIDATE_CONTEXT_JS, _L3_CONTEXT_ARGS)
+
+    if len(candidates) == 1:
+        chosen = 0
+    else:
+        from agent.llm import LLMError
+
+        if llm_chat is None:
+            from agent.llm import chat as llm_chat
+        try:
+            response = llm_chat(
+                messages=_build_l3_messages(role, name, candidates), temperature=0.0
+            )
+        except LLMError as exc:
+            raise LocatorMiss(reason="ambiguous", match_count=count) from exc
+        idx = _parse_l3_index(response, len(candidates))
+        if idx is None:
+            raise LocatorMiss(reason="ambiguous", match_count=count)
+        chosen = idx
+
+    selector = f"{_role_selector(role, name)} >> nth={chosen}"
+    section_heading = candidates[chosen]["section_heading"]
+    fingerprint = hashlib.sha256(f"{role}:{name or ''}:{section_heading}".encode()).hexdigest()
+    return LocateResult(
+        tier="L3_rerank",
+        role=role,
+        name=name,
+        selector=selector,
+        ax_fingerprint=fingerprint,
+        confidence=_L3_CONFIDENCE,
+    )
+
+
+def _parse_l3_index(response: Any, candidate_count: int) -> int | None:
+    content = getattr(response, "content", None)
+    if not isinstance(content, str):
+        return None
+    try:
+        data = json.loads(content)
+    except ValueError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    idx = data.get("index")
+    if isinstance(idx, bool) or not isinstance(idx, int):
+        return None
+    if not 0 <= idx < candidate_count:
+        return None
+    return idx
+
+
+def locate(
+    page: Page,
+    intent: str,
+    *,
+    llm_chat: Callable[..., Any] | None = None,
+) -> LocateResult:
     role, name = parse_intent(intent)
     try:
         return locate_l1(page, role=role, name=name)
     except LocatorMiss as miss:
         if miss.reason == "zero_matches":
             return locate_l2(page, role=role, name=name)
+        if miss.reason == "ambiguous":
+            return locate_l3(page, role=role, name=name, llm_chat=llm_chat)
         raise
