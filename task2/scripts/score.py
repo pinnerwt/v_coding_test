@@ -78,6 +78,9 @@ def generate_scoreboard(data: dict) -> str:
     else:
         lines.append("| (none) | 0 |")
 
+    lines.append("")
+    lines.append(f"Recorded at: {run_at}")
+
     return "\n".join(lines) + "\n"
 
 

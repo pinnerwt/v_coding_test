@@ -114,6 +114,15 @@ def test_score_update_readme_appends_when_no_sentinels(tmp_path):
     assert "succeeded" in content
 
 
+def test_score_has_recorded_at_footer():
+    from scripts.score import generate_scoreboard
+
+    data = json.loads(_SAMPLE_RESULTS.read_text())
+    output = generate_scoreboard(data)
+    last_lines = [ln for ln in output.splitlines() if ln.strip()]
+    assert last_lines[-1] == f"Recorded at: {data['run_at']}"
+
+
 def test_score_skipped_excluded_from_summary(tmp_path):
     from scripts.score import generate_scoreboard
 
