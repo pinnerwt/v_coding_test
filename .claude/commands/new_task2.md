@@ -197,7 +197,46 @@ If `gh pr create` fails because the branch already has an open PR, run `gh pr vi
 
 Capture the returned PR URL for the final report. Do **not** mark the PR ready-for-review-as-merge — leave merge to the user after `/opsx:archive`.
 
-### 11. Final report
+### 11. Capture outstanding follow-ups in `task2/plan.md`
+
+If any **outstanding follow-ups** surfaced during this run — design issues deferred from `/opsx:apply` or `/opsx:verify`, smoke-test gaps that pointed at adjacent code, scope-creep items consciously left out, or TODOs uncovered by `/simplify` — record them as new TDD tickets so a future `/new_task2` invocation can pick them up. Do **not** carry them only in the PR description or the conversation; the durable record lives in `task2/plan.md`.
+
+What counts as a follow-up worth recording:
+- A concrete behavior gap with a plausible failing test (TDD-shaped).
+- A refactor that was out of scope for this ticket but is now clearly worth doing.
+- A design problem `/opsx:apply` flagged and stopped on, that you resolved by deferring rather than fixing in-scope.
+
+What does **not** belong in `plan.md`:
+- One-off chores already captured in commits.
+- Speculative ideas without a test surface.
+- Anything already covered by an existing TDD ticket — extend that ticket's text instead of adding a duplicate.
+
+Procedure:
+
+1. Open `task2/plan.md` and find the `## TDD tickets` numbered list near the bottom. Note the highest existing ticket number.
+2. For each follow-up, append a new entry continuing the numbering. Match the style of existing tickets: a bold lead (module path or short title), a one-sentence description of the gap, and then concrete acceptance criteria / tests phrased the same way as nearby entries (e.g. ticket 23 `CDP session reuse in observe.build_observation` for shape).
+3. Each ticket must be self-contained — a fresh `/new_task2` run with no conversation context should be able to pick it up. Reference file paths and existing symbols rather than "the thing we discussed."
+4. If a follow-up overlaps an existing ticket (e.g. you found another sub-case of ticket N), edit that ticket's text rather than adding a new line; do not create silent duplicates.
+
+Commit the plan update on its own, on the same branch, then push so the open PR picks it up:
+
+```bash
+cd task2 && uv run ruff format . && uv run ruff check . && uv run pytest && cd ..
+git add task2/plan.md
+git commit -m "$(cat <<'EOF'
+docs(task2): record follow-ups surfaced by <change-name>
+
+Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
+EOF
+)"
+git push
+```
+
+The pre-commit gate still applies even though only `plan.md` changed — never `--no-verify`. If you also need to update the PR body to reference the new ticket numbers, do it with `gh pr edit --body-file ...` reusing the temp file from Step 10.
+
+If there are zero follow-ups, skip this step entirely — do not create an empty commit and do not invent items to record.
+
+### 12. Final report
 
 Print a short summary to the user:
 - Branch name.
@@ -206,7 +245,7 @@ Print a short summary to the user:
 - Test + ruff status (pass/clean).
 - Smoke test status (pass, plus how many verify/simplify loops it took if >1).
 - PR URL.
-- Outstanding follow-ups, if any.
+- Outstanding follow-ups: either "none" or the numbered list of new tickets appended to `task2/plan.md` in Step 11 (with their numbers).
 - Suggested next step: `/opsx:archive <change-name>` (do **not** archive automatically).
 
 ## Guardrails
