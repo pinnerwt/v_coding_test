@@ -271,7 +271,10 @@ def loop(
         observation = observe.build_observation(browser, last_action)
 
         if step_num == 1:
-            active_plan = plan_module.plan(task, observation, llm_client)
+            active_plan, plan_resp = plan_module.plan(task, observation, llm_client)
+            cum_prompt_tokens += plan_resp.usage.prompt_tokens
+            cum_completion_tokens += plan_resp.usage.completion_tokens
+            cum_usd += plan_resp.usd
             _emit_plan_event(events, "initial", active_plan.steps, str(uuid.uuid4()))
 
         assert active_plan is not None
@@ -389,9 +392,12 @@ def loop(
 
             if tool_result.startswith("Error:") and supervisor.last_policy == "halt":
                 if not supervisor.replan_used:
-                    new_plan = plan_module.replan(
+                    new_plan, replan_resp = plan_module.replan(
                         task, observation, active_plan, tool_result, llm_client
                     )
+                    cum_prompt_tokens += replan_resp.usage.prompt_tokens
+                    cum_completion_tokens += replan_resp.usage.completion_tokens
+                    cum_usd += replan_resp.usd
                     supervisor.replan_used = True
                     active_plan = new_plan
                     _emit_plan_event(events, "replan", new_plan.steps, str(uuid.uuid4()))

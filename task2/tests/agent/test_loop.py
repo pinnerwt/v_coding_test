@@ -922,6 +922,49 @@ def test_decision_prompt_contains_plan_progress_from_step1(fixture_server, playw
     assert "2. return it" in content
 
 
+def test_plan_progress_block_in_step2_decision_prompt(fixture_server, playwright_chromium):
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+    plan_json = '{"steps": ["goto page", "read result"], "expected_end_state": "done"}'
+
+    class _TwoStepPlanLLM:
+        def __init__(self):
+            self._call_index = 0
+            self.all_messages: list[list[dict]] = []
+
+        def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
+            self.all_messages.append(list(messages))
+            idx = self._call_index
+            self._call_index += 1
+            if idx == 0:
+                return _fake_text_response(plan_json)
+            if idx == 1:
+                return _response_with_tool_call(
+                    _tool_call("goto", {"url": fixture_url}, call_id="tc-goto")
+                )
+            return _response_with_tool_call(
+                _tool_call(
+                    "done",
+                    {
+                        "result": {"ok": True},
+                        "evidence": {"url": fixture_url, "text_snippet": "Hello, loop"},
+                    },
+                    call_id="tc-done",
+                )
+            )
+
+    llm = _TwoStepPlanLLM()
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        loop("task", browser, llm)
+
+    assert len(llm.all_messages) >= 3
+    step2_messages = llm.all_messages[2]
+    user_msg = next(m for m in reversed(step2_messages) if m["role"] == "user")
+    content = user_msg["content"]
+    assert "Plan progress:" in content
+    assert "1. goto page" in content
+    assert "2. read result" in content
+
+
 def test_supervisor_halt_triggers_replan_event(fixture_server, playwright_chromium):
     fixture_url = f"{fixture_server}/index.html"
     plan_json = '{"steps": ["step 1", "step 2"], "expected_end_state": "done"}'
@@ -1008,6 +1051,49 @@ def test_second_supervisor_halt_returns_failed(fixture_server, playwright_chromi
     plan_events = [e for e in events if e.kind == "plan"]
     replan_events = [e for e in plan_events if e.reason == "replan"]
     assert len(replan_events) == 1
+
+
+def test_planner_tokens_included_in_run_metrics(fixture_server, playwright_chromium):
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+
+    class _TokenTrackingLLM:
+        def __init__(self):
+            self._call_index = 0
+
+        def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
+            idx = self._call_index
+            self._call_index += 1
+            if idx == 0:
+                return ChatResponse(
+                    content='{"steps": ["go"], "expected_end_state": "done"}',
+                    tool_calls=[],
+                    finish_reason="stop",
+                    model="fake",
+                    usage=Usage(prompt_tokens=50, completion_tokens=10, total_tokens=60),
+                    raw={},
+                    usd=0.0001,
+                )
+            return _resp_with_tool_and_usage(
+                _tool_call(
+                    "done",
+                    {
+                        "result": {"ok": True},
+                        "evidence": {"url": fixture_url, "text_snippet": "Hello, loop"},
+                    },
+                    call_id="tc-done",
+                ),
+                prompt=100,
+                completion=20,
+                usd=0.0002,
+            )
+
+    llm = _TokenTrackingLLM()
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop("task", browser, llm)
+
+    assert result.prompt_tokens == 150
+    assert result.completion_tokens == 30
+    assert abs(result.usd - 0.0003) < 1e-9
 
 
 def test_loop_module_does_not_require_playwright(monkeypatch):

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from agent.llm import LLMClient
+    from agent.llm import ChatResponse, LLMClient
 
 _PLAN_SYSTEM = (
     "You are a planning assistant. Given a task and the current browser state, "
@@ -43,7 +43,7 @@ def _parse_plan(content: str | None, task: str) -> Plan:
         return _fallback(task)
 
 
-def plan(task: str, observation: dict, llm: LLMClient) -> Plan:
+def plan(task: str, observation: dict, llm: LLMClient) -> tuple[Plan, ChatResponse]:
     messages = [
         {"role": "system", "content": _PLAN_SYSTEM},
         {
@@ -52,10 +52,12 @@ def plan(task: str, observation: dict, llm: LLMClient) -> Plan:
         },
     ]
     response = llm.chat(messages)
-    return _parse_plan(response.content, task)
+    return _parse_plan(response.content, task), response
 
 
-def replan(task: str, observation: dict, prior_plan: Plan, reason: str, llm: LLMClient) -> Plan:
+def replan(
+    task: str, observation: dict, prior_plan: Plan, reason: str, llm: LLMClient
+) -> tuple[Plan, ChatResponse]:
     prior_steps = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(prior_plan.steps))
     messages = [
         {"role": "system", "content": _REPLAN_SYSTEM},
@@ -70,4 +72,4 @@ def replan(task: str, observation: dict, prior_plan: Plan, reason: str, llm: LLM
         },
     ]
     response = llm.chat(messages)
-    return _parse_plan(response.content, task)
+    return _parse_plan(response.content, task), response

@@ -41,22 +41,23 @@ def test_plan_returns_plan_from_well_formed_response():
         {"steps": ["go to site", "read result"], "expected_end_state": "result found"}
     )
     llm = _FakeLLM(payload)
-    result = plan(task="find X", observation={}, llm=llm)
+    result, resp = plan(task="find X", observation={}, llm=llm)
     assert isinstance(result, Plan)
     assert result.steps == ["go to site", "read result"]
     assert result.expected_end_state == "result found"
+    assert resp is not None
 
 
 def test_plan_returns_fallback_on_malformed_json():
     llm = _FakeLLM("not valid json {")
-    result = plan(task="find X", observation={}, llm=llm)
+    result, _ = plan(task="find X", observation={}, llm=llm)
     assert result.steps == ["find X"]
 
 
 def test_plan_returns_fallback_when_steps_key_missing():
     payload = json.dumps({"expected_end_state": "done"})
     llm = _FakeLLM(payload)
-    result = plan(task="find X", observation={}, llm=llm)
+    result, _ = plan(task="find X", observation={}, llm=llm)
     assert result.steps == ["find X"]
 
 
@@ -66,15 +67,16 @@ def test_replan_returns_revised_plan_from_well_formed_response():
     )
     llm = _FakeLLM(payload)
     prior = Plan(steps=["original step"], expected_end_state="original end")
-    result = replan(
+    result, resp = replan(
         task="find X", observation={}, prior_plan=prior, reason="locate failed", llm=llm
     )
     assert isinstance(result, Plan)
     assert result.steps == ["try alternative approach"]
+    assert resp is not None
 
 
 def test_replan_returns_fallback_on_malformed_json():
     llm = _FakeLLM("not json at all")
     prior = Plan(steps=["original step"], expected_end_state="original end")
-    result = replan(task="find X", observation={}, prior_plan=prior, reason="halt", llm=llm)
+    result, _ = replan(task="find X", observation={}, prior_plan=prior, reason="halt", llm=llm)
     assert result.steps == ["find X"]
