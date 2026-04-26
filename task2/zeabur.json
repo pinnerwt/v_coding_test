@@ -1,0 +1,10 @@
+{
+  "buildType": "dockerfile",
+  "dockerfilePath": "task2/Dockerfile",
+  "port": 8000,
+  "envs": [
+    { "key": "LLM_BASE_URL", "required": true, "value": "" },
+    { "key": "LLM_MODEL", "required": true, "value": "" },
+    { "key": "LLM_API_KEY", "required": false, "value": "" }
+  ]
+}
