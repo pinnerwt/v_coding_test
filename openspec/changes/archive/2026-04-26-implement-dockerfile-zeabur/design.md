@@ -42,11 +42,11 @@ Alternatives considered:
 
 ### Dependency install: `uv` inside the image (venv, frozen lockfile)
 
-`uv sync --no-dev --frozen` installs runtime deps into a `.venv` inside the image using the lockfile exactly. `uv` binary is installed via the official `uv` installer (single curl layer) before the `uv sync` step. The entrypoint and playwright install use `.venv/bin/` prefixes to resolve into that venv. Alternatives: `pip install -r requirements.txt` — violates repo tooling rules; `--system` — skips venv but loses lockfile-exact reproducibility via `--frozen`.
+`uv sync --no-dev --frozen` installs runtime deps into a `.venv` inside the image using the lockfile exactly. `uv` binary is installed via the official `uv` installer (single curl layer) before the `uv sync` step. The entrypoint uses the `.venv/bin/` prefix to resolve into that venv. Alternatives: `pip install -r requirements.txt` — violates repo tooling rules; `--system` — skips venv but loses lockfile-exact reproducibility via `--frozen`.
 
-### `playwright install chromium --with-deps` in Dockerfile
+### Chromium provided by base image (no `playwright install`)
 
-Run as a `RUN` layer after `uv sync` so Chromium is present in the image. Invoked via `.venv/bin/playwright` to match the installed venv. `--with-deps` installs OS packages. The MS base image already carries many of these, so this is a fast layer that guarantees correctness.
+`mcr.microsoft.com/playwright/python:v1.58.0-noble` ships Chromium pre-installed at `/ms-playwright` and exports `PLAYWRIGHT_BROWSERS_PATH=/ms-playwright`. The venv's Playwright resolves the browser via that env var, so a separate `RUN playwright install chromium --with-deps` layer is unnecessary and was dropped to shave ~500MB+ from the build.
 
 ### Zeabur config: `zeabur.json` (not `zeabur.toml`)
 

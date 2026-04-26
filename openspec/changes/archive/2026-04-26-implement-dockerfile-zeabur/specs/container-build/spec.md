@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Dockerfile builds a runnable agent service image
-The `task2/Dockerfile` SHALL produce a Docker image that runs the FastAPI agent service when started. The image SHALL use `mcr.microsoft.com/playwright/python:v1.58.0-noble` as the base. Dependencies SHALL be installed with `uv sync --no-dev --frozen` (no pip; uv creates a `.venv` inside the image). Playwright Chromium SHALL be installed via `.venv/bin/playwright install chromium --with-deps`. The entrypoint SHALL launch `.venv/bin/uvicorn api.server:app --host 0.0.0.0 --port 8000`. No comments or docstrings SHALL appear in the Dockerfile.
+The `task2/Dockerfile` SHALL produce a Docker image that runs the FastAPI agent service when started. The image SHALL use `mcr.microsoft.com/playwright/python:v1.58.0-noble` as the base (Chromium ships in the base image at `/ms-playwright`, exposed via `PLAYWRIGHT_BROWSERS_PATH`). Dependencies SHALL be installed with `uv sync --no-dev --frozen` (no pip; uv creates a `.venv` inside the image). The entrypoint SHALL launch `.venv/bin/uvicorn api.server:app --host 0.0.0.0 --port 8000`. No comments or docstrings SHALL appear in the Dockerfile.
 
 #### Scenario: Image starts and serves HTTP
 - **WHEN** `docker run -p 8000:8000 <image>` is executed with a reachable `LLM_BASE_URL` env var
