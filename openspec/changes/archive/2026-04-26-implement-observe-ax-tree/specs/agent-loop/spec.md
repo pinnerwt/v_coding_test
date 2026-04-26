@@ -49,6 +49,8 @@ The loop SHALL NOT expose `click`, `type`, `select`, `wait_for`, `back`, or `scr
 - **THEN** the loop SHALL return `RunResult(status="failed", result=None, evidence=None, verifier=None)`
 - **AND** SHALL NOT make any further LLM calls
 
+## ADDED Requirements
+
 ### Requirement: loop observation uses AX-tree digest
 
 The loop SHALL call `observe.build_observation(browser, last_action)` at the start of each step instead of constructing the observation inline. The returned dict (with keys `url`, `title`, `ax_tree_digest`, `ax_fingerprint`, `last_action`) SHALL be serialized to JSON and appended to the LLM message thread as a user message prefixed by `STATE_MESSAGE_PREFIX`. The loop SHALL track `last_action` across steps: on the first step it SHALL be `None`; after each tool dispatch it SHALL be updated to `{tool: <name>, intent: <string summary of args>, outcome: <"ok"|"error">, error?: <message>}`.
