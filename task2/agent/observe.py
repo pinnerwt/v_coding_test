@@ -26,12 +26,20 @@ MAX_NAME_LEN: int = 80
 
 
 def _ax_nodes(page) -> list[dict]:
-    ctx = page.context
-    cdp = ctx.new_cdp_session(page)
+    try:
+        ctx = page.context
+        cdp = ctx.new_cdp_session(page)
+    except AttributeError:
+        return []
     try:
         result = cdp.send("Accessibility.getFullAXTree")
+    except Exception:  # noqa: BLE001
+        return []
     finally:
-        cdp.detach()
+        try:
+            cdp.detach()
+        except Exception:  # noqa: BLE001
+            pass
     raw = result.get("nodes", [])
     out: list[dict] = []
     for n in raw:
