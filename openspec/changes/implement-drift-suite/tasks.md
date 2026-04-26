@@ -24,7 +24,7 @@
 
 ## 4. Green — Implement variant expansion in `scripts/eval.py`
 
-- [x] 4.1 In `scripts/eval.py`, add a private helper `_expand_variants(cases: list[dict]) -> list[dict]` that iterates each case: if the case has a `variants` key with a non-empty list, it yields one shallow-copy dict per variant with `id` set to `<orig-id>-<variant>` and a `_variant` key set to the variant string; if `variants` is absent or empty it yields the case unchanged. No other fields are modified.
+- [x] 4.1 In `scripts/eval.py`, add a private helper `_expand_variants(cases: list[dict]) -> list[dict]` that iterates each case: if the case has a `variants` key with a non-empty list, it yields one shallow-copy dict per variant with `id` set to `<orig-id>-<variant>`; if `variants` is absent or empty it yields the case unchanged. No other fields are modified.
 - [x] 4.2 Call `_expand_variants` at the top of `run_suite` before the loop: `cases = _expand_variants(cases)`. No other change to `run_suite`.
 - [x] 4.3 From `task2/`, run `uv run pytest tests/test_eval.py -x -k "variant"` and confirm all variant-expansion tests pass (green for variant tests).
 - [x] 4.4 From `task2/`, run `uv run pytest tests/test_eval.py` and confirm zero regressions in existing eval tests.

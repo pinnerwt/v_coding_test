@@ -50,9 +50,7 @@ Alternative considered: use `id`/`class` only as the drift axis (v1 has `id="sub
 
 ### Decision 2: Variant expansion in `scripts/eval.py` — inline, no new abstraction
 
-When `load_cases` reads a YAML file, it already returns a list of dicts. When a case dict has a `variants` key (a list of strings), `run_suite` expands it: for each variant `v` it produces a shallow copy of the case dict with `id` replaced by `<case-id>-<v>` and a new key `_variant` set to `v`. The `_run_case` function reads `_variant` to determine which fixture file to load (by constructing the URL `<fixture_base>/drift/<original-id>/<variant>/index.html`).
-
-The fixture base URL is passed into `run_suite` via a new keyword arg `fixture_base_url: str | None = None`. When `None`, the runner falls back to an env var `FIXTURE_BASE_URL`; when that is also absent it defaults to `""` (relative path, functional only in tests where the browser navigates local files directly). In production the eval runner starts the fixture server itself, as the conftest already does.
+When `load_cases` reads a YAML file, it already returns a list of dicts. When a case dict has a `variants` key (a list of strings), `run_suite` expands it: for each variant `v` it produces a shallow copy of the case dict with `id` replaced by `<case-id>-<v>`. All other fields are inherited unchanged. The drift fixture URLs are constructed in the Playwright-backed tests (`tests/test_drift.py`), not in `_run_case`; the runner does not need variant metadata beyond the rewritten `id`.
 
 Alternative considered: a pre-processing step in `load_cases` that expands variants before returning. Rejected — `load_cases` is tested independently; changing its output shape breaks test isolation. Expansion is a runner concern, not a loader concern.
 
@@ -66,7 +64,7 @@ The eval-suite assertions use `patch("scripts.eval.loop")` exactly as `test_eval
 
 ### Decision 4: Fixture HTML path — `tests/fixtures/drift/<case-id>/<variant>/index.html`
 
-The existing `fixture_server` serves all files from `tests/fixtures/` with their relative path intact. Placing drift fixtures at `tests/fixtures/drift/submit-form/v1/index.html` means the variant is reachable at `<fixture_server_url>/drift/submit-form/v1/index.html`. The eval runner constructs this URL from the case id and variant string: `f"{fixture_base_url}/drift/{orig_id}/{variant}/index.html"`.
+The existing `fixture_server` serves all files from `tests/fixtures/` with their relative path intact. Placing drift fixtures at `tests/fixtures/drift/submit-form/v1/index.html` means the variant is reachable at `<fixture_server_url>/drift/submit-form/v1/index.html`. The Playwright-backed tests in `tests/test_drift.py` construct the URL directly from the `fixture_server` URL and the variant path.
 
 Alternative considered: placing fixtures directly under `eval/fixtures/drift/<case>/<variant>/`. The plan mentions this path (ticket description), but the existing conftest fixture server only serves from `tests/fixtures/`. Using `tests/fixtures/` avoids introducing a second static-file server or changing the conftest, which keeps this ticket strictly additive.
 
@@ -79,4 +77,3 @@ The `category` field is already free-form in the existing cases (`"search-and-ex
 - **Fixture server URL construction is hardcoded to the `drift/<id>/<variant>/index.html` pattern.** If a future drift case needs a different HTML filename, the runner must be extended. Acceptable for one case; revisit if the drift suite grows.
 - **v2's `onclick="void(0)"` does not actually submit the form.** The agent must call `done()` without a real HTTP round-trip. The eval-suite test mocks `loop()` so this is never exercised in CI; the tier-assertion test only calls `locate()`, not `loop()`. If a future ticket drives the full loop against drift fixtures, the HTML will need a real form action or a JS form handler.
 - **Session-scoped `fixture_server` means all drift tests share one server instance.** Tests are read-only (no DOM mutation), so sharing is safe. If a future drift test mutates the DOM (like the locator-cache drift test does), it must use `fixture_server_factory` instead.
-- **`_variant` is a private key in the case dict.** It is not a declared field in the YAML schema and will not appear in `eval/cases/*.yaml` files. It is injected by the runner at expansion time and consumed by `_run_case`. The underscore prefix signals "runner-internal"; `load_cases` must not validate or reject it.

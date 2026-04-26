@@ -41,7 +41,6 @@ Each eval case SHALL be expressed as a YAML file under `task2/eval/cases/` with 
 When a case dict has a `variants` key containing a non-empty list of strings, `run_suite` SHALL expand the case into one sub-run per variant before executing. For each variant `v`:
 
 - The sub-run's `id` SHALL equal `<original-case-id>-<v>` (e.g. `drift-submit-form-v1`).
-- A `_variant` key SHALL be injected into the sub-run dict with value `v`; this key is runner-internal and SHALL NOT be present in any YAML case file.
 - The task, budget, expect, and fixture fields are inherited unchanged from the parent case.
 
 The results JSON SHALL contain one `CaseResult` entry per variant sub-run (not one entry for the parent case). The total number of entries in the results JSON equals the sum of: non-variantized cases (count 1 each) plus variantized cases expanded to len(variants) entries each.
