@@ -4,7 +4,6 @@ import json
 import sqlite3
 
 import pytest
-from api.server import app
 from fastapi.testclient import TestClient
 
 from agent.loop import RunResult
@@ -17,6 +16,7 @@ from agent.trace import (
     TraceWriter,
 )
 from api.db import get_db_path
+from api.server import app
 
 
 def test_get_db_path_default(monkeypatch):
@@ -243,3 +243,29 @@ def test_root_returns_html(client):
     assert "text/html" in resp.headers["content-type"]
     assert "<form" in resp.text
     assert "task" in resp.text
+
+
+def test_run_agent_closes_writer_on_loop_exception(temp_db, monkeypatch):
+    closed_calls: list[bool] = []
+
+    original_close = TraceWriter.close
+
+    def tracking_close(self: TraceWriter) -> None:
+        closed_calls.append(True)
+        original_close(self)
+
+    def _raise(*_a, **_kw):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(TraceWriter, "close", tracking_close)
+    monkeypatch.setattr("api.server.loop", _raise)
+
+    from api.server import TaskRequest, _run_agent
+
+    run_id = "run-exc-001"
+    writer = TraceWriter(temp_db)
+    writer.open_run(_make_run(run_id))
+    writer.close()
+
+    _run_agent(run_id, TaskRequest(task="do a thing"))
+    assert len(closed_calls) >= 1
