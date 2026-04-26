@@ -39,3 +39,5 @@ Create a skill with the command /done_pr which 1. run /opsx:archive and 2. commi
 /new task2 (trace schema writer)
 
 /new_task2 (trace replay harness)
+
+Add a new slash command locally called /review_task2 which 1. runs `codex exec "review the diff against master` 2. reads the comments from codex and summon a subagent with model = sonnet to fix the issue. 3. run /simplify 4. iterate the process until no code was changed since last commit. Otherwise, commit the changes.
