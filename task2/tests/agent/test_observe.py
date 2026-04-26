@@ -42,6 +42,8 @@ def test_1000_button_page_capped(playwright_chromium):
     assert len(button_lines) == MAX_NODES
     last = lines[-1]
     assert re.match(r"\[\.\.\. \d+ more nodes truncated\]", last), f"Unexpected last line: {last!r}"
+    sentinel_count = int(re.search(r"\d+", last).group())
+    assert sentinel_count == 1000 - MAX_NODES
 
 
 def test_last_action_none_first_step(browser_on_mixed):
@@ -54,6 +56,18 @@ def test_last_action_threaded_second_step(browser_on_mixed):
     action = {"tool": "goto", "intent": "navigate", "outcome": "ok"}
     obs = build_observation(browser_on_mixed, action)
     assert obs["last_action"] == action
+
+
+def test_build_observation_closed_browser_returns_valid_dict(playwright_chromium):
+    """build_observation with page=None returns zero-observation without raising."""
+    with Browser(playwright_browser=playwright_chromium) as b:
+        pass
+    obs = build_observation(b, None)
+    assert obs["url"] == ""
+    assert obs["title"] == ""
+    assert obs["ax_tree_digest"] == ""
+    assert obs["ax_fingerprint"] != ""
+    assert obs["last_action"] is None
 
 
 def test_ax_tree_digest_round_trips_through_trace(browser_on_mixed):
