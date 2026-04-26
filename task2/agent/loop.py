@@ -206,6 +206,7 @@ def _dispatch(tool_name: str, args: dict, browser: Browser, supervisor: Supervis
                 return f"Error: could not locate element for intent {intent!r} ({miss})"
             # Local import: agent.replay imports agent.loop and must stay playwright-free.
             from agent.browser import ElementNotFound
+
             try:
                 return browser.read(locate_result.selector)
             except ElementNotFound as exc:
