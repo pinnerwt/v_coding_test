@@ -45,3 +45,11 @@ Add a new slash command locally called /review_task2 which 1. runs `codex exec "
 /new_task2 (api server)
 
 /new_task2 (eval runner)
+
+Run the live script and let's discuss how we can improve the live tasks for unknown domains in a more general way.
+
+Before ticket 19 and 20, can you add two tickets first? 
+1. research on internet about web use benchmark, and integrate them into our developement.
+2. Design a skill/update in the code that evaluate our agent in a quantitative way in terms of cost, correctness and latency.
+
+/new_task2 (web-bench-integration)
