@@ -55,3 +55,5 @@ Before ticket 19 and 20, can you add two tickets first?
 /new_task2 (web-bench-integration)
 
 Write a task2/smoke_test.sh to run the smoke test for task2 agent. Raise the api server in the script and kill it in the end.
+
+Update /new_task2 skill to run task2/smoke_test.sh before making PR. Re-verify and /simplify if the smoke test does not pass.
