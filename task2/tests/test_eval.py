@@ -1,15 +1,13 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 import yaml
 
-from scripts.eval import load_cases, run_suite, run_validators
 from agent.loop import RunResult
-
+from scripts.eval import load_cases, run_suite, run_validators
 
 _FIXTURE_CASE = {
     "id": "fixture-heading",
@@ -80,14 +78,20 @@ def test_skipped_case_has_correct_shape(tmp_path):
 
 def test_load_cases_valid_yaml(tmp_path):
     p = tmp_path / "case.yaml"
-    p.write_text(yaml.dump([{
-        "id": "test-case",
-        "domain": "example.com",
-        "category": "search-and-extract",
-        "task": "Find something",
-        "expect": {"schema": {"title": "str"}, "validators": ["title.nonempty"]},
-        "budget": {"steps": 5, "usd": 0.05, "seconds": 30},
-    }]))
+    p.write_text(
+        yaml.dump(
+            [
+                {
+                    "id": "test-case",
+                    "domain": "example.com",
+                    "category": "search-and-extract",
+                    "task": "Find something",
+                    "expect": {"schema": {"title": "str"}, "validators": ["title.nonempty"]},
+                    "budget": {"steps": 5, "usd": 0.05, "seconds": 30},
+                }
+            ]
+        )
+    )
     cases = load_cases(p)
     assert len(cases) == 1
     c = cases[0]
@@ -97,13 +101,19 @@ def test_load_cases_valid_yaml(tmp_path):
 
 def test_load_cases_missing_required_field_raises(tmp_path):
     p = tmp_path / "bad.yaml"
-    p.write_text(yaml.dump([{
-        "id": "test-case",
-        "domain": "example.com",
-        "category": "search-and-extract",
-        "expect": {"schema": {}, "validators": []},
-        "budget": {"steps": 5, "usd": 0.05, "seconds": 30},
-    }]))
+    p.write_text(
+        yaml.dump(
+            [
+                {
+                    "id": "test-case",
+                    "domain": "example.com",
+                    "category": "search-and-extract",
+                    "expect": {"schema": {}, "validators": []},
+                    "budget": {"steps": 5, "usd": 0.05, "seconds": 30},
+                }
+            ]
+        )
+    )
     with pytest.raises(ValueError, match="task"):
         load_cases(p)
 

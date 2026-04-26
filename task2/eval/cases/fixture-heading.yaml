@@ -1,0 +1,15 @@
+- id: fixture-heading
+  domain: fixture
+  category: read-and-summarize
+  task: "Read the page heading and return it as title"
+  expect:
+    schema:
+      title: str
+    validators:
+      - title.nonempty
+  budget:
+    steps: 5
+    usd: 0.05
+    seconds: 30
+  fixture: true
+  fixture_url: "tests/fixtures/eval_heading.html"
