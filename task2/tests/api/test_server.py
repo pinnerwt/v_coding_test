@@ -245,6 +245,41 @@ def test_root_returns_html(client):
     assert "task" in resp.text
 
 
+def test_root_html_contains_input(client):
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert "<input" in resp.text or "<textarea" in resp.text
+
+
+def test_llm_base_url_forwarded_to_client(temp_db, monkeypatch):
+    captured: list = []
+
+    class FakeBrowser:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            pass
+
+    def fake_loop(task, browser, llm_client):
+        captured.append(llm_client._base_url)
+        return _MOCK_RESULT
+
+    monkeypatch.setenv("LLM_BASE_URL", "http://custom-host:9999")
+    monkeypatch.setattr("api.server.loop", fake_loop)
+    monkeypatch.setattr("api.server.Browser", FakeBrowser)
+
+    from api.server import TaskRequest, _run_agent
+
+    run_id = "run-llm-url-001"
+    writer = TraceWriter(temp_db)
+    writer.open_run(_make_run(run_id))
+    writer.close()
+
+    _run_agent(run_id, TaskRequest(task="do a thing"))
+    assert captured == ["http://custom-host:9999"]
+
+
 def test_run_agent_closes_writer_on_loop_exception(temp_db, monkeypatch):
     closed_calls: list[bool] = []
 
