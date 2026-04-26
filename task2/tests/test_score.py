@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -155,16 +156,14 @@ def test_score_skipped_excluded_from_summary(tmp_path):
 def test_find_latest_results_returns_most_recent(tmp_path):
     from scripts.score import _find_latest_results
 
-    f1 = tmp_path / "20260101_120000.json"
-    f1.write_text(json.dumps({"run_at": "2026-01-01", "cases": []}))
-    import time
-
+    f1 = tmp_path / "20270101_000000.json"
+    f1.write_text(json.dumps({"run_at": "2027-01-01", "cases": []}))
     time.sleep(0.05)
-    f2 = tmp_path / "20260426_032729.json"
-    f2.write_text(json.dumps({"run_at": "2026-04-26", "cases": []}))
+    f2 = tmp_path / "20260101_000000.json"
+    f2.write_text(json.dumps({"run_at": "2026-01-01", "cases": []}))
 
     result = _find_latest_results(tmp_path)
-    assert result.name == "20260426_032729.json"
+    assert result.name == "20260101_000000.json"
 
 
 def test_score_no_arg_uses_latest_results(tmp_path):
@@ -173,11 +172,6 @@ def test_score_no_arg_uses_latest_results(tmp_path):
     results_dir = tmp_path / "eval" / "results"
     results_dir.mkdir(parents=True)
 
-    old_content = {"run_at": "2026-01-01T00:00:00+00:00", "cases": []}
-    (results_dir / "20260101_120000.json").write_text(json.dumps(old_content))
-    import time
-
-    time.sleep(0.05)
     new_content = {
         "run_at": "2026-04-26T03:27:29+00:00",
         "cases": [
@@ -197,12 +191,34 @@ def test_score_no_arg_uses_latest_results(tmp_path):
         ],
     }
     (results_dir / "20260426_032729.json").write_text(json.dumps(new_content))
+    time.sleep(0.05)
+    old_content = {"run_at": "2026-01-01T00:00:00+00:00", "cases": []}
+    (results_dir / "20270101_120000.json").write_text(json.dumps(old_content))
 
     latest = _find_latest_results(results_dir)
-    assert latest.name == "20260426_032729.json"
+    assert latest.name == "20270101_120000.json"
     data = json.loads(latest.read_text())
     output = generate_scoreboard(data)
-    assert "2026-04-26" in output
+    assert "2026-01-01" in output
+
+
+def test_score_update_readme_default_path_is_task2_readme(tmp_path, monkeypatch):
+    from scripts.score import main
+
+    task2_readme = Path(__file__).parent.parent / "README.md"
+    original = task2_readme.read_text() if task2_readme.exists() else None
+    try:
+        monkeypatch.chdir(tmp_path)
+        main([str(_SAMPLE_RESULTS), "--update-readme"])
+        assert not (tmp_path / "README.md").exists()
+        assert task2_readme.exists()
+        sample_run_at = json.loads(_SAMPLE_RESULTS.read_text())["run_at"]
+        post = task2_readme.read_text()
+        assert sample_run_at in post
+        assert post != original
+    finally:
+        if original is not None:
+            task2_readme.write_text(original)
 
 
 def test_score_skill_file_exists():

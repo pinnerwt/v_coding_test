@@ -104,7 +104,7 @@ def update_readme(data: dict, *, readme_path: Path) -> None:
 
 def _find_latest_results(results_dir: Path) -> Path:
     try:
-        return max(results_dir.glob("*.json"), key=lambda p: p.name)
+        return max(results_dir.glob("*.json"), key=lambda p: p.stat().st_mtime)
     except ValueError as exc:
         raise FileNotFoundError(f"No result JSON files found in {results_dir}") from exc
 
@@ -136,7 +136,8 @@ def main(argv: list[str] | None = None) -> None:
         print(scoreboard, end="")
 
     if args.update_readme:
-        readme = Path(args.readme_path) if args.readme_path else Path("README.md")
+        default_readme = Path(__file__).resolve().parent.parent / "README.md"
+        readme = Path(args.readme_path) if args.readme_path else default_readme
         update_readme(data, readme_path=readme)
 
 

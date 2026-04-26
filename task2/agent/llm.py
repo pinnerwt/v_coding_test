@@ -72,7 +72,12 @@ class LLMClient:
         self._api_key = api_key or os.environ.get("LLM_API_KEY")
         self._model_default = model
         self._client = httpx.Client(timeout=timeout)
-        self._price_table: dict = price_table if price_table is not None else load_price_table()
+        self._price_table: dict | None = price_table
+
+    def _get_price_table(self) -> dict:
+        if self._price_table is None:
+            self._price_table = load_price_table()
+        return self._price_table
 
     def close(self) -> None:
         self._client.close()
@@ -134,7 +139,7 @@ class LLMClient:
                 cause=exc,
             ) from exc
 
-        return _parse_response(payload, price_table=self._price_table, model=resolved_model)
+        return _parse_response(payload, price_table=self._get_price_table(), model=resolved_model)
 
 
 def _parse_response(
@@ -179,16 +184,16 @@ def _parse_response(
     prompt_tokens = int(usage_raw.get("prompt_tokens", 0))
     completion_tokens = int(usage_raw.get("completion_tokens", 0))
 
-    resolved_model = model or payload.get("model") or ""
+    effective_model = payload.get("model") or model or ""
     usd = 0.0
     if price_table is not None:
-        usd = compute_usd(prompt_tokens, completion_tokens, resolved_model, price_table)
+        usd = compute_usd(prompt_tokens, completion_tokens, effective_model, price_table)
 
     return ChatResponse(
         content=content,
         tool_calls=tool_calls,
         finish_reason=choice.get("finish_reason") or "",
-        model=payload.get("model") or "",
+        model=effective_model,
         usage=Usage(
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
