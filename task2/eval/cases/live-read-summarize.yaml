@@ -1,0 +1,14 @@
+id: live-read-summarize
+domain: docs.python.org
+category: read-and-summarize
+live: true
+task: "Navigate to https://docs.python.org/3/library/pathlib.html and return the first paragraph of the module description as summary"
+expect:
+  schema:
+    summary: str
+  validators:
+    - summary.nonempty
+budget:
+  steps: 20
+  usd: 0.25
+  seconds: 120

@@ -1,0 +1,14 @@
+id: live-conditional-pick
+domain: books.toscrape.com
+category: conditional-pick
+live: true
+task: "Navigate to https://books.toscrape.com/catalogue/category/books/mystery_3/index.html, find the first book with a five-star rating, and return its title as book_title"
+expect:
+  schema:
+    book_title: str
+  validators:
+    - book_title.nonempty
+budget:
+  steps: 25
+  usd: 0.30
+  seconds: 150

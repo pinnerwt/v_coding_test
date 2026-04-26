@@ -1,0 +1,14 @@
+id: live-multi-page-nav
+domain: books.toscrape.com
+category: multi-page-nav
+live: true
+task: "Navigate to https://books.toscrape.com/, go to page 2 of the catalogue, and return the title of the first book listed on that page as book_title"
+expect:
+  schema:
+    book_title: str
+  validators:
+    - book_title.nonempty
+budget:
+  steps: 30
+  usd: 0.30
+  seconds: 150

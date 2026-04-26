@@ -1,0 +1,14 @@
+id: live-form-fill
+domain: duckduckgo.com
+category: form-fill
+live: true
+task: "Navigate to https://duckduckgo.com/, type 'Python programming language' into the search box, submit the search, and return the title of the first result as first_result_title"
+expect:
+  schema:
+    first_result_title: str
+  validators:
+    - first_result_title.nonempty
+budget:
+  steps: 20
+  usd: 0.25
+  seconds: 120

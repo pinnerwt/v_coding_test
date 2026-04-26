@@ -3,7 +3,6 @@
 ## Purpose
 TBD - created by archiving change implement-eval-runner. Update Purpose after archive.
 ## Requirements
-
 ### Requirement: Case YAML schema
 Each eval case SHALL be expressed as a YAML file under `task2/eval/cases/` with the following fields:
 
@@ -194,3 +193,19 @@ Both cases SHALL refer to local fixture HTML pages already present in `task2/tes
 #### Scenario: fixture-count.yaml exists and is valid
 - **WHEN** `task2/eval/cases/fixture-count.yaml` is loaded
 - **THEN** it SHALL parse as a valid case with `fixture: true`, `expect.validators: [items.len_gte: 1]`
+
+### Requirement: Case YAML live field
+The eval runner's case YAML schema SHALL recognize `live: true` as an optional informational field. Its presence SHALL NOT alter the runner's skip logic; skip logic remains driven solely by the absence of `fixture: true`. A case with `live: true` and no `fixture: true` SHALL be skipped when `run_suite` is called with `live=False`.
+
+#### Scenario: Live-flagged case skipped without --live
+- **WHEN** a YAML case has `live: true` and no `fixture: true`, and `run_suite` is called with `live=False`
+- **THEN** the case produces a `CaseResult` with `status == "skipped"` without calling `_run_case`
+
+#### Scenario: Live-flagged case executed with --live
+- **WHEN** a YAML case has `live: true` and no `fixture: true`, and `run_suite` is called with `live=True`
+- **THEN** `_run_case` is called for that case and its result (not `"skipped"`) appears in the results JSON
+
+#### Scenario: load_cases accepts live field without error
+- **WHEN** `load_cases` is called on a YAML file containing `live: true`
+- **THEN** no `ValueError` is raised and the returned dict includes `live == True`
+

@@ -1,0 +1,14 @@
+id: live-search-extract
+domain: en.wikipedia.org
+category: search-and-extract
+live: true
+task: "Navigate to https://en.wikipedia.org/wiki/Python_(programming_language) and return the first sentence of the lead paragraph as summary"
+expect:
+  schema:
+    summary: str
+  validators:
+    - summary.nonempty
+budget:
+  steps: 20
+  usd: 0.25
+  seconds: 120
