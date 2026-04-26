@@ -20,6 +20,15 @@ from api.db import get_db_path
 
 _AGENT_VERSION = "0.1.0"
 
+_ZERO_TOTALS: dict[str, Any] = {
+    "steps": 0,
+    "llm_calls": 0,
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "usd": 0.0,
+    "browser_ms": 0,
+}
+
 app = FastAPI()
 
 
@@ -70,14 +79,7 @@ def _run_agent(run_id: str, task_req: TaskRequest) -> None:
                 "evidence": result.evidence,
                 "failure": None if result.status != "failed" else {"reason": "agent failed"},
             },
-            totals={
-                "steps": 0,
-                "llm_calls": 0,
-                "prompt_tokens": 0,
-                "completion_tokens": 0,
-                "usd": 0.0,
-                "browser_ms": 0,
-            },
+            totals=_ZERO_TOTALS,
         )
     except Exception:
         ended_at = datetime.now(UTC).isoformat()
@@ -87,14 +89,7 @@ def _run_agent(run_id: str, task_req: TaskRequest) -> None:
                 status="failed",
                 ended_at=ended_at,
                 final={"result": None, "evidence": None, "failure": {"reason": "internal error"}},
-                totals={
-                    "steps": 0,
-                    "llm_calls": 0,
-                    "prompt_tokens": 0,
-                    "completion_tokens": 0,
-                    "usd": 0.0,
-                    "browser_ms": 0,
-                },
+                totals=_ZERO_TOTALS,
             )
         except Exception:
             pass
@@ -133,12 +128,15 @@ def get_task(run_id: str) -> dict[str, Any]:
 
 
 def _trace_events_generator(run_id: str, db_path: str) -> Generator[str, None, None]:
-    with sqlite3.connect(db_path) as conn:
-        rows = conn.execute(
+    conn = sqlite3.connect(db_path)
+    try:
+        cursor = conn.execute(
             "SELECT payload FROM traces_events WHERE run_id = ? ORDER BY seq ASC", (run_id,)
-        ).fetchall()
-    for (payload,) in rows:
-        yield payload + "\n"
+        )
+        for (payload,) in cursor:
+            yield payload + "\n"
+    finally:
+        conn.close()
 
 
 @app.get("/tasks/{run_id}/trace")

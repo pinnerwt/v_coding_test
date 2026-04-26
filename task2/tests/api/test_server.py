@@ -16,7 +16,7 @@ from agent.trace import (
     TraceWriter,
 )
 from api.db import get_db_path
-from api.server import app
+from api.server import TaskRequest, _run_agent, app
 
 
 def test_get_db_path_default(monkeypatch):
@@ -251,67 +251,51 @@ def test_root_html_contains_input(client):
     assert "<input" in resp.text or "<textarea" in resp.text
 
 
-def test_llm_base_url_forwarded_to_client(temp_db, monkeypatch):
-    captured: list = []
+class _FakeBrowser:
+    def __enter__(self):
+        return self
 
-    class FakeBrowser:
-        def __enter__(self):
-            return self
+    def __exit__(self, *_):
+        pass
 
-        def __exit__(self, *_):
-            pass
+
+def _capture_base_url(temp_db, monkeypatch, run_id: str) -> list[str]:
+    captured: list[str] = []
 
     def fake_loop(task, browser, llm_client):
         captured.append(llm_client._base_url)
         return _MOCK_RESULT
 
-    monkeypatch.setenv("LLM_BASE_URL", "http://custom-host:9999")
     monkeypatch.setattr("api.server.loop", fake_loop)
-    monkeypatch.setattr("api.server.Browser", FakeBrowser)
+    monkeypatch.setattr("api.server.Browser", _FakeBrowser)
 
-    from api.server import TaskRequest, _run_agent
-
-    run_id = "run-llm-url-001"
     writer = TraceWriter(temp_db)
     writer.open_run(_make_run(run_id))
     writer.close()
 
     _run_agent(run_id, TaskRequest(task="do a thing"))
+    return captured
+
+
+def test_llm_base_url_forwarded_to_client(temp_db, monkeypatch):
+    monkeypatch.setenv("LLM_BASE_URL", "http://custom-host:9999")
+    captured = _capture_base_url(temp_db, monkeypatch, "run-llm-url-001")
     assert captured == ["http://custom-host:9999"]
 
 
 def test_llm_base_url_defaults_to_localhost(temp_db, monkeypatch):
-    captured: list = []
-
-    class FakeBrowser:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_):
-            pass
-
-    def fake_loop(task, browser, llm_client):
-        captured.append(llm_client._base_url)
-        return _MOCK_RESULT
-
     monkeypatch.delenv("LLM_BASE_URL", raising=False)
-    monkeypatch.setattr("api.server.loop", fake_loop)
-    monkeypatch.setattr("api.server.Browser", FakeBrowser)
-
-    from api.server import TaskRequest, _run_agent
-
-    run_id = "run-llm-default-001"
-    writer = TraceWriter(temp_db)
-    writer.open_run(_make_run(run_id))
-    writer.close()
-
-    _run_agent(run_id, TaskRequest(task="do a thing"))
+    captured = _capture_base_url(temp_db, monkeypatch, "run-llm-default-001")
     assert captured == ["http://localhost:8090"]
 
 
 def test_run_agent_closes_writer_on_loop_exception(temp_db, monkeypatch):
-    closed_calls: list[bool] = []
+    run_id = "run-exc-001"
+    writer = TraceWriter(temp_db)
+    writer.open_run(_make_run(run_id))
+    writer.close()
 
+    closed_calls: list[bool] = []
     original_close = TraceWriter.close
 
     def tracking_close(self: TraceWriter) -> None:
@@ -324,12 +308,5 @@ def test_run_agent_closes_writer_on_loop_exception(temp_db, monkeypatch):
     monkeypatch.setattr(TraceWriter, "close", tracking_close)
     monkeypatch.setattr("api.server.loop", _raise)
 
-    from api.server import TaskRequest, _run_agent
-
-    run_id = "run-exc-001"
-    writer = TraceWriter(temp_db)
-    writer.open_run(_make_run(run_id))
-    writer.close()
-
     _run_agent(run_id, TaskRequest(task="do a thing"))
-    assert len(closed_calls) >= 1
+    assert len(closed_calls) == 1
