@@ -4,7 +4,7 @@ import argparse
 import json
 import os
 import sys
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -27,9 +27,9 @@ def load_cases(path: str | Path) -> list[dict]:
         raw = yaml.safe_load(f)
     cases: list[dict] = raw if isinstance(raw, list) else [raw]
     for case in cases:
-        for field in _REQUIRED_FIELDS:
-            if field not in case:
-                raise ValueError(f"Case in {p} is missing required field: {field!r}")
+        for required_field in _REQUIRED_FIELDS:
+            if required_field not in case:
+                raise ValueError(f"Case in {p} is missing required field: {required_field!r}")
     return cases
 
 
@@ -60,6 +60,11 @@ class CaseResult:
     usd: float
     l_tier_counts: dict
     validators: list[dict]
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    latency_ms_total: int = 0
+    latency_ms_per_step: list[int] = field(default_factory=list)
+    step_breakdown: list[dict] = field(default_factory=list)
 
 
 def _expand_variants(cases: list[dict]) -> list[dict]:
@@ -88,10 +93,15 @@ def _run_case(case: dict[str, Any], llm_client: Any, browser: Any) -> CaseResult
     return CaseResult(
         id=case["id"],
         status=run_result.status,
-        steps=0,
-        usd=0.0,
+        steps=run_result.steps,
+        usd=run_result.usd,
         l_tier_counts={},
         validators=validator_results,
+        prompt_tokens=run_result.prompt_tokens,
+        completion_tokens=run_result.completion_tokens,
+        latency_ms_total=run_result.latency_ms_total,
+        latency_ms_per_step=list(run_result.latency_ms_per_step),
+        step_breakdown=list(run_result.step_breakdown),
     )
 
 
