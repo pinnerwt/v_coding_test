@@ -42,14 +42,35 @@ def _response_no_tool_call() -> ChatResponse:
     )
 
 
+_PLAN_STUB = '{"steps": ["complete the task"], "expected_end_state": "task complete"}'
+
+
+def _plan_stub_response() -> ChatResponse:
+    return ChatResponse(
+        content=_PLAN_STUB,
+        tool_calls=[],
+        finish_reason="stop",
+        model="fake",
+        usage=Usage(prompt_tokens=0, completion_tokens=0, total_tokens=0),
+        raw={},
+        usd=0.0,
+    )
+
+
 class _FakeLLMClient:
-    """Returns pre-canned ChatResponse objects in sequence."""
+    """Returns pre-canned ChatResponse objects in sequence.
+
+    Planner calls (tools=None) are answered with a stub plan response so
+    existing tests do not need to prepend a planner response to their lists.
+    """
 
     def __init__(self, responses: list[ChatResponse]):
         self._responses = list(responses)
         self._index = 0
 
     def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
+        if tools is None:
+            return _plan_stub_response()
         if self._index < len(self._responses):
             resp = self._responses[self._index]
             self._index += 1
@@ -688,6 +709,8 @@ class _CapturingLLMClient:
         self.captured_messages: list[dict] | None = None
 
     def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
+        if tools is None:
+            return _plan_stub_response()
         if self.captured_messages is None:
             self.captured_messages = list(messages)
         if self._index < len(self._responses):
@@ -710,6 +733,13 @@ def _done_response(fixture_url: str, call_id: str = "tc-done") -> ChatResponse:
     )
 
 
+def _extract_obs_json(content: str) -> dict:
+    prefix = "Current state: "
+    idx = content.find(prefix)
+    assert idx >= 0, f"Expected 'Current state: ' in content: {content!r}"
+    return json.loads(content[idx + len(prefix) :])
+
+
 def test_observation_contains_ax_tree_digest_key(fixture_server, playwright_chromium):
     fixture_url = f"{fixture_server}/loop_happy_path.html"
     capturing_llm = _CapturingLLMClient([_done_response(fixture_url)])
@@ -721,8 +751,8 @@ def test_observation_contains_ax_tree_digest_key(fixture_server, playwright_chro
     assert capturing_llm.captured_messages is not None
     obs_msg = capturing_llm.captured_messages[1]
     content = obs_msg["content"]
-    assert content.startswith("Current state: ")
-    obs_json = json.loads(content[len("Current state: ") :])
+    assert "Current state: " in content
+    obs_json = _extract_obs_json(content)
     assert "ax_tree_digest" in obs_json
 
 
@@ -736,7 +766,7 @@ def test_observation_does_not_contain_legacy_text_key(fixture_server, playwright
 
     assert capturing_llm.captured_messages is not None
     obs_msg = capturing_llm.captured_messages[1]
-    obs_json = json.loads(obs_msg["content"][len("Current state: ") :])
+    obs_json = _extract_obs_json(obs_msg["content"])
     assert "text" not in obs_json
 
 
@@ -750,7 +780,7 @@ def test_first_step_last_action_null(fixture_server, playwright_chromium):
 
     assert capturing_llm.captured_messages is not None
     obs_msg = capturing_llm.captured_messages[1]
-    obs_json = json.loads(obs_msg["content"][len("Current state: ") :])
+    obs_json = _extract_obs_json(obs_msg["content"])
     assert obs_json["last_action"] is None
 
 
@@ -761,6 +791,8 @@ class _TwoStepCapturingClient:
         self.all_captures: list[list[dict]] = []
 
     def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
+        if tools is None:
+            return _plan_stub_response()
         self.all_captures.append(list(messages))
         self._index += 1
         if self._index == 1:
@@ -796,7 +828,7 @@ def test_second_step_last_action_populated(fixture_server, playwright_chromium):
         for m in reversed(step2_messages)
         if m["role"] == "user" and "Current state:" in m.get("content", "")
     )
-    obs_json = json.loads(obs_msg["content"][len("Current state: ") :])
+    obs_json = _extract_obs_json(obs_msg["content"])
     assert obs_json["last_action"] is not None
     assert obs_json["last_action"]["tool"] == "goto"
 

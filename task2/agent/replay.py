@@ -141,6 +141,16 @@ def _noop_response() -> ChatResponse:
     )
 
 
+_STUB_PLAN_RESPONSE = ChatResponse(
+    content='{"steps": ["complete the task"], "expected_end_state": "task complete"}',
+    tool_calls=[],
+    finish_reason="stop",
+    model="stub",
+    usage=Usage(0, 0, 0),
+    raw={},
+)
+
+
 class StubLLMClient:
     """Returns pre-recorded ChatResponse objects in sequence.
 
@@ -160,10 +170,13 @@ class StubLLMClient:
         *,
         model: str | None = None,  # noqa: ARG002
         temperature: float = 0.0,  # noqa: ARG002
-        tools: list[dict] | None = None,  # noqa: ARG002
+        tools: list[dict] | None = None,
         seed: int | None = None,  # noqa: ARG002
         **kwargs: Any,  # noqa: ARG002
     ) -> ChatResponse:
+        # Planner calls have no tools; return a stub plan without consuming the decision queue.
+        if tools is None:
+            return _STUB_PLAN_RESPONSE
         # Snapshot the messages — loop.py keeps mutating the same list across calls.
         self.prompts_consumed.append(json.loads(json.dumps(messages)))
         if self._idx < len(self._responses):
@@ -218,6 +231,29 @@ def _replayed_pair(tc: ToolCall) -> tuple[str, dict] | None:
     if not isinstance(args, dict):
         return None
     return tc.name, args
+
+
+_PLAN_PROGRESS_PREFIX = "Plan progress:\n"
+
+
+def _strip_plan_prefix(content: str) -> str:
+    if not content.startswith(_PLAN_PROGRESS_PREFIX):
+        return content
+    idx = content.find(STATE_MESSAGE_PREFIX)
+    return content[idx:] if idx >= 0 else content
+
+
+def _normalize_messages(messages: list[dict] | None) -> list[dict]:
+    if not messages:
+        return []
+    result = []
+    for msg in messages:
+        if isinstance(msg, dict) and msg.get("role") == "user":
+            content = msg.get("content")
+            if isinstance(content, str):
+                msg = {**msg, "content": _strip_plan_prefix(content)}
+        result.append(msg)
+    return result
 
 
 def _observation_from_call(call: LLMCallEvent) -> dict:
@@ -315,8 +351,8 @@ def replay_run(trace_path: str | Path) -> ReplayResult:
     n_consumed_calls = len(stub_llm.prompts_consumed)
     n_prompt_pairs = min(n_recorded_calls, n_consumed_calls)
     for i in range(n_prompt_pairs):
-        recorded_messages = decide_llm_calls[i].prompt.get("messages")
-        actual_messages = stub_llm.prompts_consumed[i]
+        recorded_messages = _normalize_messages(decide_llm_calls[i].prompt.get("messages"))
+        actual_messages = _normalize_messages(stub_llm.prompts_consumed[i])
         if recorded_messages != actual_messages:
             return ReplayResult(
                 matched=False,

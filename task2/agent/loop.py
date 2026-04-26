@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import json
 import time
+import uuid
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
 import agent.observe as observe
+import agent.plan as plan_module
 from agent.locate import LocatorMiss, locate_l1, locate_l2, parse_intent
 from agent.supervisor import Supervisor
+from agent.trace import PlanEvent
 
 if TYPE_CHECKING:
     from playwright.sync_api import Page
@@ -123,6 +126,11 @@ class RunResult:
     step_breakdown: list[dict] = field(default_factory=list)
 
 
+@dataclass
+class _DecisionMarker:
+    kind: str = "decision"
+
+
 def _record_step(
     step_num: int,
     t0: float,
@@ -215,12 +223,34 @@ def _dispatch(tool_name: str, args: dict, browser: Browser, supervisor: Supervis
     return f"Error: unknown tool {tool_name!r}"
 
 
+def _emit_plan_event(events: list | None, reason: str, steps: list[str], call_id: str) -> None:
+    if events is None:
+        return
+    events.append(
+        PlanEvent(
+            run_id="loop",
+            seq=0,
+            ts="",
+            step_id=None,
+            reason=reason,  # type: ignore[arg-type]
+            steps=steps,
+            llm_call_id=call_id,
+        )
+    )
+
+
+def _plan_progress_block(steps: list[str]) -> str:
+    lines = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(steps))
+    return f"Plan progress:\n{lines}\n\n"
+
+
 def loop(
     task: str,
     browser: Browser,
     llm_client: LLMClient,
     *,
     max_steps: int = 20,
+    events: list | None = None,
 ) -> RunResult:
     messages: list[dict] = [{"role": "system", "content": _build_system_prompt(task)}]
     supervisor = Supervisor()
@@ -232,15 +262,29 @@ def loop(
     step_breakdown: list[dict] = []
     step_num = 0
     last_action: dict | None = None
+    active_plan: plan_module.Plan | None = None
 
     for _ in range(max_steps):
         step_num += 1
         t0 = time.monotonic()
 
         observation = observe.build_observation(browser, last_action)
+
+        if step_num == 1:
+            active_plan = plan_module.plan(task, observation, llm_client)
+            _emit_plan_event(events, "initial", active_plan.steps, str(uuid.uuid4()))
+
+        assert active_plan is not None
+        plan_prefix = _plan_progress_block(active_plan.steps)
         messages.append(
-            {"role": "user", "content": f"{STATE_MESSAGE_PREFIX}{json.dumps(observation)}"}
+            {
+                "role": "user",
+                "content": f"{plan_prefix}{STATE_MESSAGE_PREFIX}{json.dumps(observation)}",
+            }
         )
+
+        if events is not None:
+            events.append(_DecisionMarker())
 
         response = llm_client.chat(messages, tools=TOOLS)
 
@@ -342,6 +386,39 @@ def loop(
                 )
 
             tool_result = _dispatch(tool_call.name, args, browser, supervisor)
+
+            if tool_result.startswith("Error:") and supervisor.last_policy == "halt":
+                if not supervisor.replan_used:
+                    new_plan = plan_module.replan(
+                        task, observation, active_plan, tool_result, llm_client
+                    )
+                    supervisor.replan_used = True
+                    active_plan = new_plan
+                    _emit_plan_event(events, "replan", new_plan.steps, str(uuid.uuid4()))
+                    break
+                else:
+                    _record_step(
+                        step_num,
+                        t0,
+                        response,
+                        dispatched_tool_names,
+                        latency_ms_per_step,
+                        step_breakdown,
+                    )
+                    return RunResult(
+                        status="failed",
+                        result=None,
+                        evidence=None,
+                        verifier=None,
+                        steps=step_num,
+                        prompt_tokens=cum_prompt_tokens,
+                        completion_tokens=cum_completion_tokens,
+                        usd=cum_usd,
+                        latency_ms_total=sum(latency_ms_per_step),
+                        latency_ms_per_step=latency_ms_per_step,
+                        step_breakdown=step_breakdown,
+                    )
+
             if tool_result.startswith("Error:"):
                 last_action = {
                     "tool": tool_call.name,

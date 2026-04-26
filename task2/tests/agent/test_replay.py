@@ -142,17 +142,25 @@ def test_stub_llm_client_returns_in_order():
     )
 
     stub = StubLLMClient([r1, r2])
-    assert stub.chat([]) is r1
-    assert stub.chat([]) is r2
+    assert stub.chat([], tools=[]) is r1
+    assert stub.chat([], tools=[]) is r2
     assert stub.responses_consumed == [r1, r2]
+
+
+def test_stub_llm_client_plan_call_returns_stub_plan():
+    stub = StubLLMClient([])
+    result = stub.chat([])
+    assert result.content is not None
+    assert "steps" in result.content
+    assert stub.responses_consumed == []
 
 
 def test_stub_llm_client_exhausted_returns_noop():
     r1 = _make_chat_response("goto", {"url": "http://a"})
     stub = StubLLMClient([r1])
 
-    _first = stub.chat([])
-    second = stub.chat([])  # exhausted
+    _first = stub.chat([], tools=[])
+    second = stub.chat([], tools=[])  # exhausted
 
     assert second.tool_calls == []
     assert second.finish_reason == "stop"
