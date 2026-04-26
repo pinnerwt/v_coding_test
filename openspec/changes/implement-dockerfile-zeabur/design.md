@@ -40,13 +40,13 @@ Alternatives considered:
 - `python:3.11-slim` + `playwright install-deps` — more brittle; MS image is tested together.
 - `mcr.microsoft.com/playwright/python:latest` — plan.md mentions this, but pinning is safer for reproducible builds.
 
-### Dependency install: `uv` inside the image (no-venv, system install)
+### Dependency install: `uv` inside the image (venv, frozen lockfile)
 
-`uv sync --no-dev --system` installs runtime deps into the system Python so `uvicorn api.server:app` resolves without activating a venv. `uv` binary is installed via the official `uv` installer (single curl layer) before the `uv sync` step. Alternatives: `pip install -r requirements.txt` — violates repo tooling rules.
+`uv sync --no-dev --frozen` installs runtime deps into a `.venv` inside the image using the lockfile exactly. `uv` binary is installed via the official `uv` installer (single curl layer) before the `uv sync` step. The entrypoint and playwright install use `.venv/bin/` prefixes to resolve into that venv. Alternatives: `pip install -r requirements.txt` — violates repo tooling rules; `--system` — skips venv but loses lockfile-exact reproducibility via `--frozen`.
 
 ### `playwright install chromium --with-deps` in Dockerfile
 
-Run as a `RUN` layer after `uv sync` so Chromium is present in the image. `--with-deps` installs OS packages. The MS base image already carries many of these, so this is a fast layer that guarantees correctness.
+Run as a `RUN` layer after `uv sync` so Chromium is present in the image. Invoked via `.venv/bin/playwright` to match the installed venv. `--with-deps` installs OS packages. The MS base image already carries many of these, so this is a fast layer that guarantees correctness.
 
 ### Zeabur config: `zeabur.json` (not `zeabur.toml`)
 
