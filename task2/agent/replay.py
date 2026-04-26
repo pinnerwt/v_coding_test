@@ -2,18 +2,9 @@
 
 Given a recorded trace JSONL file, drives loop.py with a stub browser and
 stub LLM client (no real Playwright, no real HTTP) and compares emitted
-decisions against the recording.
-
-Known limitation — intent-based reads:
-    `browser.read(selector)` always returns "" and the stub locator surface
-    resolves to zero matches, so loop's `read(intent=...)` path always
-    surfaces "Error: could not locate ..." rather than the recorded text.
-    Real traces whose `read(intent=...)` calls returned non-empty text will
-    therefore report prompt drift even when loop's decisions are unchanged.
-    Replaying such traces faithfully would require stubbing the full locate
-    stack and queueing recorded tool-message contents — out of scope for
-    this harness, which targets decision-divergence detection on traces
-    that exercise `goto`, `read` (no intent), `done`, and `fail`.
+decisions against the recording. Targets traces using `goto`, `read`
+(no intent), `done`, `fail`; intent-based reads always surface as prompt
+drift since the stub locator resolves to zero matches.
 """
 
 from __future__ import annotations
@@ -24,7 +15,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from agent.llm import ChatResponse, ToolCall, Usage
-from agent.loop import loop
+from agent.loop import STATE_MESSAGE_PREFIX, loop
 from agent.trace import (
     AnyEvent,
     DecisionEvent,
@@ -69,16 +60,15 @@ class _StubPage:
 
     @property
     def url(self) -> str:
-        # loop._observe reads page.url first, then page.evaluate; advance the
-        # observation cursor here so the matching evaluate() returns the same
-        # iteration's body text. Only _text is replayed from the recording —
-        # _url is driven by goto() so a goto regression (e.g. URL no longer
-        # advances) surfaces as prompt drift rather than being masked by the
-        # recorded observations.
+        # _url is driven by goto() so a goto regression surfaces as prompt drift
+        # instead of being masked by the recording. Only _text is replayed.
         if self._observations and self._idx + 1 < len(self._observations):
             self._idx += 1
             self._text = str(self._observations[self._idx].get("text", ""))
         return self._url
+
+    def set_url(self, url: str) -> None:
+        self._url = url
 
     def evaluate(self, js: str, *args: Any) -> str:  # noqa: ARG002
         return self._text
@@ -119,7 +109,7 @@ class StubBrowser:
         self._page: _StubPage = _StubPage(url=initial_url, observations=observations)
 
     def goto(self, url: str) -> None:
-        self._page._url = url
+        self._page.set_url(url)
 
     def read(self, selector: str) -> str:  # noqa: ARG002
         return ""
@@ -227,26 +217,17 @@ def _replayed_pair(tc: ToolCall) -> tuple[str, dict] | None:
     return tc.name, args
 
 
-_STATE_PREFIX = "Current state: "
-
-
 def _observation_from_call(call: LLMCallEvent) -> dict:
-    """Reconstruct the observation loop.py emitted just before this chat() call.
-
-    loop.py appends `{"role": "user", "content": "Current state: {JSON}"}` right
-    before each chat(); the last user message in this call's prompt is that
-    payload. Parsing it back lets the stub page replay the same url/text so the
-    user message we send during replay byte-matches the recording.
-    """
+    """Parse `{url, text}` out of the last `STATE_MESSAGE_PREFIX` user message."""
     messages = call.prompt.get("messages") or []
     for msg in reversed(messages):
         if not isinstance(msg, dict) or msg.get("role") != "user":
             continue
         content = msg.get("content")
-        if not isinstance(content, str) or not content.startswith(_STATE_PREFIX):
+        if not isinstance(content, str) or not content.startswith(STATE_MESSAGE_PREFIX):
             continue
         try:
-            payload = json.loads(content[len(_STATE_PREFIX) :])
+            payload = json.loads(content[len(STATE_MESSAGE_PREFIX) :])
         except json.JSONDecodeError:
             return {"url": "", "text": ""}
         if not isinstance(payload, dict):
@@ -310,20 +291,14 @@ def replay_run(trace_path: str | Path) -> ReplayResult:
         _response_from_recorded(lc.response) for lc in decide_llm_calls
     ]
 
-    # Drive the stub page from the recorded observations so each `_observe()`
-    # produces the same {url, text} the LLM saw at recording time. Falls back
-    # to the first ObservationEvent's url when no decide call exists yet.
     observations = [_observation_from_call(lc) for lc in decide_llm_calls]
     first_obs = next((e for e in events if isinstance(e, ObservationEvent)), None)
     initial_url = first_obs.url if first_obs is not None else ""
     stub_browser = StubBrowser(initial_url=initial_url, observations=observations)
     stub_llm = StubLLMClient(responses)
 
-    # When the recording closed cleanly (terminal status — done/fail/timeout/etc.),
-    # cap replay at the recorded chat-call count: enough for natural termination on
-    # done/fail, exact-fit for timeout traces (no false chat-call-count divergence).
-    # When status is None the recording was truncated mid-flight; give loop headroom
-    # so the surplus chat() calls are surfaced as a divergence rather than hidden.
+    # Closed runs cap at the recorded count (timeout traces fit exactly); truncated
+    # runs (status=None) get slack so surplus chat() calls surface as divergence.
     headroom = 0 if run.status is not None else 2
     loop(
         task=run.task,
@@ -332,9 +307,8 @@ def replay_run(trace_path: str | Path) -> ReplayResult:
         max_steps=len(decide_llm_calls) + headroom,
     )
 
-    # Prompt drift: compare what loop.py actually sent against what was recorded.
-    # The trace schema lets `LLMCallEvent.prompt` carry extra fields (tools/model/…),
-    # so diff only on `messages` — that is the slice replay actually drives.
+    # Diff on `messages` only — `LLMCallEvent.prompt` may carry extra keys
+    # (tools/model/…) that replay does not drive.
     n_recorded_calls = len(decide_llm_calls)
     n_consumed_calls = len(stub_llm.prompts_consumed)
     n_prompt_pairs = min(n_recorded_calls, n_consumed_calls)
@@ -353,8 +327,6 @@ def replay_run(trace_path: str | Path) -> ReplayResult:
                 ),
             )
 
-    # Chat-call count mismatch: extra (or missing) chat() calls beyond the recording
-    # signal a control-flow regression that a per-pair messages diff alone would miss.
     if n_consumed_calls != n_recorded_calls:
         step_id = (
             decide_llm_calls[n_consumed_calls].step_id

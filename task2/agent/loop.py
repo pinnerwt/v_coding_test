@@ -16,6 +16,8 @@ if TYPE_CHECKING:
 RunStatus = Literal["succeeded", "unverified", "failed", "timeout"]
 ToolName = Literal["goto", "read", "done", "fail"]
 
+STATE_MESSAGE_PREFIX = "Current state: "
+
 _BODY_TEXT_JS = "() => document.body.innerText"
 _BODY_TEXT_LIMIT = 2000
 
@@ -196,7 +198,9 @@ def loop(
 
     for _ in range(max_steps):
         observation = _observe(browser)
-        messages.append({"role": "user", "content": f"Current state: {json.dumps(observation)}"})
+        messages.append(
+            {"role": "user", "content": f"{STATE_MESSAGE_PREFIX}{json.dumps(observation)}"}
+        )
 
         response = llm_client.chat(messages, tools=TOOLS)
 

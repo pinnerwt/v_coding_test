@@ -294,7 +294,14 @@ def test_replay_run_detects_prompt_drift(tmp_path):
     assert result.first_divergence.step_id == "step-1"
 
 
-def _record_fixture(tmp_path: Path, task: str, responses: list) -> Path:
+def _record_fixture(
+    tmp_path: Path,
+    task: str,
+    responses: list,
+    *,
+    max_steps: int | None = None,
+    run_overrides: dict | None = None,
+) -> Path:
     """Run loop.py with a recording LLM to produce a self-consistent trace fixture.
 
     Captures every prompt loop.py sends and pairs it with the canned response, then
@@ -305,10 +312,13 @@ def _record_fixture(tmp_path: Path, task: str, responses: list) -> Path:
     """
 
     rec = StubLLMClient(responses)
+    effective_max = len(responses) + 2 if max_steps is None else max_steps
     with StubBrowser() as br:
-        loop(task=task, browser=br, llm_client=rec, max_steps=len(responses) + 2)
+        loop(task=task, browser=br, llm_client=rec, max_steps=effective_max)
 
     run = _default_run_dict("run-rec-001", task)
+    if run_overrides:
+        run.update(run_overrides)
 
     events: list[dict] = []
     seq = 0
@@ -980,89 +990,13 @@ def test_replay_run_matches_timeout_recording_without_done(tmp_path):
         _make_chat_response("goto", {"url": "http://stub.local/c"}),
     ]
 
-    rec = StubLLMClient(responses)
-    with StubBrowser() as br:
-        loop(task=task, browser=br, llm_client=rec, max_steps=len(responses))
-
-    run = _default_run_dict("run-rec-timeout", task)
-    run["status"] = "timeout"
-    run["ended_at"] = "2024-01-01T00:00:10Z"
-    events: list[dict] = []
-    seq = 0
-    decision_idx = 0
-    current_url = ""
-    for i, (prompt_msgs, resp) in enumerate(zip(rec.prompts_consumed, responses, strict=True)):
-        step_id = f"step-{i + 1}"
-        seq += 1
-        events.append(
-            {
-                "run_id": run["run_id"],
-                "seq": seq,
-                "ts": f"2024-01-01T00:00:{seq:02d}Z",
-                "step_id": step_id,
-                "kind": "observation",
-                "url": current_url,
-                "title": "",
-                "ax_tree_digest": "",
-                "ax_fingerprint": "",
-                "screenshot_ref": "",
-                "viewport": {"width": 1280, "height": 720},
-            }
-        )
-        seq += 1
-        llm_call_id = f"lc-{i + 1}"
-        events.append(
-            {
-                "run_id": run["run_id"],
-                "seq": seq,
-                "ts": f"2024-01-01T00:00:{seq:02d}Z",
-                "step_id": step_id,
-                "kind": "llm_call",
-                "llm_call_id": llm_call_id,
-                "purpose": "decide",
-                "model": "stub-model",
-                "base_url": "http://stub.local",
-                "prompt": {"messages": prompt_msgs},
-                "response": {
-                    "content": resp.content,
-                    "finish_reason": resp.finish_reason,
-                    "tool_calls": [
-                        {
-                            "id": tc.id,
-                            "type": "function",
-                            "function": {"name": tc.name, "arguments": tc.arguments},
-                        }
-                        for tc in resp.tool_calls
-                    ],
-                },
-                "tokens": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
-                "usd": 0.0,
-                "ms": 0,
-            }
-        )
-        decision_idx += 1
-        tc = resp.tool_calls[0]
-        tc_args = json.loads(tc.arguments)
-        seq += 1
-        events.append(
-            {
-                "run_id": run["run_id"],
-                "seq": seq,
-                "ts": f"2024-01-01T00:00:{seq:02d}Z",
-                "step_id": step_id,
-                "kind": "decision",
-                "intent": f"decision-{decision_idx}",
-                "tool": tc.name,
-                "args": tc_args,
-                "rationale": "recorded",
-                "llm_call_id": llm_call_id,
-            }
-        )
-        if tc.name == "goto" and isinstance(tc_args.get("url"), str):
-            current_url = tc_args["url"]
-
-    fixture_path = tmp_path / "timeout.jsonl"
-    fixture_path.write_text("\n".join([json.dumps(run)] + [json.dumps(e) for e in events]) + "\n")
+    fixture_path = _record_fixture(
+        tmp_path,
+        task,
+        responses,
+        max_steps=len(responses),
+        run_overrides={"status": "timeout", "ended_at": "2024-01-01T00:00:10Z"},
+    )
 
     result = replay_run(fixture_path)
     assert result.matched is True, f"Expected match; got divergence={result.first_divergence!r}"
