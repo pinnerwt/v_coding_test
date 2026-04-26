@@ -6,6 +6,7 @@ import sqlite3
 import pytest
 from fastapi.testclient import TestClient
 
+from agent.llm import LLMClient
 from agent.loop import RunResult
 from agent.trace import (
     DoneEvent,
@@ -16,7 +17,7 @@ from agent.trace import (
     TraceWriter,
 )
 from api.db import get_db_path
-from api.server import TaskRequest, _run_agent, app
+from api.server import TaskRequest, _build_run, _run_agent, app
 
 
 def test_get_db_path_default(monkeypatch):
@@ -310,3 +311,78 @@ def test_run_agent_closes_writer_on_loop_exception(temp_db, monkeypatch):
 
     _run_agent(run_id, TaskRequest(task="do a thing"))
     assert len(closed_calls) == 1
+
+
+def test_llm_model_defaults_to_qwen3_5_27b_in_run_record(monkeypatch):
+    monkeypatch.delenv("LLM_MODEL", raising=False)
+    run = _build_run("some-id", TaskRequest(task="do a thing"))
+    assert run.llm.model == "qwen3-5-27b"
+
+
+def test_llm_model_defaults_to_qwen3_5_27b_on_client(tmp_path, monkeypatch):
+    db_path = str(tmp_path / "test.db")
+    monkeypatch.setenv("DB_PATH", db_path)
+    monkeypatch.setenv("LLM_BASE_URL", "http://localhost:9999")
+    monkeypatch.delenv("LLM_MODEL", raising=False)
+
+    captured: list[str | None] = []
+
+    def fake_loop(task, browser, llm_client):
+        captured.append(llm_client._model_default)
+        return _MOCK_RESULT
+
+    monkeypatch.setattr("api.server.loop", fake_loop)
+    monkeypatch.setattr("api.server.Browser", _FakeBrowser)
+
+    run_id = "run-model-default-001"
+    writer = TraceWriter(db_path)
+    writer.open_run(_make_run(run_id))
+    writer.close()
+
+    _run_agent(run_id, TaskRequest(task="do a thing"))
+    assert captured == ["qwen3-5-27b"]
+
+
+def test_run_agent_closes_llm_client(temp_db, monkeypatch):
+    run_id = "run-llm-close-001"
+    writer = TraceWriter(temp_db)
+    writer.open_run(_make_run(run_id))
+    writer.close()
+
+    close_calls: list[bool] = []
+    original_close = LLMClient.close
+
+    def tracking_close(self: LLMClient) -> None:
+        close_calls.append(True)
+        original_close(self)
+
+    monkeypatch.setattr(LLMClient, "close", tracking_close)
+    monkeypatch.setattr("api.server.loop", lambda *_a, **_kw: _MOCK_RESULT)
+    monkeypatch.setattr("api.server.Browser", _FakeBrowser)
+
+    _run_agent(run_id, TaskRequest(task="do a thing"))
+    assert len(close_calls) == 1
+
+
+def test_run_agent_closes_llm_client_on_loop_exception(temp_db, monkeypatch):
+    run_id = "run-llm-close-exc-001"
+    writer = TraceWriter(temp_db)
+    writer.open_run(_make_run(run_id))
+    writer.close()
+
+    close_calls: list[bool] = []
+    original_close = LLMClient.close
+
+    def tracking_close(self: LLMClient) -> None:
+        close_calls.append(True)
+        original_close(self)
+
+    def _raise(*_a, **_kw):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(LLMClient, "close", tracking_close)
+    monkeypatch.setattr("api.server.loop", _raise)
+    monkeypatch.setattr("api.server.Browser", _FakeBrowser)
+
+    _run_agent(run_id, TaskRequest(task="do a thing"))
+    assert len(close_calls) == 1

@@ -19,6 +19,7 @@ from agent.trace import Run, RunBudget, RunLLM, TraceWriter
 from api.db import get_db_path
 
 _AGENT_VERSION = "0.1.0"
+_DEFAULT_LLM_MODEL = "qwen3-5-27b"
 
 _ZERO_TOTALS: dict[str, Any] = {
     "steps": 0,
@@ -47,7 +48,7 @@ class TaskRequest(BaseModel):
 
 def _build_run(run_id: str, task_req: TaskRequest) -> Run:
     base_url = os.environ.get("LLM_BASE_URL", "http://localhost:8090")
-    model = os.environ.get("LLM_MODEL", "")
+    model = os.environ.get("LLM_MODEL", _DEFAULT_LLM_MODEL)
     return Run(
         run_id=run_id,
         task=task_req.task,
@@ -66,8 +67,10 @@ def _build_run(run_id: str, task_req: TaskRequest) -> Run:
 def _run_agent(run_id: str, task_req: TaskRequest) -> None:
     writer = TraceWriter(get_db_path())
     try:
-        llm_client = LLMClient()
-        with Browser() as browser:
+        with (
+            LLMClient(model=os.environ.get("LLM_MODEL", _DEFAULT_LLM_MODEL)) as llm_client,
+            Browser() as browser,
+        ):
             result: RunResult = loop(task_req.task, browser, llm_client)
         ended_at = datetime.now(UTC).isoformat()
         writer.close_run(
