@@ -6,6 +6,8 @@ from typing import Any, Literal
 
 import httpx
 
+from agent.pricing import compute_usd, load_price_table
+
 _DEFAULT_BASE_URL = "http://localhost:8090"
 _CHAT_PATH = "/v1/chat/completions"
 _MAX_ERROR_BODY = 2048
@@ -52,6 +54,7 @@ class ChatResponse:
     model: str
     usage: Usage
     raw: dict
+    usd: float = 0.0
 
 
 class LLMClient:
@@ -62,12 +65,14 @@ class LLMClient:
         model: str | None = None,
         api_key: str | None = None,
         timeout: float = 60.0,
+        price_table: dict | None = None,
     ):
         resolved_base = base_url or os.environ.get("LLM_BASE_URL") or _DEFAULT_BASE_URL
         self._base_url = resolved_base.rstrip("/")
         self._api_key = api_key or os.environ.get("LLM_API_KEY")
         self._model_default = model
         self._client = httpx.Client(timeout=timeout)
+        self._price_table: dict | None = price_table
 
     def close(self) -> None:
         self._client.close()
@@ -129,10 +134,18 @@ class LLMClient:
                 cause=exc,
             ) from exc
 
-        return _parse_response(payload)
+        if self._price_table is None:
+            self._price_table = load_price_table()
+
+        return _parse_response(payload, price_table=self._price_table, model=resolved_model)
 
 
-def _parse_response(payload: Any) -> ChatResponse:
+def _parse_response(
+    payload: Any,
+    *,
+    price_table: dict | None = None,
+    model: str | None = None,
+) -> ChatResponse:
     if not isinstance(payload, dict):
         raise LLMError("response is not a JSON object", kind="decode")
     choices = payload.get("choices")
@@ -166,17 +179,26 @@ def _parse_response(payload: Any) -> ChatResponse:
             raise LLMError(f"tool_call missing field: {exc}", kind="decode") from exc
 
     usage_raw = payload.get("usage") or {}
+    prompt_tokens = int(usage_raw.get("prompt_tokens", 0))
+    completion_tokens = int(usage_raw.get("completion_tokens", 0))
+
+    resolved_model = model or payload.get("model") or ""
+    usd = 0.0
+    if price_table is not None:
+        usd = compute_usd(prompt_tokens, completion_tokens, resolved_model, price_table)
+
     return ChatResponse(
         content=content,
         tool_calls=tool_calls,
         finish_reason=choice.get("finish_reason") or "",
         model=payload.get("model") or "",
         usage=Usage(
-            prompt_tokens=int(usage_raw.get("prompt_tokens", 0)),
-            completion_tokens=int(usage_raw.get("completion_tokens", 0)),
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
             total_tokens=int(usage_raw.get("total_tokens", 0)),
         ),
         raw=payload,
+        usd=usd,
     )
 
 
