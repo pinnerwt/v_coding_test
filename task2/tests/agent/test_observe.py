@@ -66,7 +66,7 @@ def test_build_observation_closed_browser_returns_valid_dict(playwright_chromium
     assert obs["url"] == ""
     assert obs["title"] == ""
     assert obs["ax_tree_digest"] == ""
-    assert obs["ax_fingerprint"] != ""
+    assert len(obs["ax_fingerprint"]) == 64
     assert obs["last_action"] is None
 
 

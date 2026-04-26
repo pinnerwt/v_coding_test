@@ -643,8 +643,6 @@ def test_loop_metrics_step_breakdown_keys(fixture_server, playwright_chromium):
 
 
 class _CapturingLLMClient:
-    """Captures the messages list on first chat() call, then returns canned responses."""
-
     def __init__(self, responses: list[ChatResponse]):
         self._responses = list(responses)
         self._index = 0
@@ -718,8 +716,6 @@ def test_first_step_last_action_null(fixture_server, playwright_chromium):
 
 
 class _TwoStepCapturingClient:
-    """Step 1 → goto; step 2 → done. Captures ALL messages at each chat() call."""
-
     def __init__(self, fixture_url: str):
         self._fixture_url = fixture_url
         self._index = 0
