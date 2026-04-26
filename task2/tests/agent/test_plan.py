@@ -37,7 +37,9 @@ def test_plan_dataclass_is_frozen():
 
 
 def test_plan_returns_plan_from_well_formed_response():
-    payload = json.dumps({"steps": ["go to site", "read result"], "expected_end_state": "result found"})
+    payload = json.dumps(
+        {"steps": ["go to site", "read result"], "expected_end_state": "result found"}
+    )
     llm = _FakeLLM(payload)
     result = plan(task="find X", observation={}, llm=llm)
     assert isinstance(result, Plan)
@@ -59,10 +61,14 @@ def test_plan_returns_fallback_when_steps_key_missing():
 
 
 def test_replan_returns_revised_plan_from_well_formed_response():
-    payload = json.dumps({"steps": ["try alternative approach"], "expected_end_state": "task done via alt"})
+    payload = json.dumps(
+        {"steps": ["try alternative approach"], "expected_end_state": "task done via alt"}
+    )
     llm = _FakeLLM(payload)
     prior = Plan(steps=["original step"], expected_end_state="original end")
-    result = replan(task="find X", observation={}, prior_plan=prior, reason="locate failed", llm=llm)
+    result = replan(
+        task="find X", observation={}, prior_plan=prior, reason="locate failed", llm=llm
+    )
     assert isinstance(result, Plan)
     assert result.steps == ["try alternative approach"]
 
