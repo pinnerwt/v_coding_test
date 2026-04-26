@@ -86,7 +86,17 @@ def test_loader_maps_ques_to_task():
     with _WEBVOYAGER_FIXTURE.open() as f:
         raw = json.load(f)
     cases = load_webvoyager(str(_WEBVOYAGER_FIXTURE))
-    assert cases[0]["task"] == raw[0]["ques"]
+    assert raw[0]["ques"] in cases[0]["task"]
+
+
+def test_loader_task_includes_start_url():
+    from eval.bench.webvoyager_loader import load_webvoyager
+
+    with _WEBVOYAGER_FIXTURE.open() as f:
+        raw = json.load(f)
+    cases = load_webvoyager(str(_WEBVOYAGER_FIXTURE))
+    for entry, case in zip(raw, cases, strict=True):
+        assert entry["web"] in case["task"], f"start URL missing from task: {case['task']!r}"
 
 
 def test_loader_maps_web_to_domain():

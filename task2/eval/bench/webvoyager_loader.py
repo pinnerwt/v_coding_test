@@ -13,7 +13,7 @@ def load_webvoyager(path: str | Path) -> list[dict]:
     return [
         {
             "id": f"webvoyager-{entry['id']}",
-            "task": entry["ques"],
+            "task": f"Navigate to {entry['web']} and {entry['ques']}",
             "domain": entry["web"],
             "category": entry["web_name"],
             "expect": _EXPECT,
