@@ -72,7 +72,7 @@ class LLMClient:
         self._api_key = api_key or os.environ.get("LLM_API_KEY")
         self._model_default = model
         self._client = httpx.Client(timeout=timeout)
-        self._price_table: dict | None = price_table
+        self._price_table: dict = price_table if price_table is not None else load_price_table()
 
     def close(self) -> None:
         self._client.close()
@@ -133,9 +133,6 @@ class LLMClient:
                 body=response.text,
                 cause=exc,
             ) from exc
-
-        if self._price_table is None:
-            self._price_table = load_price_table()
 
         return _parse_response(payload, price_table=self._price_table, model=resolved_model)
 

@@ -94,17 +94,19 @@ def update_readme(data: dict, *, readme_path: Path) -> None:
     if begin in content and end in content:
         pre = content[: content.index(begin) + len(begin)]
         post = content[content.index(end) :]
-        readme_path.write_text(f"{pre}\n{scoreboard}{post}")
+        new_content = f"{pre}\n{scoreboard}{post}"
     else:
         section = f"\n## Live eval results\n\n{begin}\n{scoreboard}{end}\n"
-        readme_path.write_text(content.rstrip() + section)
+        new_content = content.rstrip() + section
+    if new_content != content:
+        readme_path.write_text(new_content)
 
 
 def _find_latest_results(results_dir: Path) -> Path:
-    files = sorted(results_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
-    if not files:
-        raise FileNotFoundError(f"No result JSON files found in {results_dir}")
-    return files[0]
+    try:
+        return max(results_dir.glob("*.json"), key=lambda p: p.name)
+    except ValueError as exc:
+        raise FileNotFoundError(f"No result JSON files found in {results_dir}") from exc
 
 
 def main(argv: list[str] | None = None) -> None:

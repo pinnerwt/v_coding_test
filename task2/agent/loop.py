@@ -122,11 +122,32 @@ class RunResult:
     step_breakdown: list[dict] = field(default_factory=list)
 
 
+def _record_step(
+    step_num: int,
+    t0: float,
+    response: Any,
+    tool_names: list[str],
+    per_step: list[int],
+    breakdown: list[dict],
+) -> int:
+    step_ms = int((time.monotonic() - t0) * 1000)
+    per_step.append(step_ms)
+    breakdown.append(
+        {
+            "step": step_num,
+            "latency_ms": step_ms,
+            "prompt_tokens": response.usage.prompt_tokens,
+            "completion_tokens": response.usage.completion_tokens,
+            "usd": response.usd,
+            "tool_calls": tool_names,
+        }
+    )
+    return step_ms
+
+
 def _check_evidence(evidence: dict | None) -> dict:
-    """Validate evidence dict for required fields; return verifier verdict."""
     reasons: list[str] = []
     if not isinstance(evidence, dict):
-        # Not a dict ⇒ neither required field can exist; report both.
         reasons.append("evidence.url is missing or empty")
         reasons.append("evidence.text_snippet is missing or empty")
     else:
@@ -241,19 +262,7 @@ def loop(
         dispatched_tool_names: list[str] = []
 
         if not response.tool_calls:
-            t1 = time.monotonic()
-            step_ms = int((t1 - t0) * 1000)
-            latency_ms_per_step.append(step_ms)
-            step_breakdown.append(
-                {
-                    "step": step_num,
-                    "latency_ms": step_ms,
-                    "prompt_tokens": response.usage.prompt_tokens,
-                    "completion_tokens": response.usage.completion_tokens,
-                    "usd": response.usd,
-                    "tool_calls": [],
-                }
-            )
+            _record_step(step_num, t0, response, [], latency_ms_per_step, step_breakdown)
             continue
 
         for tool_call in response.tool_calls:
@@ -287,18 +296,13 @@ def loop(
                 evidence = args.get("evidence")
                 verifier = _check_evidence(evidence)
                 status: RunStatus = "succeeded" if verifier["ok"] else "unverified"
-                t1 = time.monotonic()
-                step_ms = int((t1 - t0) * 1000)
-                latency_ms_per_step.append(step_ms)
-                step_breakdown.append(
-                    {
-                        "step": step_num,
-                        "latency_ms": step_ms,
-                        "prompt_tokens": response.usage.prompt_tokens,
-                        "completion_tokens": response.usage.completion_tokens,
-                        "usd": response.usd,
-                        "tool_calls": dispatched_tool_names,
-                    }
+                _record_step(
+                    step_num,
+                    t0,
+                    response,
+                    dispatched_tool_names,
+                    latency_ms_per_step,
+                    step_breakdown,
                 )
                 return RunResult(
                     status=status,
@@ -314,18 +318,13 @@ def loop(
                     step_breakdown=step_breakdown,
                 )
             if tool_call.name == "fail":
-                t1 = time.monotonic()
-                step_ms = int((t1 - t0) * 1000)
-                latency_ms_per_step.append(step_ms)
-                step_breakdown.append(
-                    {
-                        "step": step_num,
-                        "latency_ms": step_ms,
-                        "prompt_tokens": response.usage.prompt_tokens,
-                        "completion_tokens": response.usage.completion_tokens,
-                        "usd": response.usd,
-                        "tool_calls": dispatched_tool_names,
-                    }
+                _record_step(
+                    step_num,
+                    t0,
+                    response,
+                    dispatched_tool_names,
+                    latency_ms_per_step,
+                    step_breakdown,
                 )
                 return RunResult(
                     status="failed",
@@ -350,18 +349,13 @@ def loop(
                 }
             )
 
-        t1 = time.monotonic()
-        step_ms = int((t1 - t0) * 1000)
-        latency_ms_per_step.append(step_ms)
-        step_breakdown.append(
-            {
-                "step": step_num,
-                "latency_ms": step_ms,
-                "prompt_tokens": response.usage.prompt_tokens,
-                "completion_tokens": response.usage.completion_tokens,
-                "usd": response.usd,
-                "tool_calls": dispatched_tool_names,
-            }
+        _record_step(
+            step_num,
+            t0,
+            response,
+            dispatched_tool_names,
+            latency_ms_per_step,
+            step_breakdown,
         )
 
     return RunResult(

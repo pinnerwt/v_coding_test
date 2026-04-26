@@ -100,8 +100,8 @@ def _run_case(case: dict[str, Any], llm_client: Any, browser: Any) -> CaseResult
         prompt_tokens=run_result.prompt_tokens,
         completion_tokens=run_result.completion_tokens,
         latency_ms_total=run_result.latency_ms_total,
-        latency_ms_per_step=list(run_result.latency_ms_per_step),
-        step_breakdown=list(run_result.step_breakdown),
+        latency_ms_per_step=run_result.latency_ms_per_step,
+        step_breakdown=run_result.step_breakdown,
     )
 
 
