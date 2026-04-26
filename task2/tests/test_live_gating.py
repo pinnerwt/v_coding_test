@@ -3,8 +3,6 @@ from __future__ import annotations
 import json
 from unittest.mock import patch
 
-import pytest
-
 from agent.loop import RunResult
 from scripts.eval import load_cases, run_suite
 

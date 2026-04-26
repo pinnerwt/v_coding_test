@@ -32,3 +32,15 @@ Environment variables consumed by the LLM client (see `agent/llm.py`):
 - `LLM_BASE_URL` — defaults to `http://localhost:8090`
 - `LLM_MODEL` — required (no default)
 - `LLM_API_KEY` — optional, forwarded as `Authorization: Bearer ...`
+
+## Live eval results
+
+Run manually with `uv run python scripts/eval.py --live` from `task2/`.
+
+| Case | Site | Status | Steps | Notes |
+|---|---|---|---|---|
+| live-search-extract | en.wikipedia.org | — | — | Not yet run |
+| live-form-fill | duckduckgo.com | — | — | Not yet run |
+| live-multi-page-nav | books.toscrape.com | — | — | Not yet run |
+| live-conditional-pick | books.toscrape.com | — | — | Not yet run |
+| live-read-summarize | docs.python.org | — | — | Not yet run |
