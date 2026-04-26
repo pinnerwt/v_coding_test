@@ -149,6 +149,60 @@ def test_score_skipped_excluded_from_summary(tmp_path):
     }
     output = generate_scoreboard(data)
     assert "1/1" in output
+    assert "p50: 200ms" in output
+
+
+def test_find_latest_results_returns_most_recent(tmp_path):
+    from scripts.score import _find_latest_results
+
+    f1 = tmp_path / "20260101_120000.json"
+    f1.write_text(json.dumps({"run_at": "2026-01-01", "cases": []}))
+    import time
+
+    time.sleep(0.05)
+    f2 = tmp_path / "20260426_032729.json"
+    f2.write_text(json.dumps({"run_at": "2026-04-26", "cases": []}))
+
+    result = _find_latest_results(tmp_path)
+    assert result.name == "20260426_032729.json"
+
+
+def test_score_no_arg_uses_latest_results(tmp_path):
+    from scripts.score import _find_latest_results, generate_scoreboard
+
+    results_dir = tmp_path / "eval" / "results"
+    results_dir.mkdir(parents=True)
+
+    old_content = {"run_at": "2026-01-01T00:00:00+00:00", "cases": []}
+    (results_dir / "20260101_120000.json").write_text(json.dumps(old_content))
+    import time
+
+    time.sleep(0.05)
+    new_content = {
+        "run_at": "2026-04-26T03:27:29+00:00",
+        "cases": [
+            {
+                "id": "c1",
+                "status": "succeeded",
+                "steps": 1,
+                "usd": 0.001,
+                "l_tier_counts": {},
+                "validators": [],
+                "prompt_tokens": 100,
+                "completion_tokens": 10,
+                "latency_ms_total": 200,
+                "latency_ms_per_step": [200],
+                "step_breakdown": [],
+            }
+        ],
+    }
+    (results_dir / "20260426_032729.json").write_text(json.dumps(new_content))
+
+    latest = _find_latest_results(results_dir)
+    assert latest.name == "20260426_032729.json"
+    data = json.loads(latest.read_text())
+    output = generate_scoreboard(data)
+    assert "2026-04-26" in output
 
 
 def test_score_skill_file_exists():
