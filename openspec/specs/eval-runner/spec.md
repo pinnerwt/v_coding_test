@@ -17,6 +17,7 @@ Each eval case SHALL be expressed as a YAML file under `task2/eval/cases/` with 
 - `budget.usd: float` — maximum USD spend for this case.
 - `budget.seconds: int` — wall-clock timeout in seconds.
 - `fixture: bool` (optional, default `false`) — when `true`, the case is CI-safe and runs without `--live`.
+- `variants: list[str]` (optional) — when present, the runner expands this case into one sub-run per variant. Each variant value is a short identifier (e.g. `"v1"`, `"v2"`) appended to the case `id` with a hyphen to form the sub-run id. If absent or empty, the case runs as a single run with its original `id`.
 
 #### Scenario: Valid case YAML loads without error
 - **WHEN** `task2/eval/cases/fixture-heading.yaml` is loaded via `scripts/eval.py`
@@ -31,6 +32,39 @@ Each eval case SHALL be expressed as a YAML file under `task2/eval/cases/` with 
 - **THEN** the runner SHALL include the case in the run
 - **WHEN** `--live` is absent and a case does NOT have `fixture: true`
 - **THEN** the runner SHALL skip the case
+
+#### Scenario: variants field is optional and backward-compatible
+- **WHEN** a YAML case file does not contain a `variants` key
+- **THEN** `load_cases` SHALL succeed and the case SHALL run as a single unit with its original `id`
+
+#### Scenario: variants field parsed as list of strings
+- **WHEN** `task2/eval/cases/drift-submit-form.yaml` is loaded
+- **THEN** the returned dict SHALL have `variants == ["v1", "v2"]`
+
+### Requirement: Variant expansion
+When a case dict has a `variants` key containing a non-empty list of strings, `run_suite` SHALL expand the case into one sub-run per variant before executing. For each variant `v`:
+
+- The sub-run's `id` SHALL equal `<original-case-id>-<v>` (e.g. `drift-submit-form-v1`).
+- The task, budget, expect, and fixture fields are inherited unchanged from the parent case.
+
+The results JSON SHALL contain one `CaseResult` entry per variant sub-run (not one entry for the parent case). The total number of entries in the results JSON equals the sum of: non-variantized cases (count 1 each) plus variantized cases expanded to len(variants) entries each.
+
+#### Scenario: Drift case with two variants expands to two results entries
+- **GIVEN** a drift case with `id: drift-submit-form`, `variants: [v1, v2]`, and `fixture: true`
+- **WHEN** `run_suite` is called with this case and `live=False`
+- **THEN** the results JSON `cases` array SHALL contain exactly two entries
+- **AND** the first entry SHALL have `id == "drift-submit-form-v1"`
+- **AND** the second entry SHALL have `id == "drift-submit-form-v2"`
+
+#### Scenario: Non-variantized and variantized cases coexist in one suite run
+- **GIVEN** a suite with two fixture cases: `fixture-heading` (no variants) and `drift-submit-form` (variants: v1, v2)
+- **WHEN** `run_suite` is called with both cases and `live=False`
+- **THEN** the results JSON `cases` array SHALL contain exactly three entries (1 + 2)
+
+#### Scenario: Empty variants list runs as a single case with original id
+- **GIVEN** a case with `variants: []`
+- **WHEN** `run_suite` processes this case
+- **THEN** the case SHALL produce a single results entry with the original `id`
 
 ### Requirement: Results JSON schema
 The eval runner SHALL write a results JSON to `task2/eval/results/<ts>.json` (where `<ts>` is `YYYYMMDD_HHMMSS` UTC) after running the suite. The JSON SHALL have the following top-level shape:
@@ -54,7 +88,7 @@ The eval runner SHALL write a results JSON to `task2/eval/results/<ts>.json` (wh
 ```
 
 - `run_at`: ISO 8601 UTC timestamp of when the suite run started.
-- `cases`: ordered list of per-case results, one entry per case regardless of skip status.
+- `cases`: ordered list of per-case results, one entry per case regardless of skip status. For variantized cases, the entry `id` is the expanded sub-run id (e.g. `drift-submit-form-v1`), not the parent case id.
 - `status`: one of `succeeded`, `unverified`, `failed`, `blocked`, `timeout`, `skipped`. `skipped` is used when a non-fixture case is excluded because `--live` was not passed.
 - `steps`: number of agent loop steps consumed (integer ≥ 0; 0 for skipped cases).
 - `usd`: estimated USD cost of the case run (float ≥ 0.0; 0.0 for skipped cases or when cost tracking is not yet wired).
