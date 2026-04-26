@@ -5,6 +5,7 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
+import agent.observe as observe
 from agent.locate import LocatorMiss, locate_l1, locate_l2, parse_intent
 from agent.supervisor import Supervisor
 
@@ -175,13 +176,6 @@ def _body_text(page: Page) -> str:
     return page.evaluate(_BODY_TEXT_JS)[:_BODY_TEXT_LIMIT]
 
 
-def _observe(browser: Browser) -> dict:
-    page = browser._page
-    if page is None:
-        return {"url": "", "text": ""}
-    return {"url": page.url, "text": _body_text(page)}
-
-
 def _locate_with_supervisor(page: Page, intent: str, supervisor: Supervisor):
     role, name = parse_intent(intent)
     try:
@@ -231,12 +225,13 @@ def loop(
     latency_ms_per_step: list[int] = []
     step_breakdown: list[dict] = []
     step_num = 0
+    last_action: dict | None = None
 
     for _ in range(max_steps):
         step_num += 1
         t0 = time.monotonic()
 
-        observation = _observe(browser)
+        observation = observe.build_observation(browser, last_action)
         messages.append(
             {"role": "user", "content": f"{STATE_MESSAGE_PREFIX}{json.dumps(observation)}"}
         )
@@ -341,6 +336,19 @@ def loop(
                 )
 
             tool_result = _dispatch(tool_call.name, args, browser, supervisor)
+            if tool_result.startswith("Error:"):
+                last_action = {
+                    "tool": tool_call.name,
+                    "intent": str(args),
+                    "outcome": "error",
+                    "error": tool_result,
+                }
+            else:
+                last_action = {
+                    "tool": tool_call.name,
+                    "intent": str(args),
+                    "outcome": "ok",
+                }
             messages.append(
                 {
                     "role": "tool",

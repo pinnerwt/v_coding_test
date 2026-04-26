@@ -19,11 +19,11 @@
 
 ## 3. Red — Failing Loop Integration Tests
 
-- [ ] 3.1 In `task2/tests/agent/test_loop.py`, add `test_observation_contains_ax_tree_digest_key`: use a `_FakeLLMClient` that captures the messages list on the first `chat()` call (by storing `messages` as an attribute), then calls `done`. After the loop returns, assert that the second message in the captured messages list (index 1, the first user/observation message) has `"ax_tree_digest"` in its JSON content.
-- [ ] 3.2 Add `test_observation_does_not_contain_legacy_text_key`: same setup, assert the observation message JSON does NOT contain the key `"text"`.
-- [ ] 3.3 Add `test_first_step_last_action_null`: capture LLM messages; assert observation at step 1 has `"last_action": null` in JSON.
-- [ ] 3.4 Add `test_second_step_last_action_populated`: use a `_FakeLLMClient` that: step 1 → `goto` tool call; step 2 → `done`. Capture the step-2 observation message (index after the step-1 tool result). Assert its JSON has `last_action` dict with key `tool` equal to `"goto"`.
-- [ ] 3.5 Run `uv run pytest task2/tests/agent/test_loop.py -x -k "ax_tree or last_action"` from `task2/` and confirm the new tests fail (the loop still uses the old `_observe` helper at this point).
+- [x] 3.1 In `task2/tests/agent/test_loop.py`, add `test_observation_contains_ax_tree_digest_key`: use a `_FakeLLMClient` that captures the messages list on the first `chat()` call (by storing `messages` as an attribute), then calls `done`. After the loop returns, assert that the second message in the captured messages list (index 1, the first user/observation message) has `"ax_tree_digest"` in its JSON content.
+- [x] 3.2 Add `test_observation_does_not_contain_legacy_text_key`: same setup, assert the observation message JSON does NOT contain the key `"text"`.
+- [x] 3.3 Add `test_first_step_last_action_null`: capture LLM messages; assert observation at step 1 has `"last_action": null` in JSON.
+- [x] 3.4 Add `test_second_step_last_action_populated`: use a `_FakeLLMClient` that: step 1 → `goto` tool call; step 2 → `done`. Capture the step-2 observation message (index after the step-1 tool result). Assert its JSON has `last_action` dict with key `tool` equal to `"goto"`.
+- [x] 3.5 Run `uv run pytest task2/tests/agent/test_loop.py -x -k "ax_tree or last_action"` from `task2/` and confirm the new tests fail (the loop still uses the old `_observe` helper at this point).
 
 ## 4. Green — Loop Integration
 
