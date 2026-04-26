@@ -61,3 +61,5 @@ Update /new_task2 skill to run task2/smoke_test.sh before making PR. Re-verify a
 Update /done_pr to insert benchmark results before the commit. Add a PR workflow that checks the results before merge.
 
 /new_task2 (observe ax tree)
+
+/new_task2 (plan-replan)
