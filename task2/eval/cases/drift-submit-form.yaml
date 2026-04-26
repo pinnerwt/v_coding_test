@@ -1,0 +1,17 @@
+id: drift-submit-form
+domain: fixture
+category: drift
+task: "Click the submit button and return submitted as status"
+expect:
+  schema:
+    status: str
+  validators:
+    - status.nonempty
+budget:
+  steps: 5
+  usd: 0.05
+  seconds: 30
+fixture: true
+variants:
+  - v1
+  - v2
