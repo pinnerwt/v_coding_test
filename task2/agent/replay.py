@@ -262,10 +262,13 @@ def _observation_from_call(call: LLMCallEvent) -> dict:
         if not isinstance(msg, dict) or msg.get("role") != "user":
             continue
         content = msg.get("content")
-        if not isinstance(content, str) or not content.startswith(STATE_MESSAGE_PREFIX):
+        if not isinstance(content, str):
+            continue
+        stripped = _strip_plan_prefix(content)
+        if not stripped.startswith(STATE_MESSAGE_PREFIX):
             continue
         try:
-            payload = json.loads(content[len(STATE_MESSAGE_PREFIX) :])
+            payload = json.loads(stripped[len(STATE_MESSAGE_PREFIX) :])
         except json.JSONDecodeError:
             return {"url": ""}
         if not isinstance(payload, dict):
