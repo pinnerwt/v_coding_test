@@ -1,8 +1,4 @@
-# eval-runner Specification
-
-## Purpose
-TBD - created by archiving change implement-eval-runner. Update Purpose after archive.
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Case YAML schema
 Each eval case SHALL be expressed as a YAML file under `task2/eval/cases/` with the following fields:
@@ -92,7 +88,7 @@ The eval runner SHALL write a results JSON to `task2/eval/results/<ts>.json` (wh
 - `status`: one of `succeeded`, `unverified`, `failed`, `blocked`, `timeout`, `skipped`. `skipped` is used when a non-fixture case is excluded because `--live` was not passed.
 - `steps`: number of agent loop steps consumed (integer ≥ 0; 0 for skipped cases).
 - `usd`: estimated USD cost of the case run (float ≥ 0.0; 0.0 for skipped cases or when cost tracking is not yet wired).
-- `l_tier_counts`: dict mapping L-tier name (e.g. `"L1_ax"`, `"L2_dom"`, `"L3_rerank"`, `"L4_vision"`, `"cache"`) to the integer number of locate attempts that resolved at that tier for this case. Empty dict `{}` is valid (e.g. for skipped cases or cases with no locate calls).
+- `l_tier_counts`: dict mapping L-tier name (e.g. `"L1_ax"`, `"L2_dom"`, `"L3_rerank"`, `"L4_vision"`, `"cache"`) to the integer number of locate attempts that resolved at that tier for this case. Empty dict `{}` is valid.
 - `validators`: list of validator results, one per entry in `expect.validators`. Empty list `[]` is valid when `expect.validators` is empty or the case was skipped.
 
 #### Scenario: Results JSON exists after runner completes
@@ -180,7 +176,7 @@ Each validator in `expect.validators` is evaluated and its result recorded in th
 - **THEN** the validator entry SHALL be `{ "name": "items.len_gte: 1", "ok": false }`
 
 ### Requirement: Toy 2-case fixture suite
-The repository SHALL include exactly two YAML case files in `task2/eval/cases/` for this ticket:
+The repository SHALL include exactly two YAML case files in `task2/eval/cases/` for the base runner ticket:
 
 1. `fixture-heading.yaml` — a fixture-backed case (`fixture: true`) that uses a local HTML fixture page. Task: read the page heading and return it. Expect schema: `{ title: str }`. Validators: `[title.nonempty]`. Budget: `{ steps: 5, usd: 0.05, seconds: 30 }`.
 2. `fixture-count.yaml` — a fixture-backed case (`fixture: true`) that uses a local HTML fixture page with a list of items. Task: count or collect the list items and return them. Expect schema: `{ items: list[str] }`. Validators: `[items.len_gte: 1]`. Budget: `{ steps: 5, usd: 0.05, seconds: 30 }`.

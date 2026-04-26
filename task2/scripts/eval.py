@@ -62,6 +62,18 @@ class CaseResult:
     validators: list[dict]
 
 
+def _expand_variants(cases: list[dict]) -> list[dict]:
+    result: list[dict] = []
+    for case in cases:
+        variants = case.get("variants")
+        if variants:
+            for v in variants:
+                result.append({**case, "id": f"{case['id']}-{v}"})
+        else:
+            result.append(case)
+    return result
+
+
 def _run_case(case: dict[str, Any], llm_client: Any, browser: Any) -> CaseResult:
     run_result: RunResult = loop(
         case["task"],
@@ -105,6 +117,7 @@ def run_suite(
     results_dir = Path(results_dir)
     results_dir.mkdir(parents=True, exist_ok=True)
     now = datetime.now(UTC)
+    cases = _expand_variants(cases)
     case_results: list[CaseResult] = []
     for case in cases:
         if not live and not case.get("fixture", False):

@@ -270,3 +270,58 @@ def test_results_filename_matches_spec_format(tmp_path):
     with patch("scripts.eval.loop", return_value=_CANNED_RESULT):
         out = run_suite(cases=[_FIXTURE_CASE], results_dir=tmp_path)
     assert re.fullmatch(r"\d{8}_\d{6}\.json", out.name) is not None
+
+
+_DRIFT_CASE = {
+    "id": "drift-submit-form",
+    "domain": "fixture",
+    "category": "drift",
+    "task": "Click the submit button and return submitted as status",
+    "expect": {"schema": {"status": "str"}, "validators": ["status.nonempty"]},
+    "budget": {"steps": 5, "usd": 0.05, "seconds": 30},
+    "fixture": True,
+    "variants": ["v1", "v2"],
+}
+
+_DRIFT_CANNED_RESULT = RunResult(
+    status="succeeded",
+    result={"status": "submitted"},
+    evidence={"url": "http://x", "text_snippet": "submitted"},
+    verifier={"ok": True, "reasons": []},
+)
+
+
+def test_drift_case_yaml_loads():
+    cases = load_cases("eval/cases/drift-submit-form.yaml")
+    assert cases[0]["id"] == "drift-submit-form"
+    assert cases[0]["variants"] == ["v1", "v2"]
+    assert cases[0]["fixture"] is True
+
+
+def test_variant_expansion_produces_two_results(tmp_path):
+    with patch("scripts.eval.loop", side_effect=[_DRIFT_CANNED_RESULT, _DRIFT_CANNED_RESULT]):
+        out = run_suite(cases=[_DRIFT_CASE], results_dir=tmp_path)
+    data = json.loads(out.read_text())
+    assert len(data["cases"]) == 2
+    assert data["cases"][0]["id"] == "drift-submit-form-v1"
+    assert data["cases"][1]["id"] == "drift-submit-form-v2"
+
+
+def test_variant_expansion_mixed_suite(tmp_path):
+    non_variant_case = {**_FIXTURE_CASE}
+    with patch(
+        "scripts.eval.loop",
+        side_effect=[_CANNED_RESULT, _DRIFT_CANNED_RESULT, _DRIFT_CANNED_RESULT],
+    ):
+        out = run_suite(cases=[non_variant_case, _DRIFT_CASE], results_dir=tmp_path)
+    data = json.loads(out.read_text())
+    assert len(data["cases"]) == 3
+
+
+def test_empty_variants_list_runs_as_single_case(tmp_path):
+    case_with_empty_variants = {**_FIXTURE_CASE, "variants": []}
+    with patch("scripts.eval.loop", return_value=_CANNED_RESULT):
+        out = run_suite(cases=[case_with_empty_variants], results_dir=tmp_path)
+    data = json.loads(out.read_text())
+    assert len(data["cases"]) == 1
+    assert data["cases"][0]["id"] == _FIXTURE_CASE["id"]
