@@ -4,9 +4,11 @@ Tickets #1–#20 are complete. The agent loop runs tasks end-to-end and produces
 
 Playwright exposes `page.accessibility.snapshot()` which returns the full accessibility tree as a nested dict. That tree contains every visible node, including decorative spans and paragraphs. The task here is to filter, cap, and serialize it into a token-efficient string that the LLM can reliably reason about.
 
+**As-built deviation**: `page.accessibility.snapshot()` does not exist in Playwright 1.58 (the version in use). The implementation uses the Chrome DevTools Protocol (CDP) command `Accessibility.getFullAXTree` via `page.context.new_cdp_session(page)` instead. The semantics are equivalent: a flat list of all AX nodes is returned, each with `role.value`, `name.value`, and `properties`. The filtering and serialization logic is identical to what the spec describes.
+
 Existing code conventions: `from __future__ import annotations`, no docstrings in non-test code, no comments except for non-obvious `why`, frozen dataclasses for pure data (not used here — `observe.py` exposes a single function), `uv run ruff check .` must be clean.
 
-The Playwright `accessibility.snapshot()` API returns a nested `dict | None`. Each node has `role`, `name` (accessible name), and `children` (list of child nodes). Interactable roles and heading roles are the filter criterion; all other roles are dropped. Playwright's role vocabulary uses lowercase strings (e.g. `"button"`, `"link"`, `"textbox"`). Heading levels (`h1`–`h6`) appear as role `"heading"` with a `level` property.
+The Playwright `accessibility.snapshot()` API returns a nested `dict | None`. Each node has `role`, `name` (accessible name), and `children` (list of child nodes). Interactable roles and heading roles are the filter criterion; all other roles are dropped. Playwright's role vocabulary uses lowercase strings (e.g. `"button"`, `"link"`, `"textbox"`). Heading levels (`h1`–`h6`) appear as role `"heading"` with a `level` property. The CDP `getFullAXTree` response uses the same role strings.
 
 ## Goals / Non-Goals
 
