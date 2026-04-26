@@ -10,3 +10,4 @@ __pycache__/
 coverage.xml
 htmlcov/
 task2/eval/results/
+task2/agent_tasks.db
