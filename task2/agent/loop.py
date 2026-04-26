@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
 import agent.observe as observe
-from agent.browser import ElementNotFound
 from agent.locate import LocatorMiss, locate_l1, locate_l2, parse_intent
 from agent.supervisor import Supervisor
 
@@ -205,6 +204,8 @@ def _dispatch(tool_name: str, args: dict, browser: Browser, supervisor: Supervis
                 locate_result = _locate_with_supervisor(page, intent, supervisor)
             except LocatorMiss as miss:
                 return f"Error: could not locate element for intent {intent!r} ({miss})"
+            # Local import: agent.replay imports agent.loop and must stay playwright-free.
+            from agent.browser import ElementNotFound
             try:
                 return browser.read(locate_result.selector)
             except ElementNotFound as exc:

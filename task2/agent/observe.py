@@ -31,7 +31,7 @@ def _ax_nodes(page) -> tuple[list[dict], int]:
     try:
         ctx = page.context
         cdp = ctx.new_cdp_session(page)
-    except AttributeError:
+    except Exception:  # noqa: BLE001
         return [], 0
     try:
         result = cdp.send("Accessibility.getFullAXTree")

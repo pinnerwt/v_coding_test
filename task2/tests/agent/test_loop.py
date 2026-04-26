@@ -799,3 +799,18 @@ def test_second_step_last_action_populated(fixture_server, playwright_chromium):
     obs_json = json.loads(obs_msg["content"][len("Current state: ") :])
     assert obs_json["last_action"] is not None
     assert obs_json["last_action"]["tool"] == "goto"
+
+
+def test_loop_module_does_not_require_playwright(monkeypatch):
+    # agent.replay imports agent.loop and must stay playwright-free; mask
+    # playwright in sys.modules and re-import to enforce that contract.
+    import importlib
+    import sys
+
+    monkeypatch.setitem(sys.modules, "playwright", None)
+    monkeypatch.setitem(sys.modules, "playwright.sync_api", None)
+    for key in list(sys.modules):
+        if key.startswith("agent"):
+            monkeypatch.delitem(sys.modules, key, raising=False)
+
+    importlib.import_module("agent.loop")

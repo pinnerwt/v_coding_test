@@ -2,11 +2,18 @@ from __future__ import annotations
 
 import base64
 import re
+import types
 
 import pytest
 
 from agent.browser import Browser
-from agent.observe import INTERACTABLE_ROLES, MAX_NAME_LEN, MAX_NODES, build_observation
+from agent.observe import (
+    _EMPTY_FINGERPRINT,
+    INTERACTABLE_ROLES,
+    MAX_NAME_LEN,
+    MAX_NODES,
+    build_observation,
+)
 from agent.trace import ObservationEvent
 
 
@@ -165,3 +172,25 @@ def test_fingerprint_changes_when_dom_changes(fixture_server, playwright_chromiu
         )
         fp2 = build_observation(b, None)["ax_fingerprint"]
     assert fp1 != fp2
+
+
+def test_build_observation_falls_back_when_new_cdp_session_raises():
+    # Firefox/WebKit lack CDP; observe must still produce a usable observation.
+    def _raise(page):
+        raise RuntimeError("CDP unsupported on this browser")
+
+    fake_context = types.SimpleNamespace(new_cdp_session=_raise)
+    fake_page = types.SimpleNamespace(
+        url="http://example.com/",
+        title=lambda: "Example",
+        context=fake_context,
+    )
+    fake_browser = types.SimpleNamespace(_page=fake_page)
+
+    obs = build_observation(fake_browser, None)
+
+    assert obs["url"] == "http://example.com/"
+    assert obs["title"] == "Example"
+    assert obs["ax_tree_digest"] == ""
+    assert obs["ax_fingerprint"] == _EMPTY_FINGERPRINT
+    assert obs["last_action"] is None
