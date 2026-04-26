@@ -27,26 +27,26 @@
 
 ## 4. Green — Loop Integration
 
-- [ ] 4.1 In `task2/agent/loop.py`, add `import agent.observe as observe` at the top (after existing imports).
-- [ ] 4.2 Add a `last_action: dict | None = None` variable before the loop's `for` iteration.
-- [ ] 4.3 Replace the call to `_observe(browser)` inside the loop with `observe.build_observation(browser, last_action)`.
-- [ ] 4.4 After each successful tool dispatch (in `_dispatch` return, before appending tool result), set `last_action = {"tool": tool_name, "intent": str(args), "outcome": "ok"}`. On exception or error return from `_dispatch`, set `last_action = {"tool": tool_name, "intent": str(args), "outcome": "error", "error": <error string>}`. For `done` and `fail` terminal exits, `last_action` is not needed (loop exits immediately).
-- [ ] 4.5 Remove the now-unused `_BODY_TEXT_JS`, `_BODY_TEXT_LIMIT`, `_body_text`, and `_observe` symbols from `loop.py` (they become dead code). Confirm no other module imports them before removing.
-- [ ] 4.6 Run `uv run pytest task2/tests/agent/test_loop.py -x` from `task2/` and confirm all loop tests (old + new) pass.
+- [x] 4.1 In `task2/agent/loop.py`, add `import agent.observe as observe` at the top (after existing imports).
+- [x] 4.2 Add a `last_action: dict | None = None` variable before the loop's `for` iteration.
+- [x] 4.3 Replace the call to `_observe(browser)` inside the loop with `observe.build_observation(browser, last_action)`.
+- [x] 4.4 After each successful tool dispatch (in `_dispatch` return, before appending tool result), set `last_action = {"tool": tool_name, "intent": str(args), "outcome": "ok"}`. On exception or error return from `_dispatch`, set `last_action = {"tool": tool_name, "intent": str(args), "outcome": "error", "error": <error string>}`. For `done` and `fail` terminal exits, `last_action` is not needed (loop exits immediately).
+- [x] 4.5 Remove the now-unused `_BODY_TEXT_JS`, `_BODY_TEXT_LIMIT`, `_body_text`, and `_observe` symbols from `loop.py` (they become dead code). Confirm no other module imports them before removing.
+- [x] 4.6 Run `uv run pytest task2/tests/agent/test_loop.py -x` from `task2/` and confirm all loop tests (old + new) pass.
 
 ## 5. Full Test Suite
 
-- [ ] 5.1 Run `uv run pytest task2/tests/` from `task2/` and confirm all existing tests still pass — no regressions. Pay particular attention to `test_loop.py` tests that inspect message content (they may need the `"text"` key assertion replaced with `"ax_tree_digest"`).
-- [ ] 5.2 If any `test_loop.py` test asserts the legacy `"text"` key in the observation JSON, update those assertions to use `"ax_tree_digest"` and confirm the tests are still valid regression guards (they must still fail if the loop reverts to the old observation).
+- [x] 5.1 Run `uv run pytest task2/tests/` from `task2/` and confirm all existing tests still pass — no regressions. Pay particular attention to `test_loop.py` tests that inspect message content (they may need the `"text"` key assertion replaced with `"ax_tree_digest"`).
+- [x] 5.2 If any `test_loop.py` test asserts the legacy `"text"` key in the observation JSON, update those assertions to use `"ax_tree_digest"` and confirm the tests are still valid regression guards (they must still fail if the loop reverts to the old observation).
 
 ## 6. Lint and Format
 
-- [ ] 6.1 Run `uv run ruff check --fix .` from `task2/` to auto-fix any lint errors.
-- [ ] 6.2 Run `uv run ruff format .` from `task2/` to auto-format changed files.
-- [ ] 6.3 Run `uv run ruff check .` from `task2/` and confirm it exits clean (zero errors, zero warnings).
+- [x] 6.1 Run `uv run ruff check --fix .` from `task2/` to auto-fix any lint errors.
+- [x] 6.2 Run `uv run ruff format .` from `task2/` to auto-format changed files.
+- [x] 6.3 Run `uv run ruff check .` from `task2/` and confirm it exits clean (zero errors, zero warnings).
 
 ## 7. Refactor Under Green (if needed)
 
-- [ ] 7.1 Review `_walk` for correctness with `MAX_NODES` early-exit: confirm that the sentinel count (`total_found - MAX_NODES`) is computed correctly even when the walk short-circuits. Add an assertion in the test for the sentinel number if not already checked.
-- [ ] 7.2 Verify that `build_observation` with a closed browser (page is `None`) returns a valid dict that does not raise — confirm this is covered by the zero-observation scenario in the spec. Add a test if not already present.
-- [ ] 7.3 Confirm `observe.py` has no docstrings or inline comments beyond any single non-obvious `why` comment. Remove any discovered during review.
+- [x] 7.1 Review `_walk` for correctness with `MAX_NODES` early-exit: confirm that the sentinel count (`total_found - MAX_NODES`) is computed correctly even when the walk short-circuits. Add an assertion in the test for the sentinel number if not already checked.
+- [x] 7.2 Verify that `build_observation` with a closed browser (page is `None`) returns a valid dict that does not raise — confirm this is covered by the zero-observation scenario in the spec. Add a test if not already present.
+- [x] 7.3 Confirm `observe.py` has no docstrings or inline comments beyond any single non-obvious `why` comment. Remove any discovered during review.
