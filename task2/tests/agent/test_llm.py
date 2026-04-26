@@ -302,3 +302,105 @@ def test_llmclient_per_call_override():
 
     body = json.loads(route.calls.last.request.content)
     assert body["model"] == "other-m"
+
+
+_PRICE_TABLE_QWEN35 = {
+    "models": {
+        "qwen3.5": {"prompt_per_1k": 0.002, "completion_per_1k": 0.006},
+    },
+    "default": {"prompt_per_1k": 0.001, "completion_per_1k": 0.002},
+}
+
+
+@respx.mock
+def test_chat_response_has_usd_field():
+    payload = {
+        "id": "chatcmpl-usd",
+        "object": "chat.completion",
+        "model": "qwen3.5",
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": "hello"},
+                "finish_reason": "stop",
+            }
+        ],
+        "usage": {
+            "prompt_tokens": 1000,
+            "completion_tokens": 500,
+            "total_tokens": 1500,
+        },
+    }
+    respx.post(f"http://localhost:8090{CHAT_PATH}").mock(
+        return_value=httpx.Response(200, json=payload)
+    )
+
+    client = LLMClient(model="qwen3.5", price_table=_PRICE_TABLE_QWEN35)
+    resp = client.chat(messages=[{"role": "user", "content": "hi"}])
+
+    assert hasattr(resp, "usd")
+    assert abs(resp.usd - 0.005) < 1e-9
+
+
+@respx.mock
+def test_chat_response_usd_uses_injected_price_table_not_file():
+    """Injected price_table is used without reading pricing.toml."""
+    payload = {
+        "id": "chatcmpl-2",
+        "object": "chat.completion",
+        "model": "qwen3.5",
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": "hi"},
+                "finish_reason": "stop",
+            }
+        ],
+        "usage": {
+            "prompt_tokens": 1000,
+            "completion_tokens": 500,
+            "total_tokens": 1500,
+        },
+    }
+    respx.post(f"http://localhost:8090{CHAT_PATH}").mock(
+        return_value=httpx.Response(200, json=payload)
+    )
+
+    custom_table = {
+        "models": {"qwen3.5": {"prompt_per_1k": 0.001, "completion_per_1k": 0.001}},
+        "default": {"prompt_per_1k": 0.001, "completion_per_1k": 0.001},
+    }
+    client = LLMClient(model="qwen3.5", price_table=custom_table)
+    resp = client.chat(messages=[{"role": "user", "content": "hi"}])
+
+    assert abs(resp.usd - 0.0015) < 1e-9
+
+
+@respx.mock
+def test_chat_response_usd_unknown_model_uses_default():
+    payload = {
+        "id": "chatcmpl-3",
+        "object": "chat.completion",
+        "model": "unknown-model",
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": "hi"},
+                "finish_reason": "stop",
+            }
+        ],
+        "usage": {
+            "prompt_tokens": 1000,
+            "completion_tokens": 1000,
+            "total_tokens": 2000,
+        },
+    }
+    respx.post(f"http://localhost:8090{CHAT_PATH}").mock(
+        return_value=httpx.Response(200, json=payload)
+    )
+
+    client = LLMClient(model="unknown-model", price_table=_PRICE_TABLE_QWEN35)
+    resp = client.chat(messages=[{"role": "user", "content": "hi"}])
+
+    expected = 1.0 * 0.001 + 1.0 * 0.002
+    assert abs(resp.usd - expected) < 1e-9
