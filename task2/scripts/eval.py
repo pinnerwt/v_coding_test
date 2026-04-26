@@ -80,12 +80,22 @@ def _expand_variants(cases: list[dict]) -> list[dict]:
 
 
 def _run_case(case: dict[str, Any], llm_client: Any, browser: Any) -> CaseResult:
-    run_result: RunResult = loop(
-        case["task"],
-        browser,
-        llm_client,
-        max_steps=case["budget"]["steps"],
-    )
+    try:
+        run_result: RunResult = loop(
+            case["task"],
+            browser,
+            llm_client,
+            max_steps=case["budget"]["steps"],
+        )
+    except Exception as exc:
+        return CaseResult(
+            id=case["id"],
+            status="failed",
+            steps=0,
+            usd=0.0,
+            l_tier_counts={},
+            validators=[{"name": "exception", "ok": False, "error": repr(exc)}],
+        )
     validator_results = run_validators(
         case.get("expect", {}).get("validators", []),
         run_result.result or {},

@@ -46,6 +46,16 @@ _CANNED_RESULT_2 = RunResult(
 )
 
 
+def test_run_case_captures_exception_as_failed(tmp_path):
+    def _boom(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    with patch("scripts.eval.loop", side_effect=_boom):
+        result = _run_case(_FIXTURE_CASE, llm_client=MagicMock(), browser=MagicMock())
+    assert result.status == "failed"
+    assert result.id == "fixture-heading"
+
+
 def test_results_json_shape(tmp_path):
     with patch("scripts.eval.loop", return_value=_CANNED_RESULT):
         out = run_suite(cases=[_FIXTURE_CASE], results_dir=tmp_path)
