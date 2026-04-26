@@ -63,7 +63,7 @@ def _start_mock_llm() -> tuple[ThreadingHTTPServer, int]:
             self.end_headers()
             self.wfile.write(body)
 
-        def log_message(self, format, *args):  # noqa: A002
+        def log_message(self, fmt, *args):
             return
 
     server = ThreadingHTTPServer(("0.0.0.0", 0), Handler)
@@ -92,7 +92,7 @@ def _host_bridge_ip() -> str:
         ip = result.stdout.strip()
         if ip:
             return ip
-    except Exception:
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
         pass
     return "172.17.0.1"
 
