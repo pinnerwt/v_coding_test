@@ -4,13 +4,17 @@ version = "0.0.0"
 description = "AI Coding Test — Tasks 1, 2, 3"
 requires-python = ">=3.11"
 dependencies = [
+    "fastapi>=0.136.1",
     "httpx>=0.27",
     "playwright>=1.58.0",
     "pydantic>=2.13.3",
+    "python-ulid>=3.1.0",
+    "uvicorn[standard]>=0.46.0",
 ]
 
 [dependency-groups]
 dev = [
+    "httpx>=0.27",
     "pytest>=8",
     "pytest-cov>=5",
     "respx>=0.21",
@@ -18,7 +22,7 @@ dev = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["agent*"]
+include = ["agent*", "api*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

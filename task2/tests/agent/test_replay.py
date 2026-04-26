@@ -135,7 +135,6 @@ def _make_chat_response(tool_name: str, args: dict) -> ChatResponse:
 
 
 def test_stub_llm_client_returns_in_order():
-
     r1 = _make_chat_response("goto", {"url": "http://a"})
     r2 = _make_chat_response(
         "done",
@@ -149,7 +148,6 @@ def test_stub_llm_client_returns_in_order():
 
 
 def test_stub_llm_client_exhausted_returns_noop():
-
     r1 = _make_chat_response("goto", {"url": "http://a"})
     stub = StubLLMClient([r1])
 
