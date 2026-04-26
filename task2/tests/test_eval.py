@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import asdict
 from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
 
 from agent.loop import RunResult
-from scripts.eval import load_cases, run_suite, run_validators
+from scripts.eval import CaseResult, _run_case, load_cases, run_suite, run_validators
 
 _FIXTURE_CASE = {
     "id": "fixture-heading",
@@ -325,3 +326,97 @@ def test_empty_variants_list_runs_as_single_case(tmp_path):
     data = json.loads(out.read_text())
     assert len(data["cases"]) == 1
     assert data["cases"][0]["id"] == _FIXTURE_CASE["id"]
+
+
+# ---------------------------------------------------------------------------
+# CaseResult quantitative fields (eval-metrics spec)
+# ---------------------------------------------------------------------------
+
+_METRICS_RUN_RESULT = RunResult(
+    status="succeeded",
+    result={},
+    evidence={"url": "u", "text_snippet": "t"},
+    verifier={"ok": True, "reasons": []},
+    steps=3,
+    prompt_tokens=400,
+    completion_tokens=60,
+    usd=0.0009,
+    latency_ms_total=1200,
+    latency_ms_per_step=[400, 400, 400],
+    step_breakdown=[
+        {
+            "step": 1,
+            "latency_ms": 400,
+            "prompt_tokens": 100,
+            "completion_tokens": 20,
+            "usd": 0.0003,
+            "tool_calls": ["goto"],
+        },
+        {
+            "step": 2,
+            "latency_ms": 400,
+            "prompt_tokens": 150,
+            "completion_tokens": 20,
+            "usd": 0.0003,
+            "tool_calls": ["read"],
+        },
+        {
+            "step": 3,
+            "latency_ms": 400,
+            "prompt_tokens": 150,
+            "completion_tokens": 20,
+            "usd": 0.0003,
+            "tool_calls": ["done"],
+        },
+    ],
+)
+
+
+def test_run_case_populates_metrics_from_run_result():
+    with patch("scripts.eval.loop", return_value=_METRICS_RUN_RESULT):
+        result = _run_case(_FIXTURE_CASE, llm_client=None, browser=None)
+    assert result.steps == 3
+    assert result.usd == 0.0009
+    assert result.prompt_tokens == 400
+    assert result.completion_tokens == 60
+    assert result.latency_ms_total == 1200
+    assert result.latency_ms_per_step == [400, 400, 400]
+    assert len(result.step_breakdown) == 3
+
+
+def test_case_result_default_has_zero_quantitative_fields():
+    cr = CaseResult(id="x", status="succeeded", steps=0, usd=0.0, l_tier_counts={}, validators=[])
+    assert cr.prompt_tokens == 0
+    assert cr.completion_tokens == 0
+    assert cr.latency_ms_total == 0
+    assert cr.latency_ms_per_step == []
+    assert cr.step_breakdown == []
+
+
+def test_case_result_serialises_with_quantitative_fields():
+    cr = CaseResult(
+        id="x",
+        status="succeeded",
+        steps=2,
+        usd=0.0005,
+        l_tier_counts={},
+        validators=[],
+        prompt_tokens=100,
+        completion_tokens=30,
+        latency_ms_total=500,
+        latency_ms_per_step=[200, 300],
+        step_breakdown=[
+            {
+                "step": 1,
+                "latency_ms": 200,
+                "prompt_tokens": 50,
+                "completion_tokens": 15,
+                "usd": 0.00025,
+                "tool_calls": ["goto"],
+            },
+        ],
+    )
+    serialized = json.dumps(asdict(cr))
+    data = json.loads(serialized)
+    assert data["prompt_tokens"] == 100
+    assert data["latency_ms_per_step"] == [200, 300]

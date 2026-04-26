@@ -522,3 +522,116 @@ def test_loop_done_with_valid_evidence(fixture_server, playwright_chromium):
 
     assert result.status == "succeeded"
     assert result.verifier == {"ok": True, "reasons": []}
+
+
+# ---------------------------------------------------------------------------
+# Metrics: 2-step run accumulates tokens, usd, latency
+# ---------------------------------------------------------------------------
+
+
+def _usage(prompt: int, completion: int) -> Usage:
+    return Usage(
+        prompt_tokens=prompt, completion_tokens=completion, total_tokens=prompt + completion
+    )
+
+
+def _resp_with_tool_and_usage(
+    tc: ToolCall, prompt: int, completion: int, usd: float
+) -> ChatResponse:
+    return ChatResponse(
+        content=None,
+        tool_calls=[tc],
+        finish_reason="tool_calls",
+        model="fake",
+        usage=_usage(prompt, completion),
+        raw={},
+        usd=usd,
+    )
+
+
+def test_loop_metrics_two_step_run(fixture_server, playwright_chromium):
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+
+    responses = [
+        _resp_with_tool_and_usage(
+            _tool_call("goto", {"url": fixture_url}, call_id="tc-1"),
+            prompt=100,
+            completion=10,
+            usd=0.00022,
+        ),
+        _resp_with_tool_and_usage(
+            _tool_call(
+                "done",
+                {
+                    "result": {"heading": "Hello, loop"},
+                    "evidence": {"url": fixture_url, "text_snippet": "Hello, loop"},
+                },
+                call_id="tc-2",
+            ),
+            prompt=150,
+            completion=20,
+            usd=0.00034,
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop("read the heading", browser, fake_llm)
+
+    assert result.steps == 2
+    assert result.prompt_tokens == 250
+    assert result.completion_tokens == 30
+    assert abs(result.usd - 0.00056) < 1e-9
+    assert result.latency_ms_total > 0
+    assert len(result.latency_ms_per_step) == 2
+    assert len(result.step_breakdown) == 2
+
+
+def test_loop_metrics_timeout_path(fixture_server, playwright_chromium):
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+
+    fake_llm = _FakeLLMClient([])
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        browser.goto(fixture_url)
+        result = loop("task", browser, fake_llm, max_steps=2)
+
+    assert result.status == "timeout"
+    assert result.steps == 2
+    assert len(result.latency_ms_per_step) == 2
+
+
+def test_loop_metrics_step_breakdown_keys(fixture_server, playwright_chromium):
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+
+    responses = [
+        _resp_with_tool_and_usage(
+            _tool_call("goto", {"url": fixture_url}, call_id="tc-1"),
+            prompt=100,
+            completion=10,
+            usd=0.00022,
+        ),
+        _resp_with_tool_and_usage(
+            _tool_call(
+                "done",
+                {
+                    "result": {"heading": "Hello, loop"},
+                    "evidence": {"url": fixture_url, "text_snippet": "Hello, loop"},
+                },
+                call_id="tc-2",
+            ),
+            prompt=150,
+            completion=20,
+            usd=0.00034,
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop("read the heading", browser, fake_llm)
+
+    bd = result.step_breakdown[0]
+    for key in ("step", "latency_ms", "prompt_tokens", "completion_tokens", "usd", "tool_calls"):
+        assert key in bd, f"step_breakdown missing key: {key}"
+    assert bd["step"] == 1
+    assert isinstance(bd["tool_calls"], list)

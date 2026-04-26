@@ -66,6 +66,7 @@ The results JSON SHALL contain one `CaseResult` entry per variant sub-run (not o
 - **THEN** the case SHALL produce a single results entry with the original `id`
 
 ### Requirement: Results JSON schema
+
 The eval runner SHALL write a results JSON to `task2/eval/results/<ts>.json` (where `<ts>` is `YYYYMMDD_HHMMSS` UTC) after running the suite. The JSON SHALL have the following top-level shape:
 
 ```json
@@ -77,10 +78,22 @@ The eval runner SHALL write a results JSON to `task2/eval/results/<ts>.json` (wh
       "status": "<succeeded|unverified|failed|blocked|timeout|skipped>",
       "steps": <int>,
       "usd": <float>,
-      "l_tier_counts": { "<tier-name>": <int>, ... },
-      "validators": [
-        { "name": "<validator-expr>", "ok": <bool> }
-      ]
+      "prompt_tokens": <int>,
+      "completion_tokens": <int>,
+      "latency_ms_total": <int>,
+      "latency_ms_per_step": [<int>, ...],
+      "step_breakdown": [
+        {
+          "step": <int>,
+          "latency_ms": <int>,
+          "prompt_tokens": <int>,
+          "completion_tokens": <int>,
+          "usd": <float>,
+          "tool_calls": [<str>]
+        }
+      ],
+      "l_tier_counts": { "<tier>": <int>, ... },
+      "validators": [{ "name": "<expr>", "ok": <bool> }, ...]
     }
   ]
 }
@@ -94,6 +107,8 @@ The eval runner SHALL write a results JSON to `task2/eval/results/<ts>.json` (wh
 - `l_tier_counts`: dict mapping L-tier name (e.g. `"L1_ax"`, `"L2_dom"`, `"L3_rerank"`, `"L4_vision"`, `"cache"`) to the integer number of locate attempts that resolved at that tier for this case. Empty dict `{}` is valid (e.g. for skipped cases or cases with no locate calls).
 - `validators`: list of validator results, one per entry in `expect.validators`. Empty list `[]` is valid when `expect.validators` is empty or the case was skipped.
 
+All new fields (`prompt_tokens`, `completion_tokens`, `latency_ms_total`, `latency_ms_per_step`, `step_breakdown`) SHALL default to zero / empty when a case is skipped or the loop returns zero-metric results.
+
 #### Scenario: Results JSON exists after runner completes
 - **WHEN** `scripts/eval.py` is invoked and all cases complete (or are skipped)
 - **THEN** a JSON file SHALL exist at `eval/results/<ts>.json` relative to `task2/`
@@ -106,6 +121,12 @@ The eval runner SHALL write a results JSON to `task2/eval/results/<ts>.json` (wh
 - **WHEN** a case has no `fixture: true` and `--live` is absent
 - **THEN** the case entry in results JSON SHALL have `status: "skipped"`, `steps: 0`, `usd: 0.0`, `l_tier_counts: {}`, `validators: []`
 
+#### Scenario: Skipped case has zero-valued metric fields
+
+- **GIVEN** a case that is skipped (not fixture, not live)
+- **WHEN** the results JSON is read back
+- **THEN** the case entry SHALL have `"steps": 0`, `"usd": 0.0`, `"prompt_tokens": 0`, `"latency_ms_per_step": []`
+
 #### Scenario: Results JSON is valid JSON
 - **WHEN** the results file is written
 - **THEN** `json.loads(results_file.read_text())` SHALL succeed without error
@@ -113,6 +134,13 @@ The eval runner SHALL write a results JSON to `task2/eval/results/<ts>.json` (wh
 #### Scenario: l_tier_counts is always a dict
 - **WHEN** a case completes with no locate calls (e.g. the task calls `done` immediately)
 - **THEN** `l_tier_counts` SHALL be `{}` (empty dict), NOT `null` or absent
+
+#### Scenario: Results JSON is valid and contains new fields after a real run
+
+- **GIVEN** a suite run with at least one fixture case that completes via a mocked loop returning non-zero metrics
+- **WHEN** the results JSON is read back from disk
+- **THEN** the case entry SHALL have `"prompt_tokens"` and `"latency_ms_per_step"` keys
+- **AND** their values SHALL be non-zero
 
 ### Requirement: Eval runner CLI
 The system SHALL expose `scripts/eval.py` as a runnable script from `task2/` via `uv run python scripts/eval.py`. The CLI SHALL accept the following optional flags:

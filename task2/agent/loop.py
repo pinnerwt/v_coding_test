@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
 from agent.locate import LocatorMiss, locate_l1, locate_l2, parse_intent
@@ -112,13 +113,41 @@ class RunResult:
     result: Any
     evidence: dict | None
     verifier: dict | None = None
+    steps: int = 0
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    usd: float = 0.0
+    latency_ms_total: int = 0
+    latency_ms_per_step: list[int] = field(default_factory=list)
+    step_breakdown: list[dict] = field(default_factory=list)
+
+
+def _record_step(
+    step_num: int,
+    t0: float,
+    response: Any,
+    tool_names: list[str],
+    per_step: list[int],
+    breakdown: list[dict],
+) -> int:
+    step_ms = int((time.monotonic() - t0) * 1000)
+    per_step.append(step_ms)
+    breakdown.append(
+        {
+            "step": step_num,
+            "latency_ms": step_ms,
+            "prompt_tokens": response.usage.prompt_tokens,
+            "completion_tokens": response.usage.completion_tokens,
+            "usd": response.usd,
+            "tool_calls": tool_names,
+        }
+    )
+    return step_ms
 
 
 def _check_evidence(evidence: dict | None) -> dict:
-    """Validate evidence dict for required fields; return verifier verdict."""
     reasons: list[str] = []
     if not isinstance(evidence, dict):
-        # Not a dict ⇒ neither required field can exist; report both.
         reasons.append("evidence.url is missing or empty")
         reasons.append("evidence.text_snippet is missing or empty")
     else:
@@ -196,13 +225,27 @@ def loop(
     messages: list[dict] = [{"role": "system", "content": _build_system_prompt(task)}]
     supervisor = Supervisor()
 
+    cum_prompt_tokens = 0
+    cum_completion_tokens = 0
+    cum_usd = 0.0
+    latency_ms_per_step: list[int] = []
+    step_breakdown: list[dict] = []
+    step_num = 0
+
     for _ in range(max_steps):
+        step_num += 1
+        t0 = time.monotonic()
+
         observation = _observe(browser)
         messages.append(
             {"role": "user", "content": f"{STATE_MESSAGE_PREFIX}{json.dumps(observation)}"}
         )
 
         response = llm_client.chat(messages, tools=TOOLS)
+
+        cum_prompt_tokens += response.usage.prompt_tokens
+        cum_completion_tokens += response.usage.completion_tokens
+        cum_usd += response.usd
 
         assistant_msg: dict[str, Any] = {"role": "assistant", "content": response.content}
         if response.tool_calls:
@@ -216,10 +259,14 @@ def loop(
             ]
         messages.append(assistant_msg)
 
+        dispatched_tool_names: list[str] = []
+
         if not response.tool_calls:
+            _record_step(step_num, t0, response, [], latency_ms_per_step, step_breakdown)
             continue
 
         for tool_call in response.tool_calls:
+            dispatched_tool_names.append(tool_call.name)
             try:
                 args = json.loads(tool_call.arguments) if tool_call.arguments else {}
             except json.JSONDecodeError as exc:
@@ -249,14 +296,49 @@ def loop(
                 evidence = args.get("evidence")
                 verifier = _check_evidence(evidence)
                 status: RunStatus = "succeeded" if verifier["ok"] else "unverified"
+                _record_step(
+                    step_num,
+                    t0,
+                    response,
+                    dispatched_tool_names,
+                    latency_ms_per_step,
+                    step_breakdown,
+                )
                 return RunResult(
                     status=status,
                     result=args.get("result"),
                     evidence=evidence,
                     verifier=verifier,
+                    steps=step_num,
+                    prompt_tokens=cum_prompt_tokens,
+                    completion_tokens=cum_completion_tokens,
+                    usd=cum_usd,
+                    latency_ms_total=sum(latency_ms_per_step),
+                    latency_ms_per_step=latency_ms_per_step,
+                    step_breakdown=step_breakdown,
                 )
             if tool_call.name == "fail":
-                return RunResult(status="failed", result=None, evidence=None, verifier=None)
+                _record_step(
+                    step_num,
+                    t0,
+                    response,
+                    dispatched_tool_names,
+                    latency_ms_per_step,
+                    step_breakdown,
+                )
+                return RunResult(
+                    status="failed",
+                    result=None,
+                    evidence=None,
+                    verifier=None,
+                    steps=step_num,
+                    prompt_tokens=cum_prompt_tokens,
+                    completion_tokens=cum_completion_tokens,
+                    usd=cum_usd,
+                    latency_ms_total=sum(latency_ms_per_step),
+                    latency_ms_per_step=latency_ms_per_step,
+                    step_breakdown=step_breakdown,
+                )
 
             tool_result = _dispatch(tool_call.name, args, browser, supervisor)
             messages.append(
@@ -267,4 +349,24 @@ def loop(
                 }
             )
 
-    return RunResult(status="timeout", result=None, evidence=None)
+        _record_step(
+            step_num,
+            t0,
+            response,
+            dispatched_tool_names,
+            latency_ms_per_step,
+            step_breakdown,
+        )
+
+    return RunResult(
+        status="timeout",
+        result=None,
+        evidence=None,
+        steps=step_num,
+        prompt_tokens=cum_prompt_tokens,
+        completion_tokens=cum_completion_tokens,
+        usd=cum_usd,
+        latency_ms_total=sum(latency_ms_per_step),
+        latency_ms_per_step=latency_ms_per_step,
+        step_breakdown=step_breakdown,
+    )
