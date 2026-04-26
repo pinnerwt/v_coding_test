@@ -210,7 +210,7 @@ def test_compute_exit_code_timeout():
 
 
 def test_build_clients_uses_llm_base_url_env(monkeypatch):
-    from scripts.eval import _build_clients
+    from scripts.eval import build_clients
 
     monkeypatch.setenv("LLM_BASE_URL", "http://custom:9999/v1")
     monkeypatch.setenv("LLM_MODEL", "test-model")
@@ -222,7 +222,7 @@ def test_build_clients_uses_llm_base_url_env(monkeypatch):
     ):
         mock_llm.return_value = MagicMock()
         mock_browser.return_value = MagicMock()
-        _build_clients()
+        build_clients()
         mock_llm.assert_called_once_with(
             base_url="http://custom:9999/v1",
             model="test-model",
