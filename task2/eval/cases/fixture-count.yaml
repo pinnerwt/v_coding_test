@@ -1,0 +1,14 @@
+- id: fixture-count
+  domain: fixture
+  category: search-and-extract
+  task: "Read all list items on the page and return them as items"
+  expect:
+    schema:
+      items: "list[str]"
+    validators:
+      - "items.len_gte: 1"
+  budget:
+    steps: 5
+    usd: 0.05
+    seconds: 30
+  fixture: true
