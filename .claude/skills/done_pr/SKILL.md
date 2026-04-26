@@ -11,6 +11,17 @@ Wraps up an OpenSpec-driven PR end-to-end: archive → commit → push → merge
 
 1. **Archive the change.** Invoke the `opsx:archive` skill (equivalently `openspec-archive-change`). If the user did not pass a change name as `args`, follow the archive skill's normal prompting flow to pick one. Pass `args` straight through if provided.
 
+1a. **Record task2 benchmark (if task2 was touched).**
+   - Detect: `git diff --name-only origin/master...HEAD -- task2/` — if empty, skip this step entirely.
+   - Otherwise, from the repo root run:
+     `cd task2 && LLM_BASE_URL=http://localhost:8090 LLM_MODEL=qwen3.5-27b uv run python -m scripts.benchmark --branch "$(git rev-parse --abbrev-ref HEAD)"`
+     (the local Qwen at `localhost:8090` must be reachable; if it isn't, stop and ask the user.)
+   - Stage just `task2/benchmark/<sanitized-branch>/` and commit with a HEREDOC message:
+     `chore(task2): record benchmark for <branch>`
+     including the standard `Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>` trailer.
+   - If `git status` shows no benchmark changes after the run (results identical to what's already on the branch), skip the commit — do not create an empty one.
+   - The CI workflow `task2-benchmark` checks that this file exists and that its `run_at` is newer than the merge-base with master, so this step is what makes the PR mergeable.
+
 2. **Commit the spec/archive updates.** After archive completes:
    - Run `git status` and `git diff --stat` to confirm only OpenSpec files moved/changed (typically `openspec/changes/<name>/` → `openspec/changes/archive/<name>/`, and possibly `openspec/specs/...`).
    - Stage exactly those paths (do not `git add -A`).

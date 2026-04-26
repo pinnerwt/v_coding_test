@@ -1,0 +1,55 @@
+name: task2 benchmark
+
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - 'task2/**'
+      - '.github/workflows/task2-benchmark.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: task2-benchmark-${{ github.head_ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: task2
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: task2/uv.lock
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Resolve merge-base date
+        id: base
+        working-directory: ${{ github.workspace }}
+        run: |
+          git fetch origin master --depth=0 || git fetch origin master
+          base_sha=$(git merge-base origin/master HEAD)
+          base_date=$(git show -s --format=%cI "$base_sha")
+          echo "Merge-base $base_sha at $base_date"
+          echo "date=$base_date" >> "$GITHUB_OUTPUT"
+
+      - name: Verify benchmark recorded for branch
+        run: >
+          uv run python -m scripts.benchmark
+          --branch "${{ github.head_ref }}"
+          --verify "${{ steps.base.outputs.date }}"
