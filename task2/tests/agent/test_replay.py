@@ -439,7 +439,13 @@ def test_replay_run_detects_extra_chat_calls(tmp_path):
     chat() until max_steps because no done/fail tool ever arrives — those extra calls
     must be reported, not silently capped at min(recorded, consumed).
     """
-    observation = {"url": "http://stub.local/", "text": ""}
+    observation = {
+        "url": "http://stub.local/",
+        "title": "",
+        "ax_tree_digest": "",
+        "ax_fingerprint": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "last_action": None,
+    }
     first_prompt = [
         {"role": "system", "content": _build_system_prompt("task")},
         {"role": "user", "content": f"Current state: {json.dumps(observation)}"},
@@ -621,7 +627,13 @@ def test_replay_run_handles_multiple_tool_calls_per_response(tmp_path):
         "function": {"name": "done", "arguments": json.dumps(done_args)},
     }
 
-    observation = {"url": "http://stub.local/", "text": ""}
+    observation = {
+        "url": "http://stub.local/",
+        "title": "",
+        "ax_tree_digest": "",
+        "ax_fingerprint": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "last_action": None,
+    }
     first_prompt = [
         {"role": "system", "content": _build_system_prompt(task)},
         {"role": "user", "content": f"Current state: {json.dumps(observation)}"},
@@ -784,21 +796,29 @@ def test_replay_run_preserves_empty_string_assistant_content(tmp_path):
     assert result.matched is True, f"Expected match; got divergence={result.first_divergence!r}"
 
 
-def test_replay_run_uses_recorded_observation_text(tmp_path):
-    """Recorded body text in 'Current state: {...}' must be served back to loop.
+def test_replay_run_uses_recorded_observation_ax_tree(tmp_path):
+    """Recorded ax_tree_digest observation must produce a matching replay prompt.
 
-    Without this, any real trace whose observations captured page text would
-    false-diverge on prompt comparison even when loop's decisions are unchanged
-    — the stub would always emit text="" while the recording has actual text.
+    The stub browser emits an empty ax_tree_digest (no real Playwright page),
+    so a trace recorded against a real browser would always produce an empty
+    ax_tree_digest in replay. This test verifies that a trace whose recorded
+    observation already has an empty ax_tree_digest matches correctly.
     """
     task = "read body"
-    obs = {"url": "http://x/", "text": "Hello world"}
+    empty_fp = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    obs = {
+        "url": "http://x/",
+        "title": "",
+        "ax_tree_digest": "",
+        "ax_fingerprint": empty_fp,
+        "last_action": None,
+    }
     state_msg = {"role": "user", "content": f"Current state: {json.dumps(obs)}"}
     system_msg = {"role": "system", "content": _build_system_prompt(task)}
 
     done_args = {
-        "result": {"text": obs["text"]},
-        "evidence": {"url": obs["url"], "text_snippet": obs["text"]},
+        "result": {"url": obs["url"]},
+        "evidence": {"url": obs["url"], "text_snippet": "ok"},
     }
     response_dict = {
         "content": None,
@@ -857,7 +877,7 @@ def test_replay_run_uses_recorded_observation_text(tmp_path):
         },
     ]
 
-    fixture_path = tmp_path / "trace_with_text.jsonl"
+    fixture_path = tmp_path / "trace_with_ax_tree.jsonl"
     fixture_path.write_text("\n".join([json.dumps(run)] + [json.dumps(e) for e in events]) + "\n")
 
     result = replay_run(fixture_path)
@@ -1011,7 +1031,13 @@ def test_replay_run_normalizes_dict_form_tool_arguments(tmp_path):
         "result": {},
         "evidence": {"url": "http://stub.local/", "text_snippet": "ok"},
     }
-    observation = {"url": "http://stub.local/", "text": ""}
+    observation = {
+        "url": "http://stub.local/",
+        "title": "",
+        "ax_tree_digest": "",
+        "ax_fingerprint": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "last_action": None,
+    }
     first_prompt = [
         {"role": "system", "content": _build_system_prompt(task)},
         {"role": "user", "content": f"Current state: {json.dumps(observation)}"},

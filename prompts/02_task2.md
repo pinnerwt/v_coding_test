@@ -59,3 +59,5 @@ Write a task2/smoke_test.sh to run the smoke test for task2 agent. Raise the api
 Update /new_task2 skill to run task2/smoke_test.sh before making PR. Re-verify and /simplify if the smoke test does not pass.
 
 Update /done_pr to insert benchmark results before the commit. Add a PR workflow that checks the results before merge.
+
+/new_task2 (observe ax tree)

@@ -93,6 +93,9 @@ class _StubPage:
     def locator(self, selector: str) -> _ZeroMatchLocator:  # noqa: ARG002
         return _ZERO_MATCH
 
+    def title(self) -> str:
+        return ""
+
 
 class StubBrowser:
     """Duck-type replacement for agent.browser.Browser.
@@ -218,7 +221,6 @@ def _replayed_pair(tc: ToolCall) -> tuple[str, dict] | None:
 
 
 def _observation_from_call(call: LLMCallEvent) -> dict:
-    """Parse `{url, text}` out of the last `STATE_MESSAGE_PREFIX` user message."""
     messages = call.prompt.get("messages") or []
     for msg in reversed(messages):
         if not isinstance(msg, dict) or msg.get("role") != "user":
@@ -229,11 +231,11 @@ def _observation_from_call(call: LLMCallEvent) -> dict:
         try:
             payload = json.loads(content[len(STATE_MESSAGE_PREFIX) :])
         except json.JSONDecodeError:
-            return {"url": "", "text": ""}
+            return {"url": ""}
         if not isinstance(payload, dict):
-            return {"url": "", "text": ""}
-        return {"url": str(payload.get("url", "")), "text": str(payload.get("text", ""))}
-    return {"url": "", "text": ""}
+            return {"url": ""}
+        return payload
+    return {"url": ""}
 
 
 def _response_from_recorded(resp: dict) -> ChatResponse:
