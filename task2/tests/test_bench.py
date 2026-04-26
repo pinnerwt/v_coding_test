@@ -105,8 +105,8 @@ def test_runner_smoke_no_live(tmp_path, monkeypatch):
     monkeypatch.setenv("EVAL_RESULTS_DIR", str(tmp_path))
 
     with (
-        patch("scripts.bench.Browser") as mock_browser,
-        patch("scripts.bench.LLMClient"),
+        patch("scripts.eval.Browser") as mock_browser,
+        patch("scripts.eval.LLMClient"),
     ):
         mock_browser.return_value.__enter__ = MagicMock(return_value=mock_browser.return_value)
         mock_browser.return_value.__exit__ = MagicMock(return_value=False)
@@ -129,8 +129,8 @@ def test_runner_smoke_result_shape(tmp_path, monkeypatch):
 
     with (
         patch("scripts.eval.loop", return_value=_CANNED_RESULT),
-        patch("scripts.bench.Browser") as mock_browser,
-        patch("scripts.bench.LLMClient"),
+        patch("scripts.eval.Browser") as mock_browser,
+        patch("scripts.eval.LLMClient"),
     ):
         mock_browser.return_value.__enter__ = MagicMock(return_value=mock_browser.return_value)
         mock_browser.return_value.__exit__ = MagicMock(return_value=False)
@@ -155,8 +155,8 @@ def test_runner_honors_llm_base_url(tmp_path, monkeypatch):
     monkeypatch.setenv("LLM_BASE_URL", "http://custom:9999/v1")
 
     with (
-        patch("scripts.bench.Browser") as mock_browser,
-        patch("scripts.bench.LLMClient") as mock_llm,
+        patch("scripts.eval.Browser") as mock_browser,
+        patch("scripts.eval.LLMClient") as mock_llm,
     ):
         mock_browser.return_value.__enter__ = MagicMock(return_value=mock_browser.return_value)
         mock_browser.return_value.__exit__ = MagicMock(return_value=False)

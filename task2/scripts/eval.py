@@ -139,7 +139,7 @@ def compute_exit_code(cases: list[dict]) -> int:
     return 1 if any(c["status"] in _FAIL_STATUSES for c in cases) else 0
 
 
-def _build_clients():
+def build_clients():
     base_url = os.environ.get("LLM_BASE_URL", "http://localhost:8090/v1")
     model = os.environ.get("LLM_MODEL", "qwen3")
     api_key = os.environ.get("LLM_API_KEY", "local")
@@ -170,7 +170,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.case_id:
         all_cases = [c for c in all_cases if c["id"] == args.case_id]
 
-    llm_client, browser = _build_clients()
+    llm_client, browser = build_clients()
     with browser:
         out = run_suite(
             all_cases,
