@@ -108,14 +108,16 @@ def run_suite(
     case_results: list[CaseResult] = []
     for case in cases:
         if not live and not case.get("fixture", False):
-            case_results.append(_skipped_result(case))
+            r = _skipped_result(case)
         else:
-            case_results.append(_run_case(case, llm_client, browser))
+            r = _run_case(case, llm_client, browser)
+        case_results.append(r)
+        print(f"[{_label(r.status)}] {r.id} ({r.steps} steps, ${r.usd:.4f})", flush=True)
     payload = {
         "run_at": now.isoformat(),
         "cases": [asdict(r) for r in case_results],
     }
-    out_path = results_dir / f"{now.strftime('%Y%m%d_%H%M%S_%f')}.json"
+    out_path = results_dir / f"{now.strftime('%Y%m%d_%H%M%S')}.json"
     out_path.write_text(json.dumps(payload, indent=2))
     return out_path
 
@@ -139,11 +141,11 @@ def _label(status: str) -> str:
     return "FAIL"
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--case", dest="case_id", default=None)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     cases_dir = Path(os.environ.get("EVAL_CASES_DIR", "eval/cases"))
     results_dir = Path(os.environ.get("EVAL_RESULTS_DIR", "eval/results"))
@@ -156,16 +158,19 @@ if __name__ == "__main__":
         all_cases = [c for c in all_cases if c["id"] == args.case_id]
 
     llm_client, browser = _build_clients()
-    out = run_suite(
-        all_cases,
-        results_dir=results_dir,
-        live=args.live,
-        llm_client=llm_client,
-        browser=browser,
-    )
+    with browser:
+        out = run_suite(
+            all_cases,
+            results_dir=results_dir,
+            live=args.live,
+            llm_client=llm_client,
+            browser=browser,
+        )
 
     data = json.loads(out.read_text())
-    for c in data["cases"]:
-        print(f"[{_label(c['status'])}] {c['id']} ({c['steps']} steps, ${c['usd']:.4f})")
     print(f"Results: {out}")
-    sys.exit(compute_exit_code(data["cases"]))
+    return compute_exit_code(data["cases"])
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -17,13 +18,29 @@ _FIXTURE_CASE = {
     "expect": {"schema": {"title": "str"}, "validators": ["title.nonempty"]},
     "budget": {"steps": 5, "usd": 0.05, "seconds": 30},
     "fixture": True,
-    "fixture_url": "http://localhost/index.html",
 }
 
 _CANNED_RESULT = RunResult(
     status="succeeded",
     result={"title": "Hello"},
     evidence={"url": "http://x", "text_snippet": "Hello"},
+    verifier={"ok": True, "reasons": []},
+)
+
+_FIXTURE_CASE_2 = {
+    "id": "fixture-count",
+    "domain": "fixture",
+    "category": "search-and-extract",
+    "task": "Return items",
+    "expect": {"schema": {"items": "list[str]"}, "validators": ["items.len_gte: 1"]},
+    "budget": {"steps": 5, "usd": 0.05, "seconds": 30},
+    "fixture": True,
+}
+
+_CANNED_RESULT_2 = RunResult(
+    status="succeeded",
+    result={"items": ["a"]},
+    evidence={"url": "http://x", "text_snippet": "a"},
     verifier={"ok": True, "reasons": []},
 )
 
@@ -158,23 +175,8 @@ def test_validator_len_gte_fails_missing_key():
 
 
 def test_run_suite_two_fixture_cases_both_included(tmp_path):
-    case2 = {
-        "id": "fixture-count",
-        "domain": "fixture",
-        "category": "search-and-extract",
-        "task": "Return items",
-        "expect": {"schema": {"items": "list[str]"}, "validators": ["items.len_gte: 1"]},
-        "budget": {"steps": 5, "usd": 0.05, "seconds": 30},
-        "fixture": True,
-    }
-    canned2 = RunResult(
-        status="succeeded",
-        result={"items": ["a"]},
-        evidence={"url": "http://x", "text_snippet": "a"},
-        verifier={"ok": True, "reasons": []},
-    )
-    with patch("scripts.eval.loop", side_effect=[_CANNED_RESULT, canned2]):
-        out = run_suite(cases=[_FIXTURE_CASE, case2], results_dir=tmp_path)
+    with patch("scripts.eval.loop", side_effect=[_CANNED_RESULT, _CANNED_RESULT_2]):
+        out = run_suite(cases=[_FIXTURE_CASE, _FIXTURE_CASE_2], results_dir=tmp_path)
     data = json.loads(out.read_text())
     assert len(data["cases"]) == 2
 
@@ -226,3 +228,45 @@ def test_build_clients_uses_llm_base_url_env(monkeypatch):
             model="test-model",
             api_key="test-key",
         )
+
+
+def test_main_opens_browser_as_context_manager(monkeypatch, tmp_path):
+    from scripts.eval import main
+
+    (tmp_path / "eval" / "cases").mkdir(parents=True)
+    (tmp_path / "eval" / "results").mkdir(parents=True)
+    case_yaml = tmp_path / "eval" / "cases" / "fixture-heading.yaml"
+    case_yaml.write_text(yaml.dump([_FIXTURE_CASE]))
+    monkeypatch.chdir(tmp_path)
+
+    mock_browser = MagicMock()
+    mock_browser.return_value.__enter__.return_value = mock_browser.return_value
+
+    with (
+        patch("scripts.eval.LLMClient", MagicMock()),
+        patch("scripts.eval.Browser", mock_browser),
+        patch("scripts.eval.loop", return_value=_CANNED_RESULT),
+    ):
+        main([])
+
+    mock_browser.return_value.__enter__.assert_called_once()
+    mock_browser.return_value.__exit__.assert_called_once()
+
+
+def test_run_suite_prints_per_case_progress_inline(tmp_path, capsys):
+    stdout_at_call: list[str] = []
+
+    def side_effect_fn(*args, **kwargs):
+        stdout_at_call.append(capsys.readouterr().out)
+        return _CANNED_RESULT if len(stdout_at_call) == 1 else _CANNED_RESULT_2
+
+    with patch("scripts.eval.loop", side_effect=side_effect_fn):
+        run_suite(cases=[_FIXTURE_CASE, _FIXTURE_CASE_2], results_dir=tmp_path)
+
+    assert "[PASS] fixture-heading" in stdout_at_call[1]
+
+
+def test_results_filename_matches_spec_format(tmp_path):
+    with patch("scripts.eval.loop", return_value=_CANNED_RESULT):
+        out = run_suite(cases=[_FIXTURE_CASE], results_dir=tmp_path)
+    assert re.fullmatch(r"\d{8}_\d{6}\.json", out.name) is not None
