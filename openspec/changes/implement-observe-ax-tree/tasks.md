@@ -10,12 +10,12 @@
 
 ## 2. Green — Implement observe.py
 
-- [ ] 2.1 Create `task2/agent/observe.py` with `from __future__ import annotations` and imports: `hashlib`, `typing.TYPE_CHECKING`, and a conditional import of `Browser` for type checking only.
-- [ ] 2.2 Define module-level constants: `INTERACTABLE_ROLES: frozenset[str]` (the 10-element canonical set per spec), `MAX_NODES: int = 200`, `MAX_NAME_LEN: int = 80`.
-- [ ] 2.3 Implement a private `_walk(node, collected, remaining)` recursive helper: if `node` is `None` or `remaining[0] <= 0`, return; if `node["role"]` is in `INTERACTABLE_ROLES`, append to `collected` and decrement `remaining[0]`; recurse into `node.get("children", [])`.
-- [ ] 2.4 Implement a private `_serialize(nodes, total_found)` function: for each node, format as `[role] "name"` (or `[heading:N] "name"` if role is `heading` and `level` key exists); truncate name to `MAX_NAME_LEN` chars with `…` suffix if exceeded; join with `\n`; if `total_found > MAX_NODES`, append `\n[... {total_found - MAX_NODES} more nodes truncated]`.
-- [ ] 2.5 Implement `build_observation(browser, last_action)`: access `browser._page`; if `None`, return zero-observation dict; call `page.accessibility.snapshot()`; if snapshot is `None`, treat as empty tree; run `_walk` with `remaining=[MAX_NODES]` and a separate full-count pass to get `total_found` (or count during walk); call `_serialize`; compute `ax_fingerprint = hashlib.sha256(ax_tree_digest.encode()).hexdigest()`; return `{"url": page.url, "title": page.title(), "ax_tree_digest": ax_tree_digest, "ax_fingerprint": ax_fingerprint, "last_action": last_action}`.
-- [ ] 2.6 Run `uv run pytest task2/tests/agent/test_observe.py -x` from `task2/` and confirm all tests pass.
+- [x] 2.1 Create `task2/agent/observe.py` with `from __future__ import annotations` and imports: `hashlib`, `typing.TYPE_CHECKING`, and a conditional import of `Browser` for type checking only.
+- [x] 2.2 Define module-level constants: `INTERACTABLE_ROLES: frozenset[str]` (the 10-element canonical set per spec), `MAX_NODES: int = 200`, `MAX_NAME_LEN: int = 80`.
+- [x] 2.3 Implement a private `_walk(node, collected, remaining)` recursive helper: if `node` is `None` or `remaining[0] <= 0`, return; if `node["role"]` is in `INTERACTABLE_ROLES`, append to `collected` and decrement `remaining[0]`; recurse into `node.get("children", [])`.
+- [x] 2.4 Implement a private `_serialize(nodes, total_found)` function: for each node, format as `[role] "name"` (or `[heading:N] "name"` if role is `heading` and `level` key exists); truncate name to `MAX_NAME_LEN` chars with `…` suffix if exceeded; join with `\n`; if `total_found > MAX_NODES`, append `\n[... {total_found - MAX_NODES} more nodes truncated]`.
+- [x] 2.5 Implement `build_observation(browser, last_action)`: access `browser._page`; if `None`, return zero-observation dict; call `page.accessibility.snapshot()`; if snapshot is `None`, treat as empty tree; run `_walk` with `remaining=[MAX_NODES]` and a separate full-count pass to get `total_found` (or count during walk); call `_serialize`; compute `ax_fingerprint = hashlib.sha256(ax_tree_digest.encode()).hexdigest()`; return `{"url": page.url, "title": page.title(), "ax_tree_digest": ax_tree_digest, "ax_fingerprint": ax_fingerprint, "last_action": last_action}`.
+- [x] 2.6 Run `uv run pytest task2/tests/agent/test_observe.py -x` from `task2/` and confirm all tests pass.
 
 ## 3. Red — Failing Loop Integration Tests
 
