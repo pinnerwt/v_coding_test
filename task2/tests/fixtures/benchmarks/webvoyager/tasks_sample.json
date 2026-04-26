@@ -1,0 +1,20 @@
+[
+  {
+    "id": "1",
+    "web_name": "Wikipedia",
+    "ques": "Tell me the name of the Turing Award winner in 2018.",
+    "web": "https://en.wikipedia.org"
+  },
+  {
+    "id": "2",
+    "web_name": "arXiv",
+    "ques": "Find the abstract of the paper 'Attention Is All You Need' on arXiv.",
+    "web": "https://arxiv.org"
+  },
+  {
+    "id": "3",
+    "web_name": "GitHub",
+    "ques": "Find the number of stars for the openai/gpt-2 repository on GitHub.",
+    "web": "https://github.com"
+  }
+]
