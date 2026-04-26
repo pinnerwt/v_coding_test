@@ -25,6 +25,42 @@ uv run ruff check .
 uv run ruff format .
 ```
 
+## Deployment
+
+### Docker (local)
+
+```bash
+docker build -t vici-task2 task2/
+
+docker run -p 8000:8000 \
+  -e LLM_BASE_URL=<openai-compatible-base-url> \
+  -e LLM_MODEL=<model-name> \
+  -e LLM_API_KEY=<optional-api-key> \
+  vici-task2
+```
+
+For persistent SQLite storage across restarts, mount a host directory:
+
+```bash
+docker run -p 8000:8000 \
+  -e LLM_BASE_URL=<openai-compatible-base-url> \
+  -e LLM_MODEL=<model-name> \
+  -e DB_PATH=/data/vici.db \
+  -v /host/path:/data \
+  vici-task2
+```
+
+### Zeabur
+
+Live URL: `<TBD: Zeabur URL after deployment>`
+
+Connect this repo on the Zeabur dashboard, set the build root to the repo root (the `task2/zeabur.json` file points Zeabur to `task2/Dockerfile`), then set these environment variables:
+
+- `LLM_BASE_URL` — reachable OpenAI-compatible API endpoint
+- `LLM_MODEL` — model name to use
+- `LLM_API_KEY` — API key (optional, omit for key-free endpoints)
+- `DB_PATH` — path inside the container for the SQLite DB (default `/tmp/vici.db`; set to a mounted volume path for persistence)
+
 ## Configuration
 
 Environment variables consumed by the LLM client (see `agent/llm.py`):

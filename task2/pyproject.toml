@@ -27,7 +27,8 @@ include = ["agent*", "api*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q --cov=agent --cov-report=term-missing"
+addopts = "-q --cov=agent --cov-report=term-missing -m 'not docker'"
+markers = ["docker: marks tests as requiring a Docker daemon (deselect with '-m not docker')"]
 
 [tool.coverage.run]
 branch = true
