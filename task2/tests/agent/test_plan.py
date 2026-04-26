@@ -61,6 +61,20 @@ def test_plan_returns_fallback_when_steps_key_missing():
     assert result.steps == ["find X"]
 
 
+def test_plan_returns_fallback_when_steps_is_a_string():
+    payload = json.dumps({"steps": "go home", "expected_end_state": "done"})
+    llm = _FakeLLM(payload)
+    result, _ = plan(task="find X", observation={}, llm=llm)
+    assert result.steps == ["find X"]
+
+
+def test_plan_returns_fallback_when_steps_contains_non_strings():
+    payload = json.dumps({"steps": [1, 2, 3], "expected_end_state": "done"})
+    llm = _FakeLLM(payload)
+    result, _ = plan(task="find X", observation={}, llm=llm)
+    assert result.steps == ["find X"]
+
+
 def test_replan_returns_revised_plan_from_well_formed_response():
     payload = json.dumps(
         {"steps": ["try alternative approach"], "expected_end_state": "task done via alt"}
@@ -79,4 +93,22 @@ def test_replan_returns_fallback_on_malformed_json():
     llm = _FakeLLM("not json at all")
     prior = Plan(steps=["original step"], expected_end_state="original end")
     result, _ = replan(task="find X", observation={}, prior_plan=prior, reason="halt", llm=llm)
+    assert result.steps == ["find X"]
+
+
+def test_replan_returns_fallback_when_steps_is_a_string():
+    payload = json.dumps({"steps": "go home", "expected_end_state": "done"})
+    prior = Plan(steps=["original step"], expected_end_state="original end")
+    result, _ = replan(
+        task="find X", observation={}, prior_plan=prior, reason="halt", llm=_FakeLLM(payload)
+    )
+    assert result.steps == ["find X"]
+
+
+def test_replan_returns_fallback_when_steps_contains_non_strings():
+    payload = json.dumps({"steps": [1, 2, 3], "expected_end_state": "done"})
+    prior = Plan(steps=["original step"], expected_end_state="original end")
+    result, _ = replan(
+        task="find X", observation={}, prior_plan=prior, reason="halt", llm=_FakeLLM(payload)
+    )
     assert result.steps == ["find X"]

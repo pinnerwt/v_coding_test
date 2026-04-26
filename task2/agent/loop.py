@@ -390,7 +390,29 @@ def loop(
 
             tool_result = _dispatch(tool_call.name, args, browser, supervisor)
 
+            if tool_result.startswith("Error:"):
+                last_action = {
+                    "tool": tool_call.name,
+                    "intent": str(args),
+                    "outcome": "error",
+                    "error": tool_result,
+                }
+            else:
+                last_action = {
+                    "tool": tool_call.name,
+                    "intent": str(args),
+                    "outcome": "ok",
+                }
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": tool_result,
+                }
+            )
+
             if tool_result.startswith("Error:") and supervisor.last_policy == "halt":
+                supervisor.last_policy = None
                 if not supervisor.replan_used:
                     new_plan, replan_resp = plan_module.replan(
                         task, observation, active_plan, tool_result, llm_client
@@ -424,27 +446,6 @@ def loop(
                         latency_ms_per_step=latency_ms_per_step,
                         step_breakdown=step_breakdown,
                     )
-
-            if tool_result.startswith("Error:"):
-                last_action = {
-                    "tool": tool_call.name,
-                    "intent": str(args),
-                    "outcome": "error",
-                    "error": tool_result,
-                }
-            else:
-                last_action = {
-                    "tool": tool_call.name,
-                    "intent": str(args),
-                    "outcome": "ok",
-                }
-            messages.append(
-                {
-                    "role": "tool",
-                    "tool_call_id": tool_call.id,
-                    "content": tool_result,
-                }
-            )
 
         _record_step(
             step_num,

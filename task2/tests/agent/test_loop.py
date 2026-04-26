@@ -1096,6 +1096,123 @@ def test_planner_tokens_included_in_run_metrics(fixture_server, playwright_chrom
     assert abs(result.usd - 0.0003) < 1e-9
 
 
+def test_loop_does_not_terminally_fail_on_unrelated_error_after_replan(
+    fixture_server, playwright_chromium
+):
+    fixture_url = f"{fixture_server}/index.html"
+    plan_json = '{"steps": ["step 1"], "expected_end_state": "done"}'
+    replan_json = '{"steps": ["alt step"], "expected_end_state": "alt done"}'
+
+    class _HaltThenGotoEmptyThenDoneLLM:
+        def __init__(self):
+            self._state = "plan"
+
+        def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
+            if self._state == "plan":
+                self._state = "read"
+                return _fake_text_response(plan_json)
+
+            if tools is None:
+                self._state = "goto_empty"
+                return _fake_text_response(replan_json)
+
+            if self._state == "read":
+                return _response_with_tool_call(
+                    _tool_call("read", {"intent": "Submit button"}, call_id="tc-read")
+                )
+            if self._state == "goto_empty":
+                self._state = "done"
+                return _response_with_tool_call(
+                    _tool_call("goto", {"url": ""}, call_id="tc-empty-goto")
+                )
+            return _response_with_tool_call(
+                _tool_call(
+                    "done",
+                    {
+                        "result": {"ok": True},
+                        "evidence": {
+                            "url": fixture_url,
+                            "text_snippet": "Hello",
+                        },
+                    },
+                    call_id="tc-done",
+                )
+            )
+
+    llm = _HaltThenGotoEmptyThenDoneLLM()
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop("click the Submit button", browser, llm, max_steps=20)
+
+    assert result.status == "succeeded"
+    assert result.steps >= 3
+
+
+def test_replan_does_not_leave_orphan_tool_call_in_message_history(
+    fixture_server, playwright_chromium
+):
+    """OpenAI-compatible servers reject with HTTP 400 on unmatched tool_call IDs."""
+    fixture_url = f"{fixture_server}/index.html"
+    plan_json = '{"steps": ["step 1"], "expected_end_state": "done"}'
+    replan_json = '{"steps": ["alt step"], "expected_end_state": "alt done"}'
+
+    class _HaltReplanCapturingLLM:
+        def __init__(self):
+            self._call_index = 0
+            self._replan_done = False
+            self.all_messages: list[list[dict]] = []
+
+        def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
+            self.all_messages.append(list(messages))
+            idx = self._call_index
+            self._call_index += 1
+            if idx == 0:
+                return _fake_text_response(plan_json)
+            if tools is None and not self._replan_done:
+                self._replan_done = True
+                return _fake_text_response(replan_json)
+            if self._replan_done and tools is not None:
+                return _response_with_tool_call(
+                    _tool_call(
+                        "done",
+                        {
+                            "result": {"ok": True},
+                            "evidence": {"url": fixture_url, "text_snippet": "Hello"},
+                        },
+                        call_id="tc-done",
+                    )
+                )
+            return _response_with_tool_call(
+                _tool_call("read", {"intent": "Submit button"}, call_id=f"tc-r{idx}")
+            )
+
+    def _assert_tool_calls_have_responses(messages: list[dict]) -> None:
+        pending: list[str] = []
+        for msg in messages:
+            if msg.get("role") == "assistant" and msg.get("tool_calls"):
+                pending.extend(tc["id"] for tc in msg["tool_calls"])
+            elif msg.get("role") == "tool":
+                tool_call_id = msg.get("tool_call_id")
+                assert tool_call_id in pending, (
+                    f"tool message for unknown tool_call_id={tool_call_id!r}"
+                )
+                pending.remove(tool_call_id)
+            elif msg.get("role") in ("user", "system"):
+                assert not pending, (
+                    f"orphan tool_calls before {msg.get('role')!r} message: {pending}"
+                )
+
+    llm = _HaltReplanCapturingLLM()
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop("click the Submit button", browser, llm, max_steps=20)
+
+    assert result.status == "succeeded"
+
+    post_replan_messages = llm.all_messages[-1]
+    _assert_tool_calls_have_responses(post_replan_messages)
+
+
 def test_loop_module_does_not_require_playwright(monkeypatch):
     # agent.replay imports agent.loop and must stay playwright-free; mask
     # playwright in sys.modules and re-import to enforce that contract.

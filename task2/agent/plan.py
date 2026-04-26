@@ -37,8 +37,10 @@ def _parse_plan(content: str | None, task: str) -> Plan:
     try:
         data = json.loads(content)
         steps = data["steps"]
+        if not isinstance(steps, list) or not all(isinstance(s, str) for s in steps):
+            return _fallback(task)
         end_state = data.get("expected_end_state", "task complete")
-        return Plan(steps=list(steps), expected_end_state=str(end_state))
+        return Plan(steps=steps, expected_end_state=str(end_state))
     except (json.JSONDecodeError, KeyError, TypeError):
         return _fallback(task)
 
