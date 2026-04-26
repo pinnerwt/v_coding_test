@@ -90,6 +90,7 @@ Agent call:
     1. **Red** — write the failing test, run `uv run pytest <path-to-new-test>`, confirm it fails for the expected reason. Commit: `test(task2): <what the new failing test covers>`.
     2. **Green** — minimal implementation. Run `uv run pytest` until green. Commit: `feat(task2): <what now works>`.
     3. **Refactor** (optional, only while green). Re-run `uv run pytest` after each meaningful edit. Commit: `refactor(task2): <what changed>`.
+  - **No comments or docstrings in production code.** Write zero `#` comments and zero docstrings (module, class, or function) in any file under `task2/` that is not a test. Tests may have a single-line docstring only when it materially clarifies intent. Rationale: the `/simplify` pass strips them anyway, so writing them burns tokens for no kept output. Rely on clear naming. The only exception is a one-line comment explaining a non-obvious *why* (hidden constraint, workaround, surprising invariant) — never *what* the code does.
   - **Pre-commit gate (mandatory before every commit):**
     ```bash
     cd task2
@@ -121,6 +122,7 @@ Agent call:
     - `fix(task2): address verify feedback for <change-name>` for code fixes.
     - `test(task2): <what the new test covers>` if the change is purely additional tests.
   - Pre-commit gate (same as Step 6) must pass before every commit; never `--no-verify`.
+  - **No comments or docstrings** in any non-test file. If `/opsx:verify` flags a missing comment/docstring, push back - close the gap with a clearer name or a test, not a comment. Same rule as Step 6: `/simplify` will strip them, so don't write them in the first place.
   - Required report back: the final `/opsx:verify` output, list of commits added, and a confirmation that the verifier reports zero gaps.
 
 Wait for the subagent to return, then re-run `/opsx:verify` yourself in the main thread to confirm it really is clean. If any gap remains, decide whether to re-invoke the subagent or handle it directly.
