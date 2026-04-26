@@ -65,6 +65,14 @@ def test_loader_returns_case_dicts():
             assert key in item, f"case missing key: {key}"
 
 
+def test_loader_fixture_is_false():
+    from eval.bench.webvoyager_loader import load_webvoyager
+
+    cases = load_webvoyager(str(_WEBVOYAGER_FIXTURE))
+    for item in cases:
+        assert item["fixture"] is False, f"expected fixture=False, got {item['fixture']!r}"
+
+
 def test_loader_id_prefix():
     from eval.bench.webvoyager_loader import load_webvoyager
 
@@ -137,3 +145,25 @@ def test_runner_smoke_result_shape(tmp_path, monkeypatch):
     case = data["cases"][0]
     for key in ("id", "status", "steps", "usd", "l_tier_counts", "validators"):
         assert key in case, f"case missing key: {key}"
+
+
+def test_runner_honors_llm_base_url(tmp_path, monkeypatch):
+    from scripts.bench import main
+
+    monkeypatch.setenv("WEBVOYAGER_TASKS", str(_WEBVOYAGER_FIXTURE))
+    monkeypatch.setenv("EVAL_RESULTS_DIR", str(tmp_path))
+    monkeypatch.setenv("LLM_BASE_URL", "http://custom:9999/v1")
+
+    with (
+        patch("scripts.bench.Browser") as mock_browser,
+        patch("scripts.bench.LLMClient") as mock_llm,
+    ):
+        mock_browser.return_value.__enter__ = MagicMock(return_value=mock_browser.return_value)
+        mock_browser.return_value.__exit__ = MagicMock(return_value=False)
+        main(["--suite", "webvoyager"])
+
+    mock_llm.assert_called_once()
+    call_kwargs = mock_llm.call_args
+    assert call_kwargs.kwargs.get("base_url") == "http://custom:9999/v1" or (
+        len(call_kwargs.args) > 0 and call_kwargs.args[0] == "http://custom:9999/v1"
+    ), f"LLMClient not called with base_url=http://custom:9999/v1, got: {call_kwargs}"
