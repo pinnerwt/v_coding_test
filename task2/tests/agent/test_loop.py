@@ -801,6 +801,183 @@ def test_second_step_last_action_populated(fixture_server, playwright_chromium):
     assert obs_json["last_action"]["tool"] == "goto"
 
 
+# ---------------------------------------------------------------------------
+# Plan / replan integration tests (tasks 1.7–1.10)
+# ---------------------------------------------------------------------------
+
+
+class _PlanCapturingLLM:
+    """LLM that returns canned responses in sequence and records all chat calls."""
+
+    def __init__(self, plan_json: str, decision_responses: list[ChatResponse]):
+        self._plan_json = plan_json
+        self._decisions = list(decision_responses)
+        self._call_index = 0
+        self.all_messages: list[list[dict]] = []
+
+    def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
+        self.all_messages.append(list(messages))
+        idx = self._call_index
+        self._call_index += 1
+        if idx == 0:
+            return _fake_text_response(self._plan_json)
+        decision_idx = idx - 1
+        if decision_idx < len(self._decisions):
+            return self._decisions[decision_idx]
+        return _response_no_tool_call()
+
+
+def _fake_text_response(content: str) -> ChatResponse:
+    return ChatResponse(
+        content=content,
+        tool_calls=[],
+        finish_reason="stop",
+        model="fake",
+        usage=_DUMMY_USAGE,
+        raw={},
+    )
+
+
+def test_plan_event_emitted_before_first_decision_event(fixture_server, playwright_chromium):
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+    plan_json = '{"steps": ["goto page", "read result"], "expected_end_state": "done"}'
+    decision_responses = [
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {"result": {"ok": True}, "evidence": {"url": fixture_url, "text_snippet": "Hello"}},
+                call_id="tc-done",
+            )
+        )
+    ]
+    llm = _PlanCapturingLLM(plan_json, decision_responses)
+    events: list = []
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        loop("task", browser, llm, events=events)
+
+    kinds = [e.kind for e in events]
+    assert "plan" in kinds
+    assert "decision" in kinds
+    plan_idx = next(i for i, e in enumerate(events) if e.kind == "plan")
+    decision_idx = next(i for i, e in enumerate(events) if e.kind == "decision")
+    assert plan_idx < decision_idx
+
+
+def test_decision_prompt_contains_plan_progress_from_step1(fixture_server, playwright_chromium):
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+    plan_json = '{"steps": ["find result", "return it"], "expected_end_state": "done"}'
+    decision_responses = [
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {"result": {"ok": True}, "evidence": {"url": fixture_url, "text_snippet": "Hello"}},
+                call_id="tc-done",
+            )
+        )
+    ]
+    llm = _PlanCapturingLLM(plan_json, decision_responses)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        loop("task", browser, llm)
+
+    assert len(llm.all_messages) >= 2
+    decision_call_messages = llm.all_messages[1]
+    user_msg = next(m for m in reversed(decision_call_messages) if m["role"] == "user")
+    content = user_msg["content"]
+    assert "Plan progress:" in content
+    assert "1. find result" in content
+    assert "2. return it" in content
+
+
+def test_supervisor_halt_triggers_replan_event(fixture_server, playwright_chromium):
+    fixture_url = f"{fixture_server}/index.html"
+    plan_json = '{"steps": ["step 1", "step 2"], "expected_end_state": "done"}'
+    replan_json = '{"steps": ["alt step 1", "alt step 2"], "expected_end_state": "alt done"}'
+
+    class _HaltReplanLLM:
+        """
+        Call sequence (tools=None → planner/replan call, tools=TOOLS → decision call):
+        idx=0: plan call → plan_json
+        idx=1+: decision calls → keep returning read (triggers halt)
+               once replan is triggered (no tools, after first halt):
+               → replan_json
+               then decision calls → done
+        """
+
+        def __init__(self):
+            self._call_index = 0
+            self._replan_sent = False
+            self._done_after_replan = False
+
+        def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
+            idx = self._call_index
+            self._call_index += 1
+            if idx == 0:
+                return _fake_text_response(plan_json)
+            if tools is None and not self._replan_sent:
+                self._replan_sent = True
+                return _fake_text_response(replan_json)
+            if self._replan_sent and tools is not None and not self._done_after_replan:
+                self._done_after_replan = True
+                return _response_with_tool_call(
+                    _tool_call(
+                        "done",
+                        {
+                            "result": {"ok": True},
+                            "evidence": {"url": fixture_url, "text_snippet": "Hello"},
+                        },
+                        call_id="tc-done",
+                    )
+                )
+            return _response_with_tool_call(
+                _tool_call("read", {"intent": "Submit button"}, call_id=f"tc-r{idx}")
+            )
+
+    llm = _HaltReplanLLM()
+    events: list = []
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        loop("click the Submit button", browser, llm, max_steps=10, events=events)
+
+    plan_events = [e for e in events if e.kind == "plan"]
+    replan_events = [e for e in plan_events if e.reason == "replan"]
+    assert len(replan_events) >= 1
+
+
+def test_second_supervisor_halt_returns_failed(fixture_server, playwright_chromium):
+    plan_json = '{"steps": ["step 1"], "expected_end_state": "done"}'
+    replan_json = '{"steps": ["alt step"], "expected_end_state": "alt done"}'
+
+    class _DoubleHaltLLM:
+        def __init__(self):
+            self._call_index = 0
+            self._replan_done = False
+
+        def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
+            idx = self._call_index
+            self._call_index += 1
+            if idx == 0:
+                return _fake_text_response(plan_json)
+            if tools is None and not self._replan_done:
+                self._replan_done = True
+                return _fake_text_response(replan_json)
+            return _response_with_tool_call(
+                _tool_call("read", {"intent": "Submit button"}, call_id=f"tc-r{idx}")
+            )
+
+    llm = _DoubleHaltLLM()
+    events: list = []
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop("click the Submit button", browser, llm, max_steps=20, events=events)
+
+    assert result.status == "failed"
+    plan_events = [e for e in events if e.kind == "plan"]
+    replan_events = [e for e in plan_events if e.reason == "replan"]
+    assert len(replan_events) == 1
+
+
 def test_loop_module_does_not_require_playwright(monkeypatch):
     # agent.replay imports agent.loop and must stay playwright-free; mask
     # playwright in sys.modules and re-import to enforce that contract.
