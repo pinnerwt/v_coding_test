@@ -1,0 +1,11 @@
+[default]
+prompt_per_1k = 0.001
+completion_per_1k = 0.002
+
+[models.qwen3]
+prompt_per_1k = 0.002
+completion_per_1k = 0.006
+
+[models."qwen3.5"]
+prompt_per_1k = 0.002
+completion_per_1k = 0.006
