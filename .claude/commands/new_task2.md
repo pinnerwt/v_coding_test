@@ -141,7 +141,31 @@ Commit the cleanup:
 refactor(task2): simplify <change-name> per review
 ```
 
-### 9. Push and open a pull request
+### 9. Smoke test the agent API
+
+Before opening a PR, run the end-to-end smoke test against a freshly booted API server. This is the last gate that catches integration failures the unit tests cannot — server boot, real Playwright session, real LLM at `http://localhost:8090`, real `/tasks` round-trip.
+
+From the repo root:
+```bash
+bash task2/smoke_test.sh
+```
+
+The script boots `uv run uvicorn api.server:app` on `127.0.0.1:8765`, posts a task ("Open https://example.com and return the H1 text"), polls until terminal status, and exits 0 only when status is `succeeded` or `unverified`. Server log is at `/tmp/task2-smoke-api.log` if anything goes wrong.
+
+**On pass:** proceed to Step 10.
+
+**On fail:** do not push. The smoke test failing means production-path behavior regressed even though `pytest` and `/opsx:verify` were green — that gap itself is a bug that needs a regression test. Loop back:
+
+1. Read `/tmp/task2-smoke-api.log` and the smoke output to identify the failure mode (server boot, task creation, run loop, trace, terminal status).
+2. **Extend the test surface first.** Add a failing test under `task2/tests/` that reproduces the smoke failure at unit/integration granularity. Commit: `test(task2): regression for <smoke failure mode>`. This is the TDD red step — without it, fixing the production code is not understood.
+3. Re-run **Step 7 (Verify)** — re-invoke `/opsx:verify` (in the main thread or via a subagent) and close every gap it surfaces, including the new failing test.
+4. Re-run **Step 8 (Simplify)** on the resulting diff.
+5. Re-run `bash task2/smoke_test.sh`.
+6. Repeat until the smoke test passes. If it loops more than twice without convergence, **stop and report** to the user — there is a design-level mismatch that the loop will not resolve.
+
+Never push or open a PR with a failing smoke test. Never weaken the smoke test to make it pass.
+
+### 10. Push and open a pull request
 
 Push the branch and open a PR against `master` using `gh`. **Read `.github/PULL_REQUEST_TEMPLATE.md` from the repo at this step** (with the `Read` tool) and use it as the literal skeleton for the PR body — do not rely on a hardcoded copy here, since the template evolves. Fill in every section it contains rather than leaving placeholder comments.
 
@@ -173,13 +197,14 @@ If `gh pr create` fails because the branch already has an open PR, run `gh pr vi
 
 Capture the returned PR URL for the final report. Do **not** mark the PR ready-for-review-as-merge — leave merge to the user after `/opsx:archive`.
 
-### 10. Final report
+### 11. Final report
 
 Print a short summary to the user:
 - Branch name.
 - Ticket implemented (number + title).
 - Change directory.
 - Test + ruff status (pass/clean).
+- Smoke test status (pass, plus how many verify/simplify loops it took if >1).
 - PR URL.
 - Outstanding follow-ups, if any.
 - Suggested next step: `/opsx:archive <change-name>` (do **not** archive automatically).
@@ -189,7 +214,8 @@ Print a short summary to the user:
 - **Do not skip the red step.** Every new behavior must start with a failing test that fails for the right reason.
 - **Do not `git commit --no-verify`.** If a hook fails, fix the underlying issue and create a new commit.
 - **Do not switch branches or rebase** without user confirmation.
-- **Push only the dev branch** created in Step 2 (Step 9). Never push to `master` directly, never `--force` push.
+- **Push only the dev branch** created in Step 2 (Step 10). Never push to `master` directly, never `--force` push.
+- **Smoke test must pass before push.** A failing `task2/smoke_test.sh` blocks the PR; fix forward through Step 9's loop (regression test → verify → simplify → re-run smoke), never weaken or skip the smoke test.
 - **Do not archive the change.** Archiving is the user's call after they review the branch / PR.
 - If `/opsx:apply` or `/opsx:verify` blocks on ambiguity, stop and ask — do not guess past a design question.
 - Honor `task2/`-local `CLAUDE.md` if present and the repo-root `CLAUDE.md` (TDD, `uv`, `ruff`, configurable LLM base URL).
