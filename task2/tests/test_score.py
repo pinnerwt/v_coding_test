@@ -1,0 +1,165 @@
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+_FIXTURES_DIR = Path(__file__).parent / "fixtures" / "results"
+_SAMPLE_RESULTS = _FIXTURES_DIR / "sample_results.json"
+_GOLDEN_SNAPSHOT = _FIXTURES_DIR / "sample_results_scoreboard.md"
+_SCORE_MD = Path(__file__).parent.parent.parent / ".claude" / "commands" / "score.md"
+
+
+def _run_score(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [sys.executable, "scripts/score.py", *args],
+        cwd=str(Path(__file__).parent.parent),
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_score_produces_table_and_keywords():
+    result = _run_score(str(_SAMPLE_RESULTS))
+    assert result.returncode == 0, result.stderr
+    assert "|" in result.stdout
+    assert "succeeded" in result.stdout
+    assert "p50:" in result.stdout
+
+
+def test_score_has_total_usd_and_tokens():
+    result = _run_score(str(_SAMPLE_RESULTS))
+    assert result.returncode == 0, result.stderr
+    assert "Total USD:" in result.stdout
+    assert "Total tokens:" in result.stdout
+
+
+def test_score_has_tier_table():
+    result = _run_score(str(_SAMPLE_RESULTS))
+    assert result.returncode == 0, result.stderr
+    assert "| Tier |" in result.stdout
+
+
+def test_score_p50_p95_computation():
+    from scripts.score import _percentile
+
+    values = [100, 200, 800]
+    assert _percentile(values, 50) == 200
+    assert _percentile(values, 95) == 800
+
+
+def test_score_generate_scoreboard_importable():
+    from scripts.score import generate_scoreboard
+
+    data = json.loads(_SAMPLE_RESULTS.read_text())
+    output = generate_scoreboard(data)
+    assert "succeeded" in output
+    assert "p50:" in output
+    assert "|" in output
+
+
+def test_score_golden_snapshot_matches():
+    if not _GOLDEN_SNAPSHOT.exists():
+        pytest.skip("golden snapshot not yet captured — run task 5.6 first")
+    result = _run_score(str(_SAMPLE_RESULTS))
+    actual = "\n".join(line.rstrip() for line in result.stdout.splitlines())
+    expected = "\n".join(line.rstrip() for line in _GOLDEN_SNAPSHOT.read_text().splitlines())
+    assert actual == expected
+
+
+def test_score_update_readme_splices_between_sentinels(tmp_path):
+    from scripts.score import update_readme
+
+    readme = tmp_path / "README.md"
+    readme.write_text(
+        "# Title\n\n<!-- SCOREBOARD:BEGIN -->\nstale content\n<!-- SCOREBOARD:END -->\n\nfooter\n"
+    )
+    data = json.loads(_SAMPLE_RESULTS.read_text())
+    update_readme(data, readme_path=readme)
+    content = readme.read_text()
+    assert "<!-- SCOREBOARD:BEGIN -->" in content
+    assert "<!-- SCOREBOARD:END -->" in content
+    assert "stale content" not in content
+    assert "succeeded" in content
+    assert "footer" in content
+
+
+def test_score_update_readme_idempotent(tmp_path):
+    from scripts.score import update_readme
+
+    readme = tmp_path / "README.md"
+    readme.write_text("# Title\n\n<!-- SCOREBOARD:BEGIN -->\nstale\n<!-- SCOREBOARD:END -->\n")
+    data = json.loads(_SAMPLE_RESULTS.read_text())
+    update_readme(data, readme_path=readme)
+    content_first = readme.read_text()
+    update_readme(data, readme_path=readme)
+    content_second = readme.read_text()
+    assert content_first == content_second
+
+
+def test_score_update_readme_appends_when_no_sentinels(tmp_path):
+    from scripts.score import update_readme
+
+    readme = tmp_path / "README.md"
+    readme.write_text("# Title\n\nSome content.\n")
+    data = json.loads(_SAMPLE_RESULTS.read_text())
+    update_readme(data, readme_path=readme)
+    content = readme.read_text()
+    assert "<!-- SCOREBOARD:BEGIN -->" in content
+    assert "<!-- SCOREBOARD:END -->" in content
+    assert "succeeded" in content
+
+
+def test_score_skipped_excluded_from_summary(tmp_path):
+    from scripts.score import generate_scoreboard
+
+    data = {
+        "run_at": "2026-04-26T00:00:00+00:00",
+        "cases": [
+            {
+                "id": "c1",
+                "status": "succeeded",
+                "steps": 1,
+                "usd": 0.001,
+                "l_tier_counts": {},
+                "validators": [],
+                "prompt_tokens": 100,
+                "completion_tokens": 10,
+                "latency_ms_total": 200,
+                "latency_ms_per_step": [200],
+                "step_breakdown": [],
+            },
+            {
+                "id": "c2",
+                "status": "skipped",
+                "steps": 0,
+                "usd": 0.0,
+                "l_tier_counts": {},
+                "validators": [],
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "latency_ms_total": 0,
+                "latency_ms_per_step": [],
+                "step_breakdown": [],
+            },
+        ],
+    }
+    output = generate_scoreboard(data)
+    assert "1/1" in output
+
+
+def test_score_skill_file_exists():
+    assert _SCORE_MD.exists(), f"score skill not found at {_SCORE_MD}"
+
+
+def test_score_skill_invokes_score_py():
+    content = _SCORE_MD.read_text()
+    assert "uv run python scripts/score.py" in content
+
+
+def test_score_skill_under_30_lines():
+    content = _SCORE_MD.read_text()
+    assert len(content.splitlines()) < 30

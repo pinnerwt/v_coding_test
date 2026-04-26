@@ -1,0 +1,36 @@
+{
+  "run_at": "2026-04-26T03:27:29+00:00",
+  "cases": [
+    {
+      "id": "fixture-heading",
+      "status": "succeeded",
+      "steps": 2,
+      "usd": 0.0005,
+      "l_tier_counts": {},
+      "validators": [{"name": "title.nonempty", "ok": true}],
+      "prompt_tokens": 200,
+      "completion_tokens": 30,
+      "latency_ms_total": 400,
+      "latency_ms_per_step": [200, 200],
+      "step_breakdown": [
+        {"step": 1, "latency_ms": 200, "prompt_tokens": 100, "completion_tokens": 15, "usd": 0.00025, "tool_calls": ["goto"]},
+        {"step": 2, "latency_ms": 200, "prompt_tokens": 100, "completion_tokens": 15, "usd": 0.00025, "tool_calls": ["done"]}
+      ]
+    },
+    {
+      "id": "fixture-count",
+      "status": "failed",
+      "steps": 1,
+      "usd": 0.0,
+      "l_tier_counts": {},
+      "validators": [],
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "latency_ms_total": 800,
+      "latency_ms_per_step": [800],
+      "step_breakdown": [
+        {"step": 1, "latency_ms": 800, "prompt_tokens": 0, "completion_tokens": 0, "usd": 0.0, "tool_calls": ["fail"]}
+      ]
+    }
+  ]
+}
