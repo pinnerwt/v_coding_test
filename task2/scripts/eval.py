@@ -68,8 +68,7 @@ def _expand_variants(cases: list[dict]) -> list[dict]:
         variants = case.get("variants")
         if variants:
             for v in variants:
-                expanded = {**case, "id": f"{case['id']}-{v}", "_variant": v}
-                result.append(expanded)
+                result.append({**case, "id": f"{case['id']}-{v}"})
         else:
             result.append(case)
     return result
