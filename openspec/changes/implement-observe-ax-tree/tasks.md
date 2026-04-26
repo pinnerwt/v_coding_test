@@ -1,12 +1,12 @@
 ## 1. Red — Failing Tests for observe.py
 
-- [ ] 1.1 Add `task2/tests/fixtures/observe_mixed.html` — a page with at least: one `<h2>` heading, one `<a href="#">` link, one `<button>`, one decorative `<div>` with visible text (no semantic role). This page is the shared fixture for tests 1.2, 1.4, and 1.5.
-- [ ] 1.2 Create `task2/tests/agent/test_observe.py`. Add `test_decorative_divs_excluded_buttons_included`: navigate to `observe_mixed.html`, call `build_observation(browser, None)`, assert `ax_tree_digest` contains a `[button]` line, assert it does NOT contain `generic` or `div` as a role.
-- [ ] 1.3 Add `test_1000_button_page_capped`: generate an in-memory HTML page with 1000 `<button>` elements, navigate browser to it (via `data:` URL or a per-test fixture server), call `build_observation(browser, None)`, assert the number of `[button]` lines equals `MAX_NODES`, assert the last line matches the sentinel pattern `\[... \d+ more nodes truncated\]`.
-- [ ] 1.4 Add `test_last_action_none_first_step`: call `build_observation(browser, None)` with a navigated browser, assert returned dict has `last_action` key equal to `None`.
-- [ ] 1.5 Add `test_last_action_threaded_second_step`: call `build_observation(browser, {"tool": "goto", "intent": "navigate", "outcome": "ok"})`, assert returned dict's `last_action` equals `{"tool": "goto", "intent": "navigate", "outcome": "ok"}`.
-- [ ] 1.6 Add `test_ax_tree_digest_round_trips_through_trace`: call `build_observation(browser, None)` on `observe_mixed.html`, extract `ax_tree_digest` and `ax_fingerprint`, construct an `ObservationEvent` using them, round-trip via `model_dump_json()` → `ObservationEvent.model_validate_json()`, assert round-tripped `ax_tree_digest` equals original, assert round-tripped `ax_fingerprint` equals original.
-- [ ] 1.7 Run `uv run pytest task2/tests/agent/test_observe.py -x` from `task2/` and confirm all tests fail with `ModuleNotFoundError` (the module does not exist yet).
+- [x] 1.1 Add `task2/tests/fixtures/observe_mixed.html` — a page with at least: one `<h2>` heading, one `<a href="#">` link, one `<button>`, one decorative `<div>` with visible text (no semantic role). This page is the shared fixture for tests 1.2, 1.4, and 1.5.
+- [x] 1.2 Create `task2/tests/agent/test_observe.py`. Add `test_decorative_divs_excluded_buttons_included`: navigate to `observe_mixed.html`, call `build_observation(browser, None)`, assert `ax_tree_digest` contains a `[button]` line, assert it does NOT contain `generic` or `div` as a role.
+- [x] 1.3 Add `test_1000_button_page_capped`: generate an in-memory HTML page with 1000 `<button>` elements, navigate browser to it (via `data:` URL or a per-test fixture server), call `build_observation(browser, None)`, assert the number of `[button]` lines equals `MAX_NODES`, assert the last line matches the sentinel pattern `\[... \d+ more nodes truncated\]`.
+- [x] 1.4 Add `test_last_action_none_first_step`: call `build_observation(browser, None)` with a navigated browser, assert returned dict has `last_action` key equal to `None`.
+- [x] 1.5 Add `test_last_action_threaded_second_step`: call `build_observation(browser, {"tool": "goto", "intent": "navigate", "outcome": "ok"})`, assert returned dict's `last_action` equals `{"tool": "goto", "intent": "navigate", "outcome": "ok"}`.
+- [x] 1.6 Add `test_ax_tree_digest_round_trips_through_trace`: call `build_observation(browser, None)` on `observe_mixed.html`, extract `ax_tree_digest` and `ax_fingerprint`, construct an `ObservationEvent` using them, round-trip via `model_dump_json()` → `ObservationEvent.model_validate_json()`, assert round-tripped `ax_tree_digest` equals original, assert round-tripped `ax_fingerprint` equals original.
+- [x] 1.7 Run `uv run pytest task2/tests/agent/test_observe.py -x` from `task2/` and confirm all tests fail with `ModuleNotFoundError` (the module does not exist yet).
 
 ## 2. Green — Implement observe.py
 

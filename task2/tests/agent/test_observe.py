@@ -38,7 +38,7 @@ def test_1000_button_page_capped(playwright_chromium):
 
     digest = obs["ax_tree_digest"]
     lines = digest.splitlines()
-    button_lines = [l for l in lines if l.startswith("[button]")]
+    button_lines = [ln for ln in lines if ln.startswith("[button]")]
     assert len(button_lines) == MAX_NODES
     last = lines[-1]
     assert re.match(r"\[\.\.\. \d+ more nodes truncated\]", last), f"Unexpected last line: {last!r}"
