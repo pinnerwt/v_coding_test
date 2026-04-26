@@ -11,9 +11,14 @@ from typing import Any
 
 import yaml
 
+from agent.browser import Browser
+from agent.llm import LLMClient
 from agent.loop import RunResult, loop
 
 _REQUIRED_FIELDS = ("id", "domain", "category", "task", "expect", "budget")
+_PASS_STATUSES = frozenset({"succeeded", "unverified"})
+_FAIL_STATUSES = frozenset({"failed", "blocked", "timeout"})
+_SKIP_STATUS = "skipped"
 
 
 def load_cases(path: str | Path) -> list[dict]:
@@ -37,10 +42,12 @@ def run_validators(validators: list[str], result: dict) -> list[dict]:
             n = int(rest.strip())
             val = result.get(key)
             ok = isinstance(val, (list, tuple)) and len(val) >= n
-        else:
+        elif expr.endswith(".nonempty"):
             key = expr.removesuffix(".nonempty").strip()
             val = result.get(key)
             ok = isinstance(val, str) and bool(val.strip())
+        else:
+            raise ValueError(f"Unknown validator expression: {expr!r}")
         out.append({"name": expr, "ok": ok})
     return out
 
@@ -76,6 +83,17 @@ def _run_case(case: dict[str, Any], llm_client: Any, browser: Any) -> CaseResult
     )
 
 
+def _skipped_result(case: dict) -> CaseResult:
+    return CaseResult(
+        id=case["id"],
+        status=_SKIP_STATUS,
+        steps=0,
+        usd=0.0,
+        l_tier_counts={},
+        validators=[],
+    )
+
+
 def run_suite(
     cases: list[dict],
     *,
@@ -86,52 +104,43 @@ def run_suite(
 ) -> Path:
     results_dir = Path(results_dir)
     results_dir.mkdir(parents=True, exist_ok=True)
-    run_at = datetime.now(UTC).isoformat()
-    ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+    now = datetime.now(UTC)
     case_results: list[CaseResult] = []
     for case in cases:
-        is_fixture = case.get("fixture", False)
-        if not live and not is_fixture:
-            case_results.append(
-                CaseResult(
-                    id=case["id"],
-                    status="skipped",
-                    steps=0,
-                    usd=0.0,
-                    l_tier_counts={},
-                    validators=[],
-                )
-            )
+        if not live and not case.get("fixture", False):
+            case_results.append(_skipped_result(case))
         else:
             case_results.append(_run_case(case, llm_client, browser))
     payload = {
-        "run_at": run_at,
+        "run_at": now.isoformat(),
         "cases": [asdict(r) for r in case_results],
     }
-    out_path = results_dir / f"{ts}.json"
+    out_path = results_dir / f"{now.strftime('%Y%m%d_%H%M%S_%f')}.json"
     out_path.write_text(json.dumps(payload, indent=2))
     return out_path
 
 
 def compute_exit_code(cases: list[dict]) -> int:
-    fail_statuses = {"failed", "blocked", "timeout"}
-    return 1 if any(c["status"] in fail_statuses for c in cases) else 0
+    return 1 if any(c["status"] in _FAIL_STATUSES for c in cases) else 0
 
 
 def _build_clients():
-    from agent.browser import Browser
-    from agent.llm import LLMClient
-
     base_url = os.environ.get("LLM_BASE_URL", "http://localhost:8090/v1")
     model = os.environ.get("LLM_MODEL", "qwen3")
     api_key = os.environ.get("LLM_API_KEY", "local")
-    llm_client = LLMClient(base_url=base_url, model=model, api_key=api_key)
-    browser = Browser()
-    return llm_client, browser
+    return LLMClient(base_url=base_url, model=model, api_key=api_key), Browser()
+
+
+def _label(status: str) -> str:
+    if status in _PASS_STATUSES:
+        return "PASS"
+    if status == _SKIP_STATUS:
+        return "SKIP"
+    return "FAIL"
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run eval suite")
+    parser = argparse.ArgumentParser()
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--case", dest="case_id", default=None)
     args = parser.parse_args()
@@ -157,11 +166,6 @@ if __name__ == "__main__":
 
     data = json.loads(out.read_text())
     for c in data["cases"]:
-        label = (
-            "PASS"
-            if c["status"] in {"succeeded", "unverified"}
-            else ("SKIP" if c["status"] == "skipped" else "FAIL")
-        )
-        print(f"[{label}] {c['id']} ({c['steps']} steps, ${c['usd']:.4f})")
+        print(f"[{_label(c['status'])}] {c['id']} ({c['steps']} steps, ${c['usd']:.4f})")
     print(f"Results: {out}")
     sys.exit(compute_exit_code(data["cases"]))

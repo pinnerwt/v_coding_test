@@ -28,9 +28,6 @@ _CANNED_RESULT = RunResult(
 )
 
 
-# ---------- results JSON shape ----------
-
-
 def test_results_json_shape(tmp_path):
     with patch("scripts.eval.loop", return_value=_CANNED_RESULT):
         out = run_suite(cases=[_FIXTURE_CASE], results_dir=tmp_path)
@@ -71,9 +68,6 @@ def test_skipped_case_has_correct_shape(tmp_path):
     assert case["usd"] == 0.0
     assert case["l_tier_counts"] == {}
     assert case["validators"] == []
-
-
-# ---------- case loader ----------
 
 
 def test_load_cases_valid_yaml(tmp_path):
@@ -132,9 +126,6 @@ def test_fixture_count_yaml_loads():
     assert cases[0]["fixture"] is True
 
 
-# ---------- validator runner ----------
-
-
 def test_validator_nonempty_passes():
     assert run_validators(["title.nonempty"], {"title": "Hello"}) == [
         {"name": "title.nonempty", "ok": True}
@@ -166,9 +157,6 @@ def test_validator_len_gte_fails_missing_key():
     assert result[0]["ok"] is False
 
 
-# ---------- two-case suite coverage ----------
-
-
 def test_run_suite_two_fixture_cases_both_included(tmp_path):
     case2 = {
         "id": "fixture-count",
@@ -189,9 +177,6 @@ def test_run_suite_two_fixture_cases_both_included(tmp_path):
         out = run_suite(cases=[_FIXTURE_CASE, case2], results_dir=tmp_path)
     data = json.loads(out.read_text())
     assert len(data["cases"]) == 2
-
-
-# ---------- exit code logic ----------
 
 
 def test_compute_exit_code_all_pass():
@@ -222,9 +207,6 @@ def test_compute_exit_code_timeout():
     assert compute_exit_code(cases) == 1
 
 
-# ---------- LLM_BASE_URL forwarding ----------
-
-
 def test_build_clients_uses_llm_base_url_env(monkeypatch):
     from scripts.eval import _build_clients
 
@@ -233,8 +215,8 @@ def test_build_clients_uses_llm_base_url_env(monkeypatch):
     monkeypatch.setenv("LLM_API_KEY", "test-key")
 
     with (
-        patch("agent.llm.LLMClient") as mock_llm,
-        patch("agent.browser.Browser") as mock_browser,
+        patch("scripts.eval.LLMClient") as mock_llm,
+        patch("scripts.eval.Browser") as mock_browser,
     ):
         mock_llm.return_value = MagicMock()
         mock_browser.return_value = MagicMock()
