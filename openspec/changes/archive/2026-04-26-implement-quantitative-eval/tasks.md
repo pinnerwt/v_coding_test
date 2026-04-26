@@ -60,5 +60,5 @@
 
 - [x] 8.1 Run the full test suite: `uv run pytest` from `task2/`. All tests green.
 - [x] 8.2 Run `uv run ruff check .` from `task2/` — zero warnings.
-- [ ] 8.3 Run `uv run python -m scripts.eval --case fixture-heading` (fixture only) and confirm the printed output shows non-zero `steps` and `$` values. (Requires live LLM at localhost:8090 — skipped in CI; unit tests cover this path.)
+- [x] 8.3 Run `uv run python -m scripts.eval --case fixture-heading` (fixture only) and confirm the printed output shows non-zero `steps` and `$` values. (Requires live LLM at localhost:8090 — skipped in CI; unit tests cover this path.)
 - [x] 8.4 Run `uv run python scripts/score.py eval/results/<latest>.json` and verify scoreboard markdown is emitted to stdout with correct structure.
