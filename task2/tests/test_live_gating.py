@@ -69,3 +69,4 @@ def test_all_live_yaml_files_load():
         for field in _REQUIRED_FIELDS:
             assert field in case, f"{path}: missing required field {field!r}"
         assert case.get("fixture", False) is False, f"{path}: must not have fixture: true"
+        assert case.get("live") is True, f"{path}: must have live: true"

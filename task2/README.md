@@ -41,10 +41,10 @@ Last manual run: 2026-04-26, against local Qwen3.5 27B at `http://localhost:8090
 
 | Case | Site | Status | Steps | Notes |
 |---|---|---|---|---|
-| live-search-extract | en.wikipedia.org | errored | 0 | `IntentParseError`: LLM emitted intent with role `paragraph`, only `button/checkbox/heading/link/textbox` supported by `parse_intent` |
+| live-search-extract | en.wikipedia.org | failed | 0 | `IntentParseError`: LLM emitted intent with role `paragraph`, only `button/checkbox/heading/link/textbox` supported by `parse_intent` |
 | live-form-fill | duckduckgo.com | failed | 0 | Agent ran without crashing but validator `first_result_title.nonempty` failed — no result extracted |
 | live-multi-page-nav | books.toscrape.com | succeeded | 0 | Validator `book_title.nonempty` passed |
-| live-conditional-pick | books.toscrape.com | errored | 0 | `IntentParseError`: role `page` not supported |
+| live-conditional-pick | books.toscrape.com | failed | 0 | `IntentParseError`: role `page` not supported |
 | live-read-summarize | docs.python.org | succeeded | 0 | Validator `summary.nonempty` passed |
 
-Score: 2/5 succeeded, 1 failed, 2 errored. The two errors are the same root cause — `agent/locate.py:parse_intent` accepts only a fixed set of ARIA roles, so when the LLM names a non-role noun ("paragraph", "page") the loop crashes instead of recovering. Honest takeaway: locator robustness on unstructured pages is the next bottleneck. `steps` reads 0 because `_run_case` does not yet thread the loop's step count into `CaseResult` — separate follow-up.
+Score: 2/5 succeeded, 3/5 failed (1 validator failure, 2 agent crashes). The two errors are the same root cause — `agent/locate.py:parse_intent` accepts only a fixed set of ARIA roles, so when the LLM names a non-role noun ("paragraph", "page") the loop crashes instead of recovering. Honest takeaway: locator robustness on unstructured pages is the next bottleneck. `steps` reads 0 because `_run_case` does not yet thread the loop's step count into `CaseResult` — separate follow-up.
