@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
@@ -164,3 +164,83 @@ def test_validator_len_gte_fails_empty_list():
 def test_validator_len_gte_fails_missing_key():
     result = run_validators(["items.len_gte: 1"], {})
     assert result[0]["ok"] is False
+
+
+# ---------- two-case suite coverage ----------
+
+
+def test_run_suite_two_fixture_cases_both_included(tmp_path):
+    case2 = {
+        "id": "fixture-count",
+        "domain": "fixture",
+        "category": "search-and-extract",
+        "task": "Return items",
+        "expect": {"schema": {"items": "list[str]"}, "validators": ["items.len_gte: 1"]},
+        "budget": {"steps": 5, "usd": 0.05, "seconds": 30},
+        "fixture": True,
+    }
+    canned2 = RunResult(
+        status="succeeded",
+        result={"items": ["a"]},
+        evidence={"url": "http://x", "text_snippet": "a"},
+        verifier={"ok": True, "reasons": []},
+    )
+    with patch("scripts.eval.loop", side_effect=[_CANNED_RESULT, canned2]):
+        out = run_suite(cases=[_FIXTURE_CASE, case2], results_dir=tmp_path)
+    data = json.loads(out.read_text())
+    assert len(data["cases"]) == 2
+
+
+# ---------- exit code logic ----------
+
+
+def test_compute_exit_code_all_pass():
+    from scripts.eval import compute_exit_code
+
+    cases = [{"status": "succeeded"}, {"status": "unverified"}, {"status": "skipped"}]
+    assert compute_exit_code(cases) == 0
+
+
+def test_compute_exit_code_one_failed():
+    from scripts.eval import compute_exit_code
+
+    cases = [{"status": "succeeded"}, {"status": "failed"}]
+    assert compute_exit_code(cases) == 1
+
+
+def test_compute_exit_code_blocked():
+    from scripts.eval import compute_exit_code
+
+    cases = [{"status": "blocked"}]
+    assert compute_exit_code(cases) == 1
+
+
+def test_compute_exit_code_timeout():
+    from scripts.eval import compute_exit_code
+
+    cases = [{"status": "timeout"}]
+    assert compute_exit_code(cases) == 1
+
+
+# ---------- LLM_BASE_URL forwarding ----------
+
+
+def test_build_clients_uses_llm_base_url_env(monkeypatch):
+    from scripts.eval import _build_clients
+
+    monkeypatch.setenv("LLM_BASE_URL", "http://custom:9999/v1")
+    monkeypatch.setenv("LLM_MODEL", "test-model")
+    monkeypatch.setenv("LLM_API_KEY", "test-key")
+
+    with (
+        patch("agent.llm.LLMClient") as mock_llm,
+        patch("agent.browser.Browser") as mock_browser,
+    ):
+        mock_llm.return_value = MagicMock()
+        mock_browser.return_value = MagicMock()
+        _build_clients()
+        mock_llm.assert_called_once_with(
+            base_url="http://custom:9999/v1",
+            model="test-model",
+            api_key="test-key",
+        )

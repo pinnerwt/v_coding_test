@@ -113,6 +113,11 @@ def run_suite(
     return out_path
 
 
+def compute_exit_code(cases: list[dict]) -> int:
+    fail_statuses = {"failed", "blocked", "timeout"}
+    return 1 if any(c["status"] in fail_statuses for c in cases) else 0
+
+
 def _build_clients():
     from agent.browser import Browser
     from agent.llm import LLMClient
@@ -151,8 +156,6 @@ if __name__ == "__main__":
     )
 
     data = json.loads(out.read_text())
-    fail_statuses = {"failed", "blocked", "timeout"}
-    exit_code = 0
     for c in data["cases"]:
         label = (
             "PASS"
@@ -160,7 +163,5 @@ if __name__ == "__main__":
             else ("SKIP" if c["status"] == "skipped" else "FAIL")
         )
         print(f"[{label}] {c['id']} ({c['steps']} steps, ${c['usd']:.4f})")
-        if c["status"] in fail_statuses:
-            exit_code = 1
     print(f"Results: {out}")
-    sys.exit(exit_code)
+    sys.exit(compute_exit_code(data["cases"]))
