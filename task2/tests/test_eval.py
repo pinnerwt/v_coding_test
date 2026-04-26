@@ -316,3 +316,12 @@ def test_variant_expansion_mixed_suite(tmp_path):
         out = run_suite(cases=[non_variant_case, _DRIFT_CASE], results_dir=tmp_path)
     data = json.loads(out.read_text())
     assert len(data["cases"]) == 3
+
+
+def test_empty_variants_list_runs_as_single_case(tmp_path):
+    case_with_empty_variants = {**_FIXTURE_CASE, "variants": []}
+    with patch("scripts.eval.loop", return_value=_CANNED_RESULT):
+        out = run_suite(cases=[case_with_empty_variants], results_dir=tmp_path)
+    data = json.loads(out.read_text())
+    assert len(data["cases"]) == 1
+    assert data["cases"][0]["id"] == _FIXTURE_CASE["id"]
