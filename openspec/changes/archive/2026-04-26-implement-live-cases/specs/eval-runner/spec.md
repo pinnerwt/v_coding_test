@@ -1,4 +1,4 @@
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: Case YAML live field
 The eval runner's case YAML schema SHALL recognize `live: true` as an optional informational field. Its presence SHALL NOT alter the runner's skip logic; skip logic remains driven solely by the absence of `fixture: true`. A case with `live: true` and no `fixture: true` SHALL be skipped when `run_suite` is called with `live=False`.
