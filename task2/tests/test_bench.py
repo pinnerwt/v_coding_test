@@ -97,7 +97,6 @@ def test_runner_smoke_no_live(tmp_path, monkeypatch):
     monkeypatch.setenv("EVAL_RESULTS_DIR", str(tmp_path))
 
     with (
-        patch("scripts.bench.loop"),
         patch("scripts.bench.Browser") as mock_browser,
         patch("scripts.bench.LLMClient"),
     ):
@@ -121,7 +120,7 @@ def test_runner_smoke_result_shape(tmp_path, monkeypatch):
     monkeypatch.setenv("EVAL_RESULTS_DIR", str(tmp_path))
 
     with (
-        patch("scripts.bench.loop", return_value=_CANNED_RESULT),
+        patch("scripts.eval.loop", return_value=_CANNED_RESULT),
         patch("scripts.bench.Browser") as mock_browser,
         patch("scripts.bench.LLMClient"),
     ):
