@@ -6,7 +6,7 @@ import re
 import pytest
 
 from agent.browser import Browser
-from agent.observe import MAX_NODES, build_observation
+from agent.observe import INTERACTABLE_ROLES, MAX_NAME_LEN, MAX_NODES, build_observation
 from agent.trace import ObservationEvent
 
 
@@ -93,3 +93,75 @@ def test_ax_tree_digest_round_trips_through_trace(browser_on_mixed):
     restored = ObservationEvent.model_validate_json(json_str)
     assert restored.ax_tree_digest == ax_tree_digest
     assert restored.ax_fingerprint == ax_fingerprint
+
+
+def test_interactable_roles_is_frozenset_with_canonical_set():
+    assert isinstance(INTERACTABLE_ROLES, frozenset)
+    assert INTERACTABLE_ROLES == {
+        "button",
+        "link",
+        "textbox",
+        "combobox",
+        "checkbox",
+        "radio",
+        "tab",
+        "menuitem",
+        "option",
+        "heading",
+    }
+
+
+def test_links_and_headings_included(browser_on_mixed):
+    obs = build_observation(browser_on_mixed, None)
+    digest = obs["ax_tree_digest"]
+    assert "[heading" in digest
+    assert "[link]" in digest
+
+
+def test_heading_level_in_serialization(fixture_server, playwright_chromium):
+    html = "<!DOCTYPE html><html><body><h2>My Heading</h2></body></html>"
+    encoded = base64.b64encode(html.encode()).decode()
+    data_url = f"data:text/html;base64,{encoded}"
+    with Browser(playwright_browser=playwright_chromium) as b:
+        b.goto(data_url)
+        obs = build_observation(b, None)
+    assert '[heading:2] "My Heading"' in obs["ax_tree_digest"]
+
+
+def test_long_name_truncated_to_max_name_len(fixture_server, playwright_chromium):
+    long_name = "x" * 200
+    html = f"<!DOCTYPE html><html><body><button>{long_name}</button></body></html>"
+    encoded = base64.b64encode(html.encode()).decode()
+    data_url = f"data:text/html;base64,{encoded}"
+    with Browser(playwright_browser=playwright_chromium) as b:
+        b.goto(data_url)
+        obs = build_observation(b, None)
+    digest = obs["ax_tree_digest"]
+    line = next(ln for ln in digest.splitlines() if ln.startswith("[button]"))
+    quoted_name = line[len('[button] "') : -1]
+    assert quoted_name.endswith("…")
+    assert len(quoted_name) == MAX_NAME_LEN + 1
+
+
+def test_fingerprint_is_deterministic(browser_on_mixed):
+    obs1 = build_observation(browser_on_mixed, None)
+    obs2 = build_observation(browser_on_mixed, None)
+    assert obs1["ax_fingerprint"] == obs2["ax_fingerprint"]
+
+
+def test_fingerprint_changes_when_dom_changes(fixture_server, playwright_chromium):
+    html = "<!DOCTYPE html><html><body><button>Original</button></body></html>"
+    encoded = base64.b64encode(html.encode()).decode()
+    data_url = f"data:text/html;base64,{encoded}"
+    with Browser(playwright_browser=playwright_chromium) as b:
+        b.goto(data_url)
+        fp1 = build_observation(b, None)["ax_fingerprint"]
+        b._page.evaluate(
+            "() => {"
+            " const btn = document.createElement('button');"
+            " btn.textContent = 'New';"
+            " document.body.appendChild(btn);"
+            " }"
+        )
+        fp2 = build_observation(b, None)["ax_fingerprint"]
+    assert fp1 != fp2
