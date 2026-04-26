@@ -280,6 +280,35 @@ def test_llm_base_url_forwarded_to_client(temp_db, monkeypatch):
     assert captured == ["http://custom-host:9999"]
 
 
+def test_llm_base_url_defaults_to_localhost(temp_db, monkeypatch):
+    captured: list = []
+
+    class FakeBrowser:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            pass
+
+    def fake_loop(task, browser, llm_client):
+        captured.append(llm_client._base_url)
+        return _MOCK_RESULT
+
+    monkeypatch.delenv("LLM_BASE_URL", raising=False)
+    monkeypatch.setattr("api.server.loop", fake_loop)
+    monkeypatch.setattr("api.server.Browser", FakeBrowser)
+
+    from api.server import TaskRequest, _run_agent
+
+    run_id = "run-llm-default-001"
+    writer = TraceWriter(temp_db)
+    writer.open_run(_make_run(run_id))
+    writer.close()
+
+    _run_agent(run_id, TaskRequest(task="do a thing"))
+    assert captured == ["http://localhost:8090"]
+
+
 def test_run_agent_closes_writer_on_loop_exception(temp_db, monkeypatch):
     closed_calls: list[bool] = []
 
