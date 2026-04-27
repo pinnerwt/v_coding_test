@@ -25,10 +25,10 @@ Wraps up an OpenSpec-driven PR end-to-end: archive → commit → push → merge
      If unreachable, stop and ask the user.
    - From the repo root run:
      `cd task2 && LLM_BASE_URL=http://localhost:8090 LLM_MODEL=qwen3.5-27b uv run python -m scripts.benchmark --branch "$(git rev-parse --abbrev-ref HEAD)"`
-   - Then regenerate the trend SVGs:
+   - Then regenerate the trend SVGs and refresh the README's `<!-- TRENDS:BEGIN -->` block (latest-run table):
      `cd task2 && uv run python -m scripts.trends`
-     (reads every `task2/benchmark/*/results.json` and overwrites `task2/benchmark/_trends/{pass_rate,latency,cost}.svg`. README image refs are static and don't need updating.)
-   - Stage `task2/benchmark/<sanitized-branch>/` and `task2/benchmark/_trends/` and commit with a HEREDOC message:
+     (reads every `task2/benchmark/*/results.json`, overwrites `task2/benchmark/_trends/{pass_rate,latency,cost}.svg`, and rewrites the trends block in `task2/README.md` between the `<!-- TRENDS:BEGIN -->` / `<!-- TRENDS:END -->` markers.)
+   - Stage `task2/benchmark/<sanitized-branch>/`, `task2/benchmark/_trends/`, and `task2/README.md` and commit with a HEREDOC message:
      `chore(task2): record benchmark for <branch>`
      including the standard `Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>` trailer.
    - **`[FAIL]` cases in the benchmark output do not block the merge.** The CI workflow `task2-benchmark` only checks that the results file exists and that its `run_at` is newer than the merge-base with master. The benchmark is a tracking artifact, not a gate. If a regression is suspected, surface it to the user but do not stop unless they ask. (The trend SVGs make multi-run regressions visually obvious; a single `[FAIL]` on drift cases is normal under the current Qwen 27B and not actionable here.)

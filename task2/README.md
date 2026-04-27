@@ -5,9 +5,21 @@
 
 ![Pass rate over time](benchmark/_trends/pass_rate.svg)
 
-![Latency over time](benchmark/_trends/latency.svg)
+![Latency p50 by status](benchmark/_trends/latency.svg)
 
-![Cost per run](benchmark/_trends/cost.svg)
+![Cost by status](benchmark/_trends/cost.svg)
+
+Cost and latency are split into passed vs. failed cases: a failing case bails out early, so a higher pass rate naturally raises totals. Compare the green (passed) and red (failed) series within a branch, not the totals across branches.
+
+### Latest run — `task2-implement-cdp-session-reuse` (2026-04-27 02:13 UTC)
+
+| Case | Status | Steps | Latency | Tokens | USD |
+|---|---|---:|---:|---:|---:|
+| `drift-submit-form-v1` | failed | 4 | 47.0 s | 6,047 | $0.0073 |
+| `drift-submit-form-v2` | failed | 2 | 34.8 s | 4,408 | $0.0053 |
+| `fixture-count` | succeeded | 2 | 39.5 s | 4,568 | $0.0057 |
+| `fixture-heading` | succeeded | 2 | 25.1 s | 4,127 | $0.0048 |
+| **Total (4 cases, 2 passed)** | | 10 | 146.4 s | 19,150 | $0.0231 |
 <!-- TRENDS:END -->
 
 
