@@ -12,6 +12,11 @@ The system SHALL provide `agent.loop.loop(task, browser, llm_client, *, max_step
 - The loop SHALL call `agent.plan.plan()` once after the first observation and inject "Plan progress" into every subsequent decision user message.
 - On supervisor `policy="halt"`, the loop SHALL trigger at most one `agent.plan.replan()` before returning `RunResult(status="failed")`.
 - The new `locator_cache: LocatorCache | None = None` kwarg SHALL be accepted and, when not `None`, threaded into every `locate()` call made during `read` tool dispatch with a non-empty `intent`. When `None`, the loop SHALL not pass any cache to `locate()` (current default behavior is preserved for all existing callers).
+- When `locator_cache` is not `None` AND `trace_writer` and `run_id` are also provided, the loop SHALL emit a `LocateEvent` for each cache action taken inside `_locate_with_supervisor`:
+  - `cache_action="read"` + `outcome="hit"` + `tier="cache"` when a cached entry's live fingerprint matches.
+  - `cache_action="invalidate"` + `outcome="miss"` + `tier="cache"` whenever `cache.invalidate(...)` is called.
+  - `cache_action="write"` + `outcome="hit"` + `tier=<resolved ladder tier>` whenever `cache.put(...)` is called after a fresh ladder resolve.
+  - The loop SHALL NOT emit a `LocateEvent` when `locator_cache is None` or when the ladder resolves without any cache interaction.
 
 #### Scenario: loop returns RunResult
 
@@ -64,3 +69,27 @@ The system SHALL provide `agent.loop.loop(task, browser, llm_client, *, max_step
 - **GIVEN** any existing call to `loop(task, browser, llm_client)` or `loop(task, browser, llm_client, max_steps=N)` or `loop(task, browser, llm_client, trace_writer=w, run_id=r)`
 - **WHEN** the new `locator_cache` parameter is added with `None` default
 - **THEN** none of those call sites SHALL require a change to continue functioning correctly
+
+### Requirement: LocateEvent emission on cache actions
+
+When `loop()` is called with `locator_cache` AND `trace_writer` AND `run_id`, the loop SHALL emit exactly one `LocateEvent` per cache action taken inside `_locate_with_supervisor`. Emission SHALL use a strictly-increasing `seq` allocated via `trace_writer.next_seq(run_id)` and SHALL populate `intent`, `tier`, `outcome`, `cache_action`, and `chosen` according to the action taken.
+
+#### Scenario: Write event emitted on first resolve into an empty cache
+
+- **GIVEN** an empty `LocatorCache` and a `TraceWriter` open on `run_id`
+- **AND** the LLM emits `read(intent="Submit button")` for a v1 fixture page
+- **WHEN** the locate call resolves through the L1/L2 ladder and writes to the cache
+- **THEN** exactly one `LocateEvent` row SHALL be appended with `cache_action="write"`, `outcome="hit"`, `intent="Submit button"`, and `tier` equal to the ladder tier that resolved the element
+
+#### Scenario: Invalidate event emitted before write on drift
+
+- **GIVEN** a shared `LocatorCache` warmed from a v1 run
+- **AND** a fresh `TraceWriter` and `run_id` for a second run on the v2 fixture page
+- **WHEN** the locate call probes the cache, finds a fingerprint mismatch, invalidates, then resolves freshly through the ladder
+- **THEN** the trace for the v2 run SHALL contain a `LocateEvent` row with `cache_action="invalidate"` whose `seq` is strictly less than that of a subsequent `LocateEvent` row with `cache_action="write"`
+
+#### Scenario: No emission without trace_writer + run_id
+
+- **GIVEN** `loop()` is called with `locator_cache` provided but no `trace_writer` or `run_id`
+- **WHEN** the loop dispatches `read` calls that interact with the cache
+- **THEN** no `LocateEvent` rows SHALL be emitted (there is nowhere to write them) and the loop SHALL still function correctly
