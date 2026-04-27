@@ -1,0 +1,588 @@
+{
+  "run_at": "2026-04-27T15:14:57.745592+00:00",
+  "cases": [
+    {
+      "id": "correction-l1-miss-l2-hit",
+      "status": "failed",
+      "steps": 2,
+      "usd": 0.003188,
+      "l_tier_counts": {},
+      "validators": [],
+      "prompt_tokens": 1892,
+      "completion_tokens": 648,
+      "latency_ms_total": 22948,
+      "latency_ms_per_step": [
+        16982,
+        5966
+      ],
+      "step_breakdown": [
+        {
+          "step": 1,
+          "latency_ms": 16982,
+          "prompt_tokens": 786,
+          "completion_tokens": 195,
+          "usd": 0.001176,
+          "tool_calls": [
+            "read"
+          ]
+        },
+        {
+          "step": 2,
+          "latency_ms": 5966,
+          "prompt_tokens": 938,
+          "completion_tokens": 167,
+          "usd": 0.001272,
+          "tool_calls": [
+            "fail"
+          ]
+        }
+      ],
+      "escalations": [],
+      "replans": 0,
+      "cache_events": {
+        "hits": 0,
+        "invalidations": 0,
+        "misses": 0
+      },
+      "failure_class": "no_done_emitted",
+      "failure_detail": "no DoneEvent in trace"
+    },
+    {
+      "id": "correction-replan",
+      "status": "unverified",
+      "steps": 3,
+      "usd": 0.005978,
+      "l_tier_counts": {},
+      "validators": [],
+      "prompt_tokens": 3454,
+      "completion_tokens": 1262,
+      "latency_ms_total": 44415,
+      "latency_ms_per_step": [
+        34431,
+        3718,
+        6266
+      ],
+      "step_breakdown": [
+        {
+          "step": 1,
+          "latency_ms": 34431,
+          "prompt_tokens": 840,
+          "completion_tokens": 127,
+          "usd": 0.001094,
+          "tool_calls": [
+            "read"
+          ]
+        },
+        {
+          "step": 2,
+          "latency_ms": 3718,
+          "prompt_tokens": 1120,
+          "completion_tokens": 93,
+          "usd": 0.001306,
+          "tool_calls": [
+            "read"
+          ]
+        },
+        {
+          "step": 3,
+          "latency_ms": 6266,
+          "prompt_tokens": 1322,
+          "completion_tokens": 163,
+          "usd": 0.0016480000000000002,
+          "tool_calls": [
+            "done"
+          ]
+        }
+      ],
+      "escalations": [
+        {
+          "intent": "the main heading",
+          "from_tier": "L1_ax",
+          "to_tier": null,
+          "reason": "locatormiss"
+        }
+      ],
+      "replans": 0,
+      "cache_events": {
+        "hits": 0,
+        "invalidations": 0,
+        "misses": 2
+      },
+      "failure_class": null,
+      "failure_detail": null
+    },
+    {
+      "id": "drift-submit-form-v1",
+      "status": "timeout",
+      "steps": 5,
+      "usd": 0.013722999999999999,
+      "l_tier_counts": {},
+      "validators": [
+        {
+          "name": "status.nonempty",
+          "ok": false
+        }
+      ],
+      "prompt_tokens": 11343,
+      "completion_tokens": 1190,
+      "latency_ms_total": 48888,
+      "latency_ms_per_step": [
+        23899,
+        4305,
+        8290,
+        6284,
+        6110
+      ],
+      "step_breakdown": [
+        {
+          "step": 1,
+          "latency_ms": 23899,
+          "prompt_tokens": 790,
+          "completion_tokens": 335,
+          "usd": 0.00146,
+          "tool_calls": [
+            "goto"
+          ]
+        },
+        {
+          "step": 2,
+          "latency_ms": 4305,
+          "prompt_tokens": 993,
+          "completion_tokens": 102,
+          "usd": 0.001197,
+          "tool_calls": [
+            "goto"
+          ]
+        },
+        {
+          "step": 3,
+          "latency_ms": 8290,
+          "prompt_tokens": 1564,
+          "completion_tokens": 201,
+          "usd": 0.001966,
+          "tool_calls": [
+            "goto"
+          ]
+        },
+        {
+          "step": 4,
+          "latency_ms": 6284,
+          "prompt_tokens": 3778,
+          "completion_tokens": 84,
+          "usd": 0.003946,
+          "tool_calls": [
+            "goto"
+          ]
+        },
+        {
+          "step": 5,
+          "latency_ms": 6110,
+          "prompt_tokens": 4048,
+          "completion_tokens": 115,
+          "usd": 0.0042780000000000006,
+          "tool_calls": [
+            "goto"
+          ]
+        }
+      ],
+      "escalations": [],
+      "replans": 0,
+      "cache_events": {
+        "hits": 0,
+        "invalidations": 0,
+        "misses": 0
+      },
+      "failure_class": null,
+      "failure_detail": null
+    },
+    {
+      "id": "drift-submit-form-v2",
+      "status": "failed",
+      "steps": 3,
+      "usd": 0.007113,
+      "l_tier_counts": {},
+      "validators": [
+        {
+          "name": "status.nonempty",
+          "ok": false
+        }
+      ],
+      "prompt_tokens": 4179,
+      "completion_tokens": 1467,
+      "latency_ms_total": 52230,
+      "latency_ms_per_step": [
+        23314,
+        14424,
+        14492
+      ],
+      "step_breakdown": [
+        {
+          "step": 1,
+          "latency_ms": 23314,
+          "prompt_tokens": 902,
+          "completion_tokens": 495,
+          "usd": 0.001892,
+          "tool_calls": [
+            "read"
+          ]
+        },
+        {
+          "step": 2,
+          "latency_ms": 14424,
+          "prompt_tokens": 1263,
+          "completion_tokens": 406,
+          "usd": 0.002075,
+          "tool_calls": [
+            "read"
+          ]
+        },
+        {
+          "step": 3,
+          "latency_ms": 14492,
+          "prompt_tokens": 1732,
+          "completion_tokens": 398,
+          "usd": 0.002528,
+          "tool_calls": [
+            "fail"
+          ]
+        }
+      ],
+      "escalations": [
+        {
+          "intent": "the submit button or run button",
+          "from_tier": "L1_ax",
+          "to_tier": null,
+          "reason": "locatormiss"
+        }
+      ],
+      "replans": 0,
+      "cache_events": {
+        "hits": 0,
+        "invalidations": 0,
+        "misses": 2
+      },
+      "failure_class": "locator_miss",
+      "failure_detail": "locator exhausted all tiers without a hit"
+    },
+    {
+      "id": "fixture-count",
+      "status": "succeeded",
+      "steps": 2,
+      "usd": 0.004636,
+      "l_tier_counts": {},
+      "validators": [
+        {
+          "name": "items.len_gte: 1",
+          "ok": false
+        }
+      ],
+      "prompt_tokens": 2588,
+      "completion_tokens": 1024,
+      "latency_ms_total": 36814,
+      "latency_ms_per_step": [
+        21812,
+        15002
+      ],
+      "step_breakdown": [
+        {
+          "step": 1,
+          "latency_ms": 21812,
+          "prompt_tokens": 913,
+          "completion_tokens": 132,
+          "usd": 0.001177,
+          "tool_calls": [
+            "read"
+          ]
+        },
+        {
+          "step": 2,
+          "latency_ms": 15002,
+          "prompt_tokens": 1385,
+          "completion_tokens": 419,
+          "usd": 0.002223,
+          "tool_calls": [
+            "done"
+          ]
+        }
+      ],
+      "escalations": [],
+      "replans": 0,
+      "cache_events": {
+        "hits": 0,
+        "invalidations": 0,
+        "misses": 0
+      },
+      "failure_class": null,
+      "failure_detail": null
+    },
+    {
+      "id": "fixture-heading",
+      "status": "succeeded",
+      "steps": 3,
+      "usd": 0.0063690000000000005,
+      "l_tier_counts": {},
+      "validators": [
+        {
+          "name": "title.nonempty",
+          "ok": true
+        }
+      ],
+      "prompt_tokens": 4175,
+      "completion_tokens": 1097,
+      "latency_ms_total": 40096,
+      "latency_ms_per_step": [
+        28340,
+        2453,
+        9303
+      ],
+      "step_breakdown": [
+        {
+          "step": 1,
+          "latency_ms": 28340,
+          "prompt_tokens": 907,
+          "completion_tokens": 125,
+          "usd": 0.001157,
+          "tool_calls": [
+            "read"
+          ]
+        },
+        {
+          "step": 2,
+          "latency_ms": 2453,
+          "prompt_tokens": 1256,
+          "completion_tokens": 50,
+          "usd": 0.001356,
+          "tool_calls": [
+            "read"
+          ]
+        },
+        {
+          "step": 3,
+          "latency_ms": 9303,
+          "prompt_tokens": 1725,
+          "completion_tokens": 242,
+          "usd": 0.002209,
+          "tool_calls": [
+            "done"
+          ]
+        }
+      ],
+      "escalations": [
+        {
+          "intent": "the page heading",
+          "from_tier": "L1_ax",
+          "to_tier": null,
+          "reason": "locatormiss"
+        }
+      ],
+      "replans": 0,
+      "cache_events": {
+        "hits": 0,
+        "invalidations": 0,
+        "misses": 2
+      },
+      "failure_class": null,
+      "failure_detail": null
+    },
+    {
+      "id": "live-conditional-pick",
+      "status": "skipped",
+      "steps": 0,
+      "usd": 0.0,
+      "l_tier_counts": {},
+      "validators": [],
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "latency_ms_total": 0,
+      "latency_ms_per_step": [],
+      "step_breakdown": [],
+      "escalations": [],
+      "replans": 0,
+      "cache_events": {},
+      "failure_class": null,
+      "failure_detail": null
+    },
+    {
+      "id": "live-form-fill",
+      "status": "skipped",
+      "steps": 0,
+      "usd": 0.0,
+      "l_tier_counts": {},
+      "validators": [],
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "latency_ms_total": 0,
+      "latency_ms_per_step": [],
+      "step_breakdown": [],
+      "escalations": [],
+      "replans": 0,
+      "cache_events": {},
+      "failure_class": null,
+      "failure_detail": null
+    },
+    {
+      "id": "live-multi-page-nav",
+      "status": "skipped",
+      "steps": 0,
+      "usd": 0.0,
+      "l_tier_counts": {},
+      "validators": [],
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "latency_ms_total": 0,
+      "latency_ms_per_step": [],
+      "step_breakdown": [],
+      "escalations": [],
+      "replans": 0,
+      "cache_events": {},
+      "failure_class": null,
+      "failure_detail": null
+    },
+    {
+      "id": "live-read-summarize",
+      "status": "skipped",
+      "steps": 0,
+      "usd": 0.0,
+      "l_tier_counts": {},
+      "validators": [],
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "latency_ms_total": 0,
+      "latency_ms_per_step": [],
+      "step_breakdown": [],
+      "escalations": [],
+      "replans": 0,
+      "cache_events": {},
+      "failure_class": null,
+      "failure_detail": null
+    },
+    {
+      "id": "live-search-extract",
+      "status": "skipped",
+      "steps": 0,
+      "usd": 0.0,
+      "l_tier_counts": {},
+      "validators": [],
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "latency_ms_total": 0,
+      "latency_ms_per_step": [],
+      "step_breakdown": [],
+      "escalations": [],
+      "replans": 0,
+      "cache_events": {},
+      "failure_class": null,
+      "failure_detail": null
+    },
+    {
+      "id": "maintenance-drift-rename-v1",
+      "status": "timeout",
+      "steps": 5,
+      "usd": 0.012272000000000002,
+      "l_tier_counts": {},
+      "validators": [],
+      "prompt_tokens": 8702,
+      "completion_tokens": 1785,
+      "latency_ms_total": 65032,
+      "latency_ms_per_step": [
+        26977,
+        5057,
+        17940,
+        9626,
+        5432
+      ],
+      "step_breakdown": [
+        {
+          "step": 1,
+          "latency_ms": 26977,
+          "prompt_tokens": 907,
+          "completion_tokens": 533,
+          "usd": 0.001973,
+          "tool_calls": [
+            "read"
+          ]
+        },
+        {
+          "step": 2,
+          "latency_ms": 5057,
+          "prompt_tokens": 1268,
+          "completion_tokens": 126,
+          "usd": 0.00152,
+          "tool_calls": [
+            "read"
+          ]
+        },
+        {
+          "step": 3,
+          "latency_ms": 17940,
+          "prompt_tokens": 1737,
+          "completion_tokens": 499,
+          "usd": 0.002735,
+          "tool_calls": [
+            "goto"
+          ]
+        },
+        {
+          "step": 4,
+          "latency_ms": 9626,
+          "prompt_tokens": 2080,
+          "completion_tokens": 256,
+          "usd": 0.002592,
+          "tool_calls": [
+            "goto"
+          ]
+        },
+        {
+          "step": 5,
+          "latency_ms": 5432,
+          "prompt_tokens": 2423,
+          "completion_tokens": 134,
+          "usd": 0.0026910000000000002,
+          "tool_calls": [
+            "read"
+          ]
+        }
+      ],
+      "escalations": [
+        {
+          "intent": "the form content and submit button",
+          "from_tier": "L1_ax",
+          "to_tier": null,
+          "reason": "locatormiss"
+        }
+      ],
+      "replans": 0,
+      "cache_events": {
+        "hits": 0,
+        "invalidations": 0,
+        "misses": 2
+      },
+      "failure_class": null,
+      "failure_detail": null
+    },
+    {
+      "id": "maintenance-drift-rename-v2",
+      "status": "failed",
+      "steps": 0,
+      "usd": 0.0,
+      "l_tier_counts": {},
+      "validators": [
+        {
+          "name": "exception",
+          "ok": false,
+          "error": "IntentParseError(\"unknown role token 'content' in intent 'the full page content'; supported: ['button', 'checkbox', 'heading', 'link', 'textbox']\")"
+        }
+      ],
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "latency_ms_total": 0,
+      "latency_ms_per_step": [],
+      "step_breakdown": [],
+      "escalations": [],
+      "replans": 0,
+      "cache_events": {},
+      "failure_class": "tool_error",
+      "failure_detail": "IntentParseError(\"unknown role token 'content' in intent 'the full page content'; supported: ['button', 'checkbox', 'heading', 'link', 'textbox']\")"
+    }
+  ]
+}
