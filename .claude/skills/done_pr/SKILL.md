@@ -16,10 +16,13 @@ Wraps up an OpenSpec-driven PR end-to-end: archive → commit → push → merge
    - Otherwise, from the repo root run:
      `cd task2 && LLM_BASE_URL=http://localhost:8090 LLM_MODEL=qwen3.5-27b uv run python -m scripts.benchmark --branch "$(git rev-parse --abbrev-ref HEAD)"`
      (the local Qwen at `localhost:8090` must be reachable; if it isn't, stop and ask the user.)
-   - Stage just `task2/benchmark/<sanitized-branch>/` and commit with a HEREDOC message:
+   - Then regenerate the trend SVGs:
+     `cd task2 && uv run python -m scripts.trends`
+     (reads every `task2/benchmark/*/results.json` and overwrites `task2/benchmark/_trends/{pass_rate,latency,cost}.svg`. README image refs are static and don't need updating.)
+   - Stage `task2/benchmark/<sanitized-branch>/` and `task2/benchmark/_trends/` and commit with a HEREDOC message:
      `chore(task2): record benchmark for <branch>`
      including the standard `Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>` trailer.
-   - If `git status` shows no benchmark changes after the run (results identical to what's already on the branch), skip the commit — do not create an empty one.
+   - If `git status` shows no changes after the run (results identical to what's already on the branch), skip the commit — do not create an empty one.
    - The CI workflow `task2-benchmark` checks that this file exists and that its `run_at` is newer than the merge-base with master, so this step is what makes the PR mergeable.
 
 2. **Commit the spec/archive updates.** After archive completes:

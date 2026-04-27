@@ -1,5 +1,16 @@
 # Task 2 — Generalized Browser Automation Agent
 
+<!-- TRENDS:BEGIN -->
+## Benchmark trends
+
+![Pass rate over time](benchmark/_trends/pass_rate.svg)
+
+![Latency over time](benchmark/_trends/latency.svg)
+
+![Cost per run](benchmark/_trends/cost.svg)
+<!-- TRENDS:END -->
+
+
 See `plan.md` for the full design. This README is the operator's guide.
 
 ## Setup
