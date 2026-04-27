@@ -36,33 +36,25 @@ def _detach_silently(session) -> None:
 
 def _ax_nodes(browser) -> tuple[list[dict], int]:
     page = browser._page
-    sessions = getattr(browser, "_cdp_sessions", None)
-    transient = sessions is None
+    sessions = browser._cdp_sessions
 
-    if transient:
-        cdp = None
-    else:
-        cdp = sessions.get(id(page))
-        if cdp is None:
-            for stale in sessions.values():
-                _detach_silently(stale)
-            sessions.clear()
-
+    cdp = sessions.get(id(page))
     if cdp is None:
+        for stale in sessions.values():
+            _detach_silently(stale)
+        sessions.clear()
         try:
             cdp = page.context.new_cdp_session(page)
         except Exception:  # noqa: BLE001
             return [], 0
-        if not transient:
-            sessions[id(page)] = cdp
+        sessions[id(page)] = cdp
 
     try:
         result = cdp.send("Accessibility.getFullAXTree")
     except Exception:  # noqa: BLE001
+        _detach_silently(cdp)
+        sessions.pop(id(page), None)
         return [], 0
-    finally:
-        if transient:
-            _detach_silently(cdp)
 
     out: list[dict] = []
     total = 0

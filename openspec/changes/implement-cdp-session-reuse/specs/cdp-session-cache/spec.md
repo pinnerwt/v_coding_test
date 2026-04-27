@@ -1,8 +1,8 @@
 ## ADDED Requirements
 
-### Requirement: Browser holds a CDP session cache dict
+### Requirement: Browser-like objects hold a CDP session cache dict
 
-`Browser.__init__` SHALL initialize an instance attribute `_cdp_sessions` as an empty `dict`. The dict SHALL be keyed by `id(page)` (Python object identity integer) and its values SHALL be `CDPSession` objects obtained from `page.context.new_cdp_session(page)`.
+Any object passed to `_ax_nodes` (the production `Browser` and any duck-typed replacement such as `StubBrowser`) SHALL expose a `_cdp_sessions` attribute initialized to an empty `dict`. The dict SHALL be keyed by `id(page)` (Python object identity integer) and its values SHALL be `CDPSession` objects obtained from `page.context.new_cdp_session(page)`.
 
 #### Scenario: _cdp_sessions initialized empty
 
@@ -50,13 +50,15 @@ On `Browser.__exit__`, every `CDPSession` in `_cdp_sessions` SHALL have `detach(
 - **THEN** no exception SHALL propagate from `__exit__`
 - **AND** the browser context SHALL still be closed normally
 
-### Requirement: Fallback when _cdp_sessions is absent
+### Requirement: Cached session is evicted on transient send failure
 
-If the object passed to `_ax_nodes` does not have a `_cdp_sessions` attribute (e.g. a test double created with `types.SimpleNamespace`), `_ax_nodes` SHALL fall back to the direct per-call `new_cdp_session` / `detach` pattern. This preserves backward compatibility with existing test doubles.
+If `cdp.send("Accessibility.getFullAXTree")` raises on a cached session, that session SHALL be detached and removed from `_cdp_sessions` before `_ax_nodes` returns the empty observation. The next call SHALL open a fresh session rather than reuse the broken one.
 
-#### Scenario: SimpleNamespace without _cdp_sessions uses per-call pattern
+#### Scenario: send failure does not poison the cache
 
-- **GIVEN** a fake browser object (`types.SimpleNamespace`) with no `_cdp_sessions` attribute
-- **WHEN** `_ax_nodes` is called with that fake browser
-- **THEN** `fake_context.new_cdp_session` SHALL be called directly
-- **AND** the function SHALL return the AX nodes or an empty list on error, without raising `AttributeError`
+- **GIVEN** a `Browser` whose cached `CDPSession.send` raises a transient error
+- **WHEN** `build_observation` is called
+- **THEN** `_ax_nodes` SHALL return `([], 0)`
+- **AND** the broken session SHALL have been detached
+- **AND** `_cdp_sessions` SHALL no longer contain that session
+- **AND** the next `build_observation` call SHALL invoke `new_cdp_session` to obtain a fresh session

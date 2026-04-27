@@ -55,7 +55,7 @@ Per repo `CLAUDE.md`, production code carries no docstrings or inline comments. 
 ## Risks / Trade-offs
 
 - **`id()` address reuse**: If Python recycles the memory address of a garbage-collected page for a new page, the cache lookup would return a stale session. Mitigation: the invalidation step in Decision 2 clears all entries whose id does not match the *current* `browser._page` on every call, so a reused address will only survive if the old page and new page happen to be the same object — which is impossible if the old one was garbage-collected.
-- **`fake_browser` in existing tests**: The fallback test constructs a `SimpleNamespace` without `_cdp_sessions`. The updated `_ax_nodes` must handle this gracefully. The implementation will use `getattr(browser, "_cdp_sessions", None)` with a `None` branch that falls through to a plain `new_cdp_session` call, preserving the existing fallback behavior and keeping the test unchanged.
+- **`fake_browser` in existing tests**: All browser-like objects passed to `_ax_nodes` (production `Browser`, `StubBrowser`, and `SimpleNamespace` test doubles) initialize `_cdp_sessions={}`. `_ax_nodes` reads the attribute directly and does not carry a defensive fallback, since no real caller omits it. Tests construct fakes with the attribute present.
 - **Single page assumption**: The cache is keyed by page id but `Browser` is only designed for one page at a time. If that ever changes, the eviction strategy (clear all non-current ids) would need revisiting. This risk is accepted: the ticket is explicitly scoped to the current single-page design.
 
 ## Migration Plan
