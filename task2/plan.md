@@ -307,6 +307,8 @@ Candidate tickets, ordered roughly by impact-per-effort. Each is TDD-shaped so i
 
 42. **Failure-clustering histogram across the suite.** Once #31 lands, aggregate `failure_class` counts across all failed cases and emit a histogram block at the top of the scoreboard (e.g. "5× supervisor_halt, 1× locator_miss"). Trend the per-class counts in `_trends/` as a stacked area chart, similar to the existing pass-rate / latency / cost trends. Tests: synthetic results.json with mixed `failure_class` values produces the expected histogram and trend SVG.
 
+43. **`tool_error` should also classify `ActEvent(outcome="timeout")`.** `agent/trace.py:69` types `ActEvent.outcome` as `Literal["ok", "no_effect", "nav", "timeout", "error"]`, but `_classify_failure` in `scripts/eval.py` (added in ticket #31) only catches `outcome="error"`. A failed case whose only signal is a Playwright timeout (e.g. `wait_for` exhausted) currently falls through to `no_done_emitted`, which loses the more specific signal that the browser tool stalled. Decision needed: (a) widen the predicate to `outcome in {"error", "timeout"}` and treat both as `tool_error`, OR (b) introduce a new `failure_class="tool_timeout"` literal (and a new column option in the scoreboard). Tests: synthetic `ActEvent(outcome="timeout")` with status="failed" classifies as the chosen literal; the existing `ActEvent(outcome="error")` test still classifies as `tool_error`; design.md / spec rule 2.c updated to match the chosen direction.
+
 ## Honest risks / tradeoffs
 
 - **Local Qwen3.5 27B is weaker than frontier on long-horizon planning.** Mitigation: short bounded plans, constrained tool-call grammar, structured observations. Will measure and surface in README.

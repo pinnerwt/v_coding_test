@@ -1,9 +1,4 @@
-# eval-metrics Specification
-
-## Purpose
-TBD - created by archiving change implement-quantitative-eval. Update Purpose after archive.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: CaseResult carries quantitative fields
 
@@ -83,20 +78,20 @@ The JSON written to `eval/results/<ts>.json` SHALL include all `CaseResult` fiel
 {
   "id": "...",
   "status": "...",
-  "steps": <int>,
-  "usd": <float>,
-  "prompt_tokens": <int>,
-  "completion_tokens": <int>,
-  "latency_ms_total": <int>,
-  "latency_ms_per_step": [<int>, ...],
-  "step_breakdown": [...],
+  "steps": 0,
+  "usd": 0.0,
+  "prompt_tokens": 0,
+  "completion_tokens": 0,
+  "latency_ms_total": 0,
+  "latency_ms_per_step": [],
+  "step_breakdown": [],
   "l_tier_counts": {},
-  "validators": [...],
-  "escalations": [{"intent": "...", "from_tier": "...", "to_tier": "...", "reason": "..."}, ...],
-  "replans": <int>,
-  "cache_events": {"hits": <int>, "invalidations": <int>, "misses": <int>},
-  "failure_class": <string|null>,
-  "failure_detail": <string|null>
+  "validators": [],
+  "escalations": [],
+  "replans": 0,
+  "cache_events": {},
+  "failure_class": null,
+  "failure_detail": null
 }
 ```
 

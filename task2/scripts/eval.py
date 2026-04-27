@@ -16,7 +16,9 @@ from agent.browser import Browser
 from agent.llm import LLMClient
 from agent.loop import RunResult, loop
 from agent.trace import (
+    ActEvent,
     AnyEvent,
+    DoneEvent,
     LocateEvent,
     PlanEvent,
     Run,
@@ -79,9 +81,13 @@ class CaseResult:
     escalations: list[dict] = field(default_factory=list)
     replans: int = 0
     cache_events: dict = field(default_factory=dict)
+    failure_class: str | None = None
+    failure_detail: str | None = None
 
 
-def _aggregate_diagnostics(writer: TraceWriter, run_id: str) -> tuple[list[dict], int, dict]:
+def _aggregate_diagnostics(
+    writer: TraceWriter, run_id: str
+) -> tuple[list[AnyEvent], list[dict], int, dict]:
     events: list[AnyEvent] = list(writer.iter_events(run_id))
     locates_by_seq: dict[int, LocateEvent] = {
         ev.seq: ev for ev in events if isinstance(ev, LocateEvent)
@@ -127,6 +133,7 @@ def _aggregate_diagnostics(writer: TraceWriter, run_id: str) -> tuple[list[dict]
                 misses += 1
 
     return (
+        events,
         escalations,
         replan_count,
         {"hits": hits, "invalidations": invalidations, "misses": misses},
@@ -155,6 +162,51 @@ def _open_trace_run(writer: TraceWriter, run_id: str, case: dict) -> None:
     writer.open_run(run)
 
 
+def _classify_failure(
+    events: list[AnyEvent], validators: list[dict], status: str
+) -> tuple[str | None, str | None]:
+    if status != "failed":
+        return None, None
+
+    for ev in events:
+        if isinstance(ev, SupervisorEvent) and ev.policy == "halt":
+            return "supervisor_halt", ev.classified_as
+
+    for i, ev in enumerate(events):
+        if isinstance(ev, SupervisorEvent) and ev.policy == "next_tier":
+            resolved = any(
+                isinstance(nxt, LocateEvent) and nxt.step_id == ev.step_id and nxt.outcome == "hit"
+                for nxt in events[i + 1 :]
+            )
+            if not resolved:
+                return "locator_miss", "locator exhausted all tiers without a hit"
+
+    for ev in events:
+        if isinstance(ev, ActEvent) and ev.outcome == "error":
+            detail = ev.diff.get("error", "unknown error")
+            return "tool_error", str(detail)
+
+    done_events = [ev for ev in events if isinstance(ev, DoneEvent)]
+
+    failed_validators = [
+        v for v in validators if not v.get("ok", True) and v.get("name") != "exception"
+    ]
+    if done_events and failed_validators:
+        names = ", ".join(v["name"] for v in failed_validators)
+        return "validator_fail", names
+
+    if done_events:
+        last_done = done_events[-1]
+        verifier = last_done.verifier
+        if not verifier.get("ok", True):
+            reasons = verifier.get("reasons", [])
+            detail = "; ".join(reasons) if reasons else "schema check failed"
+            return "schema_error", detail
+        return "other", "done emitted and verifier passed but status is failed"
+
+    return "no_done_emitted", "no DoneEvent in trace"
+
+
 def _run_case(case: dict[str, Any], llm_client: Any, browser: Any, cache: Any = None) -> CaseResult:
     run_id = str(uuid.uuid4())
     with TraceWriter(path=":memory:") as writer:
@@ -177,12 +229,15 @@ def _run_case(case: dict[str, Any], llm_client: Any, browser: Any, cache: Any = 
                 usd=0.0,
                 l_tier_counts={},
                 validators=[{"name": "exception", "ok": False, "error": repr(exc)}],
+                failure_class="tool_error",
+                failure_detail=repr(exc),
             )
-        escalations, replans, cache_events = _aggregate_diagnostics(writer, run_id)
+        events, escalations, replans, cache_events = _aggregate_diagnostics(writer, run_id)
     validator_results = run_validators(
         case.get("expect", {}).get("validators", []),
         run_result.result or {},
     )
+    failure_class, failure_detail = _classify_failure(events, validator_results, run_result.status)
     return CaseResult(
         id=case["id"],
         status=run_result.status,
@@ -198,6 +253,8 @@ def _run_case(case: dict[str, Any], llm_client: Any, browser: Any, cache: Any = 
         escalations=escalations,
         replans=replans,
         cache_events=cache_events,
+        failure_class=failure_class,
+        failure_detail=failure_detail,
     )
 
 
