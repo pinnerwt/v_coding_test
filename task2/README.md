@@ -5,7 +5,7 @@
 
 ![Pass rate over time](benchmark/_trends/pass_rate.svg)
 
-![Latency p50 by status](benchmark/_trends/latency.svg)
+![Latency by status (p50 solid, p95 dashed)](benchmark/_trends/latency.svg)
 
 ![Cost by status](benchmark/_trends/cost.svg)
 

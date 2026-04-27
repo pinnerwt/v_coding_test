@@ -27,6 +27,8 @@ class Run:
     usd_failed: float = 0.0
     p50_passed_ms: int = 0
     p50_failed_ms: int = 0
+    p95_passed_ms: int = 0
+    p95_failed_ms: int = 0
 
 
 def _percentile(values: list[int], pct: int) -> int:
@@ -70,6 +72,8 @@ def summarize_run(branch: str, data: dict) -> Run:
         usd_failed=sum(c.get("usd", 0.0) for c in failed_cases),
         p50_passed_ms=_percentile(passed_lat, 50),
         p50_failed_ms=_percentile(failed_lat, 50),
+        p95_passed_ms=_percentile(passed_lat, 95),
+        p95_failed_ms=_percentile(failed_lat, 95),
     )
 
 
@@ -315,7 +319,8 @@ def _line_chart_svg(
     n = len(runs)
     plot_w = _W - _PAD_L - _PAD_R
     plot_h = _H - _PAD_T - _PAD_B
-    y_max = max((max(vals) for _, vals, _ in series if vals), default=0.0) or 1.0
+    norm_series = [(s[0], s[1], s[2], s[3] if len(s) > 3 else "") for s in series]
+    y_max = max((max(vals) for _, vals, _, _ in norm_series if vals), default=0.0) or 1.0
     # round up a bit
     y_max = y_max * 1.15
 
@@ -355,25 +360,33 @@ def _line_chart_svg(
             return _PAD_L + plot_w / 2
         return _PAD_L + (i / (n - 1)) * plot_w
 
-    for _label, vals, color in series:
+    for _label, vals, color, dash in norm_series:
         if not vals:
             continue
         pts = " ".join(
             f"{x_at(i):.2f},{axis_y - (v / y_max) * plot_h:.2f}" for i, v in enumerate(vals)
         )
-        parts.append(f'<polyline points="{pts}" fill="none" stroke="{color}" stroke-width="2"/>')
+        dash_attr = f' stroke-dasharray="{dash}"' if dash else ""
+        parts.append(
+            f'<polyline points="{pts}" fill="none" stroke="{color}" stroke-width="2"{dash_attr}/>'
+        )
         for i, v in enumerate(vals):
             cx = x_at(i)
             cy = axis_y - (v / y_max) * plot_h
             parts.append(f'<circle cx="{cx:.2f}" cy="{cy:.2f}" r="2.5" fill="{color}"/>')
 
     # legend
-    lx = _W - _PAD_R - 120
+    entry_w = 75
+    lx = _W - _PAD_R - entry_w * len(norm_series)
     ly = _PAD_T - 4
-    for j, (label, _, color) in enumerate(series):
-        ox = lx + j * 70
-        parts.append(f'<rect x="{ox}" y="{ly - 8}" width="10" height="10" fill="{color}"/>')
-        parts.append(f'<text x="{ox + 14}" y="{ly}" font-size="10" fill="#333">{label}</text>')
+    for j, (label, _, color, dash) in enumerate(norm_series):
+        ox = lx + j * entry_w
+        dash_attr = f' stroke-dasharray="{dash}"' if dash else ""
+        parts.append(
+            f'<line x1="{ox}" y1="{ly - 3}" x2="{ox + 16}" y2="{ly - 3}" '
+            f'stroke="{color}" stroke-width="2"{dash_attr}/>'
+        )
+        parts.append(f'<text x="{ox + 20}" y="{ly}" font-size="10" fill="#333">{label}</text>')
 
     # x labels
     for i, run in enumerate(runs):
@@ -392,11 +405,13 @@ def _line_chart_svg(
 
 def render_latency_svg(runs: list[Run]) -> str:
     return _line_chart_svg(
-        title="Latency p50 by status",
+        title="Latency by status (p50 solid, p95 dashed)",
         runs=runs,
         series=[
-            ("passed", [r.p50_passed_ms for r in runs], _PASSED_COLOR),
-            ("failed", [r.p50_failed_ms for r in runs], _FAILED_COLOR),
+            ("p50 passed", [r.p50_passed_ms for r in runs], _PASSED_COLOR, ""),
+            ("p95 passed", [r.p95_passed_ms for r in runs], _PASSED_COLOR, "4,3"),
+            ("p50 failed", [r.p50_failed_ms for r in runs], _FAILED_COLOR, ""),
+            ("p95 failed", [r.p95_failed_ms for r in runs], _FAILED_COLOR, "4,3"),
         ],
         y_label="ms",
         value_format=lambda v: f"{int(v)}",
@@ -503,7 +518,7 @@ def _render_readme_block(latest: tuple[str, dict] | None) -> str:
         "",
         "![Pass rate over time](benchmark/_trends/pass_rate.svg)",
         "",
-        "![Latency p50 by status](benchmark/_trends/latency.svg)",
+        "![Latency by status (p50 solid, p95 dashed)](benchmark/_trends/latency.svg)",
         "",
         "![Cost by status](benchmark/_trends/cost.svg)",
         "",

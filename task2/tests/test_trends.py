@@ -157,6 +157,8 @@ def test_summarize_run_splits_passed_and_failed():
     # passed median is one of (400, 600); failed median is one of (100, 200)
     assert s.p50_passed_ms in (400, 600)
     assert s.p50_failed_ms in (100, 200)
+    assert s.p95_passed_ms == 600
+    assert s.p95_failed_ms == 200
 
 
 def test_summarize_run_handles_zero_passed_or_failed():
@@ -172,6 +174,7 @@ def test_summarize_run_handles_zero_passed_or_failed():
     assert only_failed.passed_count == 0
     assert only_failed.usd_passed == 0.0
     assert only_failed.p50_passed_ms == 0
+    assert only_failed.p95_passed_ms == 0
 
 
 def test_render_cost_svg_splits_passed_and_failed():
@@ -223,10 +226,15 @@ def test_render_latency_svg_splits_passed_and_failed():
         usd_failed=0.0,
         p50_passed_ms=420,
         p50_failed_ms=110,
+        p95_passed_ms=900,
+        p95_failed_ms=300,
     )
     svg = render_latency_svg([run])
-    assert "passed" in svg.lower()
-    assert "failed" in svg.lower()
+    low = svg.lower()
+    assert "passed" in low
+    assert "failed" in low
+    assert "p50" in low
+    assert "p95" in low
 
 
 def test_render_latest_run_table_emits_markdown():
