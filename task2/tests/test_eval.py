@@ -1086,3 +1086,198 @@ def test_maintenance_drift_rename_real_loop_cache_invalidation(playwright_chromi
     )
     assert result_v1.status in {"succeeded", "unverified"}, f"v1 status: {result_v1.status}"
     assert result_v2.status in {"succeeded", "unverified"}, f"v2 status: {result_v2.status}"
+
+
+# ---------------------------------------------------------------------------
+# Phase 1 (Red): CaseResult failure_class / failure_detail fields
+# ---------------------------------------------------------------------------
+
+
+def test_case_result_failure_class_defaults_to_none():
+    cr = CaseResult(id="x", status="succeeded", steps=0, usd=0.0, l_tier_counts={}, validators=[])
+    assert cr.failure_class is None
+    assert cr.failure_detail is None
+
+
+def test_case_result_failure_fields_serialise_to_json():
+    cr = CaseResult(
+        id="x",
+        status="failed",
+        steps=0,
+        usd=0.0,
+        l_tier_counts={},
+        validators=[],
+        failure_class="no_done_emitted",
+        failure_detail=None,
+    )
+    serialized = json.dumps(asdict(cr))
+    assert '"failure_class": "no_done_emitted"' in serialized
+    assert '"failure_detail": null' in serialized
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 (Red): _classify_failure synthetic trace tests
+# ---------------------------------------------------------------------------
+
+
+def _make_base_fields(run_id: str, seq: int) -> dict:
+    return {"run_id": run_id, "seq": seq, "ts": _ts(), "step_id": "s1"}
+
+
+def test_classify_failure_passing_status_returns_none():
+    from scripts.eval import _classify_failure
+
+    assert _classify_failure([], [], "succeeded") == (None, None)
+    assert _classify_failure([], [], "unverified") == (None, None)
+    assert _classify_failure([], [], "skipped") == (None, None)
+
+
+def test_classify_failure_supervisor_halt():
+    from agent.trace import SupervisorEvent
+
+    from scripts.eval import _classify_failure
+
+    rid = _make_run_id()
+    ev = SupervisorEvent(
+        **_make_base_fields(rid, 1),
+        trigger_event_seq=0,
+        classified_as="Blocked",
+        policy="halt",
+        attempt=1,
+    )
+    fc, detail = _classify_failure([ev], [], "failed")
+    assert fc == "supervisor_halt"
+    assert "Blocked" in detail
+
+
+def test_classify_failure_locator_miss():
+    from agent.trace import LocateEvent, SupervisorEvent
+
+    from scripts.eval import _classify_failure
+
+    rid = _make_run_id()
+    sup_ev = SupervisorEvent(
+        **_make_base_fields(rid, 1),
+        trigger_event_seq=0,
+        classified_as="LocatorMiss",
+        policy="next_tier",
+        attempt=1,
+    )
+    loc_miss = LocateEvent(
+        run_id=rid,
+        seq=2,
+        ts=_ts(),
+        step_id="s1",
+        intent="button",
+        tier="L1_ax",
+        outcome="miss",
+        candidates=[],
+        chosen=None,
+        cache_action=None,
+        ms=5,
+    )
+    fc, _detail = _classify_failure([sup_ev, loc_miss], [], "failed")
+    assert fc == "locator_miss"
+
+
+def test_classify_failure_tool_error():
+    from agent.trace import ActEvent
+
+    from scripts.eval import _classify_failure
+
+    rid = _make_run_id()
+    ev = ActEvent(
+        **_make_base_fields(rid, 1),
+        tool="click",
+        args={},
+        outcome="error",
+        diff={"error": "TimeoutError"},
+        ms=100,
+    )
+    fc, detail = _classify_failure([ev], [], "failed")
+    assert fc == "tool_error"
+    assert "TimeoutError" in detail
+
+
+def test_classify_failure_validator_fail():
+    from agent.trace import DoneEvent
+
+    from scripts.eval import _classify_failure
+
+    rid = _make_run_id()
+    ev = DoneEvent(
+        **_make_base_fields(rid, 1),
+        result={},
+        evidence={"url": "u", "text_snippet": "t"},
+        verifier={"ok": True},
+    )
+    validators = [{"name": "title.nonempty", "ok": False}]
+    fc, detail = _classify_failure([ev], validators, "failed")
+    assert fc == "validator_fail"
+    assert "title.nonempty" in detail
+
+
+def test_classify_failure_schema_error():
+    from agent.trace import DoneEvent
+
+    from scripts.eval import _classify_failure
+
+    rid = _make_run_id()
+    ev = DoneEvent(
+        **_make_base_fields(rid, 1),
+        result={},
+        evidence={"url": "u", "text_snippet": "t"},
+        verifier={"ok": False, "reasons": ["missing field: title"]},
+    )
+    fc, detail = _classify_failure([ev], [], "failed")
+    assert fc == "schema_error"
+    assert "missing field" in detail
+
+
+def test_classify_failure_no_done_emitted():
+    from scripts.eval import _classify_failure
+
+    fc, _detail = _classify_failure([], [], "failed")
+    assert fc == "no_done_emitted"
+
+
+def test_classify_failure_other():
+    from agent.trace import DoneEvent
+
+    from scripts.eval import _classify_failure
+
+    rid = _make_run_id()
+    ev = DoneEvent(
+        **_make_base_fields(rid, 1),
+        result={},
+        evidence={"url": "u", "text_snippet": "t"},
+        verifier={"ok": True},
+    )
+    validators = [{"name": "title.nonempty", "ok": True}]
+    fc, _detail = _classify_failure([ev], validators, "failed")
+    assert fc == "other"
+
+
+def test_classify_failure_supervisor_halt_beats_tool_error():
+    from agent.trace import ActEvent, SupervisorEvent
+
+    from scripts.eval import _classify_failure
+
+    rid = _make_run_id()
+    sup_ev = SupervisorEvent(
+        **_make_base_fields(rid, 1),
+        trigger_event_seq=0,
+        classified_as="Blocked",
+        policy="halt",
+        attempt=1,
+    )
+    act_ev = ActEvent(
+        **_make_base_fields(rid, 2),
+        tool="click",
+        args={},
+        outcome="error",
+        diff={"error": "boom"},
+        ms=10,
+    )
+    fc, _detail = _classify_failure([sup_ev, act_ev], [], "failed")
+    assert fc == "supervisor_halt"

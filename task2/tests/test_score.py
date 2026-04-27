@@ -365,3 +365,66 @@ def test_generate_scoreboard_backward_compat_missing_mechanism_fields():
     output = generate_scoreboard(data)
     assert "succeeded" in output
     assert "| 0 | 0 | 0 |" in output
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 (Red): scoreboard failure_class column
+# ---------------------------------------------------------------------------
+
+
+def _make_case(
+    cid: str,
+    status: str,
+    *,
+    failure_class=None,
+    include_failure_class_key: bool = True,
+) -> dict:
+    base = {
+        "id": cid,
+        "status": status,
+        "steps": 1,
+        "usd": 0.001,
+        "l_tier_counts": {},
+        "validators": [],
+        "prompt_tokens": 10,
+        "completion_tokens": 5,
+        "latency_ms_total": 100,
+        "latency_ms_per_step": [100],
+        "step_breakdown": [],
+    }
+    if include_failure_class_key:
+        base["failure_class"] = failure_class
+    return base
+
+
+def test_scoreboard_shows_failure_class():
+    from scripts.score import generate_scoreboard
+
+    data = {
+        "run_at": "2026-04-27T00:00:00+00:00",
+        "cases": [_make_case("c1", "failed", failure_class="no_done_emitted")],
+    }
+    output = generate_scoreboard(data)
+    assert "no_done_emitted" in output
+
+
+def test_scoreboard_shows_dash_for_none_failure_class():
+    from scripts.score import generate_scoreboard
+
+    data = {
+        "run_at": "2026-04-27T00:00:00+00:00",
+        "cases": [_make_case("c1", "succeeded", failure_class=None)],
+    }
+    output = generate_scoreboard(data)
+    assert "| - |" in output
+
+
+def test_scoreboard_missing_failure_class_key_shows_dash():
+    from scripts.score import generate_scoreboard
+
+    data = {
+        "run_at": "2026-04-27T00:00:00+00:00",
+        "cases": [_make_case("c1", "succeeded", include_failure_class_key=False)],
+    }
+    output = generate_scoreboard(data)
+    assert "| - |" in output
