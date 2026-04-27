@@ -3,8 +3,6 @@ from __future__ import annotations
 import os
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 import agent.llm as llm_mod
 
 
@@ -16,9 +14,11 @@ def test_build_clients_uses_shared_default_when_env_unset():
     from scripts.eval import build_clients
 
     env = {k: v for k, v in os.environ.items() if k != "LLM_MODEL"}
-    with patch.dict(os.environ, env, clear=True), patch(
-        "scripts.eval.LLMClient"
-    ) as mock_llm, patch("scripts.eval.Browser") as mock_browser:
+    with (
+        patch.dict(os.environ, env, clear=True),
+        patch("scripts.eval.LLMClient") as mock_llm,
+        patch("scripts.eval.Browser") as mock_browser,
+    ):
         mock_llm.return_value = MagicMock()
         mock_browser.return_value = MagicMock()
         build_clients()

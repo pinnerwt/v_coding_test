@@ -13,13 +13,12 @@ from pydantic import BaseModel, field_validator
 from ulid import ULID
 
 from agent.browser import Browser
-from agent.llm import LLMClient
+from agent.llm import _DEFAULT_LLM_MODEL, LLMClient
 from agent.loop import RunResult, loop
 from agent.trace import Run, RunBudget, RunLLM, TraceWriter
 from api.db import get_db_path
 
 _AGENT_VERSION = "0.1.0"
-_DEFAULT_LLM_MODEL = "qwen3-5-27b"
 
 _ZERO_TOTALS: dict[str, Any] = {
     "steps": 0,
