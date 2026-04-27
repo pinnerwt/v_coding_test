@@ -54,6 +54,7 @@ This is an **agent-driven** operation - you will read delta specs and directly e
         - Modifying existing scenarios
         - Changing the requirement description
       - Preserve scenarios/content not mentioned in the delta
+      - **Title-mismatch case:** if the delta's `### Requirement: <title>` differs from the main spec's existing requirement title (e.g. delta says "Variant expansion with optional shared cache" but main spec has "Variant expansion") and there is NO accompanying `## RENAMED Requirements` section, treat this as content-update-only: keep the main spec's existing title and merge the delta's new fields/scenarios under it. A title rename without a `RENAMED` block is almost always drift in the delta authoring, not an intentional rename. If the new title is genuinely better, raise it as a separate decision rather than silently renaming.
 
       **REMOVED Requirements:**
       - Remove the entire requirement block from main spec
