@@ -136,18 +136,6 @@ def _aggregate_diagnostics(writer: TraceWriter, run_id: str) -> tuple[list[dict]
     )
 
 
-def _expand_variants(cases: list[dict]) -> list[dict]:
-    result: list[dict] = []
-    for case in cases:
-        variants = case.get("variants")
-        if variants:
-            for v in variants:
-                result.append({**case, "id": f"{case['id']}-{v}"})
-        else:
-            result.append(case)
-    return result
-
-
 def _open_trace_run(writer: TraceWriter, run_id: str, case: dict) -> None:
     budget = case.get("budget", {})
     run = Run(

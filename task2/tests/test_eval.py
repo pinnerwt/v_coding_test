@@ -823,3 +823,73 @@ def test_run_suite_shared_cache_v2_invalidation(tmp_path):
     v2_case = next(c for c in data["cases"] if c["id"] == "maintenance-drift-rename-v2")
     assert v2_case["cache_events"].get("invalidations", 0) >= 1
     assert v2_case["status"] == "succeeded"
+
+
+def test_run_suite_shared_cache_same_instance_passed_to_variants(tmp_path):
+    import scripts.eval as eval_mod
+
+    received_caches: list = []
+    original_run_case = eval_mod._run_case
+
+    def capture_run_case(case, llm_client, browser, cache=None):
+        received_caches.append(cache)
+        return original_run_case(case, llm_client, browser, cache=cache)
+
+    with (
+        patch("scripts.eval.loop", return_value=_DRIFT_RENAME_CANNED_V1),
+        patch("scripts.eval._run_case", side_effect=capture_run_case),
+    ):
+        run_suite(cases=[_DRIFT_RENAME_CASE], results_dir=tmp_path)
+
+    assert len(received_caches) == 2
+    assert received_caches[0] is not None
+    assert received_caches[0] is received_caches[1]
+
+
+def test_run_suite_no_shared_cache_when_absent(tmp_path):
+    case_no_shared_cache = {**_DRIFT_RENAME_CASE}
+    case_no_shared_cache.pop("shared_cache", None)
+
+    import scripts.eval as eval_mod
+
+    received_caches: list = []
+    original_run_case = eval_mod._run_case
+
+    def capture_run_case(case, llm_client, browser, cache=None):
+        received_caches.append(cache)
+        return original_run_case(case, llm_client, browser, cache=cache)
+
+    with (
+        patch("scripts.eval.loop", return_value=_DRIFT_RENAME_CANNED_V1),
+        patch("scripts.eval._run_case", side_effect=capture_run_case),
+    ):
+        run_suite(cases=[case_no_shared_cache], results_dir=tmp_path)
+
+    assert all(c is None for c in received_caches)
+
+
+def test_maintenance_drift_rename_yaml_loads():
+    cases = load_cases("eval/cases/maintenance-drift-rename.yaml")
+    assert len(cases) == 1
+    c = cases[0]
+    assert c["fixture"] is True
+    assert c["category"] == "drift"
+    assert c["variants"] == ["v1", "v2"]
+    assert c["shared_cache"] is True
+
+
+def test_correction_l1_miss_l2_hit_yaml_loads():
+    cases = load_cases("eval/cases/correction-l1-miss-l2-hit.yaml")
+    assert len(cases) == 1
+    c = cases[0]
+    assert c["fixture"] is True
+    assert c["category"] == "correction"
+    assert c["budget"]["steps"] >= 3
+
+
+def test_correction_replan_yaml_loads():
+    cases = load_cases("eval/cases/correction-replan.yaml")
+    assert len(cases) == 1
+    c = cases[0]
+    assert c["fixture"] is True
+    assert c["category"] == "correction"
