@@ -1395,3 +1395,53 @@ def test_run_case_failure_class_tool_error_when_loop_raises():
     assert result.failure_class == "tool_error"
     assert result.failure_detail is not None
     assert "kaboom" in result.failure_detail
+
+
+# ---------------------------------------------------------------------------
+# implement-skip-reason-tagging (Red phase)
+# ---------------------------------------------------------------------------
+
+
+def test_skip_reason_required_when_skipped():
+    with pytest.raises(ValueError):
+        CaseResult(
+            id="x",
+            status="skipped",
+            steps=0,
+            usd=0.0,
+            l_tier_counts={},
+            validators=[],
+            skip_reason=None,
+        )
+
+
+def test_skip_reason_rejects_unknown_value():
+    with pytest.raises(ValueError):
+        CaseResult(
+            id="x",
+            status="skipped",
+            steps=0,
+            usd=0.0,
+            l_tier_counts={},
+            validators=[],
+            skip_reason="bogus",
+        )
+
+
+def test_live_disabled_skip_reason(tmp_path):
+    live_case = {**_FIXTURE_CASE, "fixture": False}
+    out = run_suite(cases=[live_case], results_dir=tmp_path, live=False)
+    data = json.loads(out.read_text())
+    assert data["cases"][0]["skip_reason"] == "live_disabled"
+
+
+def test_fixture_missing_skip_reason(tmp_path):
+    case_with_missing_fixture = {
+        **_FIXTURE_CASE,
+        "fixture": True,
+        "fixture_path": "/nonexistent/path/to/fixture.html",
+    }
+    out = run_suite(cases=[case_with_missing_fixture], results_dir=tmp_path, live=True)
+    data = json.loads(out.read_text())
+    assert data["cases"][0]["status"] == "skipped"
+    assert data["cases"][0]["skip_reason"] == "fixture_missing"
