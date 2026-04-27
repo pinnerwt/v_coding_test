@@ -63,3 +63,5 @@ Update /done_pr to insert benchmark results before the commit. Add a PR workflow
 /new_task2 (observe ax tree)
 
 /new_task2 (plan-replan)
+
+Create a script that - run after we finished the benchmark in /done_pr, - read all the results.json in task2/benchmark/*/ , - create different figures that will be displayed at the top of README.md , showcase the benchmark evolution over time.
