@@ -134,5 +134,3 @@ def test_write_trends_creates_three_svgs(tmp_path):
     assert (out_dir / "pass_rate.svg").exists()
     assert (out_dir / "latency.svg").exists()
     assert (out_dir / "cost.svg").exists()
-
-
