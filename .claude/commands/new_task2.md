@@ -19,7 +19,7 @@ ls openspec/changes/archive/ 2>/dev/null
 ls openspec/changes/ 2>/dev/null
 ```
 
-Match archived/active change names against the TDD ticket list to determine the **lowest-numbered ticket** that is not yet done. If unsure, use the **AskUserQuestion** tool to confirm with the user before proceeding.
+Match archived/active change names against the TDD ticket list to determine the **lowest-numbered ticket** that is not yet done. Archived directories carry a date prefix (e.g. `2026-04-25-implement-llm-client`); strip that when matching against ticket slugs. If unsure, use the **AskUserQuestion** tool to confirm with the user before proceeding.
 
 Derive a kebab-case change name from the ticket title. Convention: `implement-<short-slug>`, e.g.:
 - Ticket 3 "`locate.py` L1" → `implement-locate-l1`
@@ -35,7 +35,7 @@ From the current branch, create and switch to a new branch:
 git checkout -b task2/<change-name>
 ```
 
-If the working tree is dirty, **stop and ask** the user how to proceed — do not stash or discard.
+If the working tree is dirty, **stop and ask** the user how to proceed — do not stash or discard. The most common case is a leftover `task2/plan.md` modification from a prior run's Step 11 (follow-up ticket appended but never committed/pushed). When in doubt, surface the diff and offer four options via **AskUserQuestion**: (a) commit on master and proceed, (b) carry into next branch (commit it as a `docs(task2):` on the new branch — this is the typical answer for unpushed Step 11 work), (c) discard, (d) pause for manual handling. Never silently stash or run `git restore`.
 
 ### 3. Scaffold the OpenSpec change
 
@@ -134,6 +134,13 @@ Invoke the `/simplify` skill scoped to the diff introduced on this branch. Focus
 - **Quality** — naming, dead code, ruff cleanliness.
 - **Efficiency** — obvious wasted work in hot paths (locator pipeline, observation building).
 
+**Right-size the review.** The `/simplify` skill defaults to fanning out three parallel subagents (reuse / quality / efficiency). For small diffs (under ~150 changed lines, e.g. a single-module ticket like #23 CDP cache), the orchestrator can do the same review inline and apply fixes directly — skip the fan-out. For larger diffs (multi-module, eval changes, scoring overhauls) keep the three parallel agents, since the cost of missing a finding outweighs the subagent overhead.
+
+**Watch for these specific patterns** that this loop has produced before:
+- **Dead fallback branches.** When the ticket adds a new attribute to a class (`self._cdp_sessions`, `self._foo`) and you've already updated test fixtures / `SimpleNamespace` doubles to set it, any `getattr(obj, attr, None)` "fallback" branch is dead code. Drop the branch entirely; assume the attribute is present. Keep it only if a real, non-test caller exists.
+- **Per-test boilerplate.** Three new tests building the same `data:text/html;base64,...` URL inline → hoist to a module-level constant (`_BUTTON_DATA_URL`) or fixture. Ditto duplicated `import base64 as _b64` shadowing a module-level `import base64`.
+- **Branch-duplicated `try/finally`.** If two if/else branches both end in the same `cdp.send(...)` + `try: cdp.detach() except: pass` pattern, consolidate to one send + one finally below the if/else and gate the detach on a `transient` flag. (Then per the dead-branch rule above, often one branch can be removed entirely.)
+
 Apply the simplifier's suggestions only where they hold under the existing tests. From `task2/`, re-run the full pre-commit gate (`uv run ruff format . && uv run ruff check . && uv run pytest`) to confirm green.
 
 Commit the cleanup:
@@ -151,6 +158,8 @@ bash task2/smoke_test.sh
 ```
 
 The script boots `uv run uvicorn api.server:app` on `127.0.0.1:8765`, posts a task ("Open https://example.com and return the H1 text"), polls until terminal status, and exits 0 only when status is `succeeded` or `unverified`. Server log is at `/tmp/task2-smoke-api.log` if anything goes wrong.
+
+**Known harmless warnings.** The smoke script currently emits `[smoke] WARN: trace is empty (event wiring lands in ticket #20)` and `totals: { steps: 0, llm_calls: 0, ... }` because the run-level event wiring is tracked under ticket #20. This is **not** a regression — it is the pre-existing state until ticket #20 lands. Surface it once in the PR's "Notes for reviewer" rather than treating it as a smoke failure or extending the regression-test loop.
 
 **On pass:** proceed to Step 10.
 
