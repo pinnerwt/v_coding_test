@@ -309,7 +309,7 @@ def _emit_supervisor_event(
         step_id=step_id,
         trigger_event_seq=trigger_event_seq,
         classified_as=classified_as,
-        policy=decision.policy,  # type: ignore[arg-type]
+        policy=decision.policy,
         attempt=decision.attempt,
     )
     trace_writer.append_event(event)

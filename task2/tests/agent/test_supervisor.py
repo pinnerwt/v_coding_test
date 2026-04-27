@@ -11,8 +11,10 @@ from agent.trace import EscalationPolicy
 
 
 def test_escalation_decision_policy_annotated_as_escalation_policy():
-    hints = EscalationDecision.__dataclass_fields__
-    assert hints["policy"].type is EscalationPolicy
+    import typing
+
+    hints = typing.get_type_hints(EscalationDecision)
+    assert hints["policy"] is EscalationPolicy
 
 
 def test_supervisor_constructs_with_defaults():
