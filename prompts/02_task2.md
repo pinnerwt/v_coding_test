@@ -73,4 +73,8 @@ Can you check how we show the benchmark results in /done_pr , how we adjust the 
 I got a question for you. When writing skills, shall I divide different parts into different minor files, and read them when we are in the next step? I think this would help since we will only read the skill at the very beginning of the prompt process. Read different files make sure the implementations is more dynamic and that the implementation will be in more recent context.
 
 
-Now, let's create a meta skill that call /new_task2 , then /review_task2 with subagent and finally /done_pr . How to make sure that these three skills will not pollute the context?
+Now, let's create a meta skill that call /full_task2 , then /review_task2 with subagent and finally /done_pr . How to make sure that these three skills will not pollute the context?
+
+/full_task2 (with lots of iterations)
+
+Let's check the benchmark results. Propose different ways to improve the benchmark in task2/plan.md

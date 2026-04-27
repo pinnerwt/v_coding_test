@@ -11,19 +11,19 @@
 
 Cost and latency are split into passed vs. failed cases: a failing case bails out early, so a higher pass rate naturally raises totals. Compare the green (passed) and red (failed) series within a branch, not the totals across branches.
 
-### Latest run — `task2-implement-trace-iter-events` (2026-04-27 10:27 UTC)
+### Latest run — `task2-implement-loop-step-id` (2026-04-27 11:47 UTC)
 
 | Case | Status | Steps | Latency | Tokens | USD |
 |---|---|---:|---:|---:|---:|
-| `correction-l1-miss-l2-hit` | failed | 2 | 24.6 s | 2,594 | $0.0033 |
-| `correction-replan` | failed | 2 | 66.7 s | 3,983 | $0.0060 |
-| `drift-submit-form-v1` | failed | 3 | 41.2 s | 4,578 | $0.0057 |
-| `drift-submit-form-v2` | failed | 3 | 42.6 s | 6,935 | $0.0081 |
-| `fixture-count` | succeeded | 2 | 29.1 s | 4,331 | $0.0051 |
-| `fixture-heading` | succeeded | 2 | 24.8 s | 4,118 | $0.0048 |
-| `maintenance-drift-rename-v1` | failed | 1 | 24.1 s | 2,384 | $0.0030 |
-| `maintenance-drift-rename-v2` | failed | 1 | 30.0 s | 2,584 | $0.0034 |
-| **Total (8 cases, 2 passed)** | | 16 | 283.1 s | 31,507 | $0.0394 |
+| `correction-l1-miss-l2-hit` | failed | 2 | 26.2 s | 2,594 | $0.0033 |
+| `correction-replan` | failed | 2 | 32.0 s | 2,796 | $0.0037 |
+| `drift-submit-form-v1` | failed | 2 | 29.1 s | 2,733 | $0.0036 |
+| `drift-submit-form-v2` | failed | 2 | 27.6 s | 2,733 | $0.0036 |
+| `fixture-count` | failed | 0 | 0 ms | 0 | $0.0000 |
+| `fixture-heading` | succeeded | 4 | 53.9 s | 28,230 | $0.0294 |
+| `maintenance-drift-rename-v1` | failed | 2 | 37.4 s | 11,250 | $0.0122 |
+| `maintenance-drift-rename-v2` | failed | 2 | 38.2 s | 11,286 | $0.0122 |
+| **Total (8 cases, 1 passed)** | | 16 | 244.3 s | 61,622 | $0.0679 |
 <!-- TRENDS:END -->
 
 

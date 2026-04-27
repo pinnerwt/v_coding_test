@@ -1,8 +1,5 @@
-# plan-event-trace-writer Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change implement-plan-event-trace-writer. Update Purpose after archive.
-## Requirements
 ### Requirement: loop() accepts optional TraceWriter for plan event persistence
 
 The `loop()` function in `agent.loop` SHALL accept an optional keyword argument `trace_writer: TraceWriter | None = None`. When `trace_writer` is not `None`, `PlanEvent` rows SHALL be written through it with:
@@ -82,42 +79,3 @@ Note: cross-kind ordering between plan and decision/observation events is intent
 - **WHEN** the loop completes
 - **THEN** the `events` list SHALL NOT contain any `PlanEvent` objects
 - **AND** the `TraceWriter` SHALL contain the plan event row
-
-### Requirement: loop() accepts run_id parameter for trace correlation
-
-The `loop()` function SHALL accept an optional keyword argument `run_id: str | None = None`. This value is used as the `run_id` field when constructing `PlanEvent` objects written through the `TraceWriter`. When `trace_writer` is `None`, `run_id` is ignored.
-
-#### Scenario: run_id passed to loop is reflected in plan event payload
-
-- **GIVEN** `run_id="my-specific-run"` is passed to `loop()`
-- **AND** a `TraceWriter` is passed as `trace_writer`
-- **WHEN** the loop emits a plan event
-- **THEN** the plan event's `run_id` field SHALL equal `"my-specific-run"`
-
-### Requirement: loop() rejects trace_writer without run_id
-
-The `loop()` function SHALL raise `ValueError` when called with a non-`None` `trace_writer` and a `None` `run_id`. This prevents a silent fallback to the in-memory `events` path that would lose plan-event persistence in production callers.
-
-#### Scenario: trace_writer without run_id raises ValueError
-
-- **GIVEN** a `TraceWriter` opened in `:memory:`
-- **WHEN** `loop()` is called with `trace_writer=writer` and no `run_id`
-- **THEN** the call SHALL raise `ValueError` with a message mentioning `run_id`
-
-### Requirement: _emit_plan_event reason parameter is Literal typed
-
-The internal function `_emit_plan_event` in `agent.loop` SHALL have its `reason` parameter typed as `Literal["initial", "replan"]`. The existing `# type: ignore[arg-type]` comment on the calls into `PlanEvent(reason=...)` SHALL be removed. `uv run ruff check .` SHALL exit 0 after this change.
-
-#### Scenario: ruff check passes with no type: ignore comment
-
-- **WHEN** `uv run ruff check .` is run from the `task2/` directory after the change
-- **THEN** it SHALL exit with code 0 and report no errors related to `loop.py`
-
-### Requirement: loop.py has no comments or docstrings in production code
-
-The production file `task2/agent/loop.py` SHALL contain zero inline comments (including `# type: ignore`) and zero docstrings after this change, consistent with the existing no-comments rule for `task2/agent/` production files.
-
-#### Scenario: loop.py passes ruff format and ruff check after change
-
-- **WHEN** `uv run ruff format . && uv run ruff check .` is run from `task2/`
-- **THEN** both commands SHALL exit 0

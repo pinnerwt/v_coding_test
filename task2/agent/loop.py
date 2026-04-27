@@ -216,6 +216,7 @@ def _emit_locate_event(
     outcome: Literal["hit", "miss", "ambiguous", "error"],
     cache_action: Literal["read", "write", "invalidate"] | None,
     chosen: dict[str, Any] | None,
+    step_id: str | None = None,
 ) -> None:
     if trace_writer is None or run_id is None:
         return
@@ -224,7 +225,7 @@ def _emit_locate_event(
         run_id=run_id,
         seq=seq,
         ts=datetime.now(UTC).isoformat(),
-        step_id=None,
+        step_id=step_id,
         intent=intent,
         tier=tier,
         outcome=outcome,
@@ -244,6 +245,7 @@ def _locate_with_supervisor(
     cache: LocatorCache | None = None,
     trace_writer: TraceWriter | None = None,
     run_id: str | None = None,
+    step_id: str | None = None,
 ) -> LocateResult:
     if cache is None:
         return _locate_via_ladder(page, intent, supervisor)
@@ -261,6 +263,7 @@ def _locate_with_supervisor(
                 outcome="miss",
                 cache_action="invalidate",
                 chosen=None,
+                step_id=step_id,
             )
         else:
             live_fp = _canonical_ax_fingerprint(page, role=entry.role, selector=entry.selector)
@@ -274,6 +277,7 @@ def _locate_with_supervisor(
                     outcome="miss",
                     cache_action="invalidate",
                     chosen=None,
+                    step_id=step_id,
                 )
             else:
                 _emit_locate_event(
@@ -288,6 +292,7 @@ def _locate_with_supervisor(
                         "selector": entry.selector,
                         "ax_fingerprint": entry.ax_fingerprint,
                     },
+                    step_id=step_id,
                 )
                 return LocateResult(
                     tier="cache",
@@ -333,6 +338,7 @@ def _locate_with_supervisor(
             "selector": result.selector,
             "ax_fingerprint": stored_fingerprint,
         },
+        step_id=step_id,
     )
     return result
 
@@ -346,6 +352,7 @@ def _dispatch(
     locator_cache: LocatorCache | None = None,
     trace_writer: TraceWriter | None = None,
     run_id: str | None = None,
+    step_id: str | None = None,
 ) -> str:
     if tool_name == "goto":
         url = args.get("url")
@@ -365,6 +372,7 @@ def _dispatch(
                     cache=locator_cache,
                     trace_writer=trace_writer,
                     run_id=run_id,
+                    step_id=step_id,
                 )
             except LocatorMiss as miss:
                 return f"Error: could not locate element for intent {intent!r} ({miss})"
@@ -385,6 +393,7 @@ def _emit_plan_event(
     call_id: str,
     trace_writer: TraceWriter | None = None,
     run_id: str | None = None,
+    step_id: str | None = None,
 ) -> None:
     use_writer = trace_writer is not None and run_id is not None
     seq = trace_writer.next_seq(run_id) if use_writer else 0
@@ -392,7 +401,7 @@ def _emit_plan_event(
         run_id=run_id if use_writer else "loop",
         seq=seq,
         ts=datetime.now(UTC).isoformat() if use_writer else "",
-        step_id=None,
+        step_id=step_id,
         reason=reason,
         steps=steps,
         llm_call_id=call_id,
@@ -438,6 +447,7 @@ def loop(
     for _ in range(max_steps):
         step_num += 1
         t0 = time.monotonic()
+        _step_id = f"{run_id}:step-{step_num}" if run_id is not None else None
 
         observation = observe.build_observation(browser, last_actions)
         last_actions = []
@@ -454,6 +464,7 @@ def loop(
                 str(uuid.uuid4()),
                 trace_writer=trace_writer,
                 run_id=run_id,
+                step_id=_step_id,
             )
 
         assert active_plan is not None
@@ -575,6 +586,7 @@ def loop(
                 locator_cache=locator_cache,
                 trace_writer=trace_writer,
                 run_id=run_id,
+                step_id=_step_id,
             )
 
             is_error = tool_result.startswith("Error:")
@@ -612,6 +624,7 @@ def loop(
                         str(uuid.uuid4()),
                         trace_writer=trace_writer,
                         run_id=run_id,
+                        step_id=_step_id,
                     )
                     break
                 else:
