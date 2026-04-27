@@ -191,7 +191,7 @@ def _classify_failure(
     failed_validators = [
         v for v in validators if not v.get("ok", True) and v.get("name") != "exception"
     ]
-    if failed_validators:
+    if done_events and failed_validators:
         names = ", ".join(v["name"] for v in failed_validators)
         return "validator_fail", names
 

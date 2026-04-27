@@ -1352,6 +1352,14 @@ def test_classify_failure_supervisor_halt_beats_tool_error():
     assert fc == "supervisor_halt"
 
 
+def test_classify_failure_validator_fail_requires_done_event():
+    from scripts.eval import _classify_failure
+
+    validators = [{"name": "title.nonempty", "ok": False}]
+    fc, _detail = _classify_failure([], validators, "failed")
+    assert fc == "no_done_emitted"
+
+
 def test_classify_failure_validator_fail_beats_schema_error():
     from agent.trace import DoneEvent
     from scripts.eval import _classify_failure
