@@ -18,6 +18,8 @@ Wraps up an OpenSpec-driven PR end-to-end: archive → commit → push → merge
 
    **Critical ordering:** if the change has delta specs under `openspec/changes/<name>/specs/`, the `opsx:sync` step MUST run *before* `mv`-ing the directory to `archive/`. The archive skill's prompt assesses sync state and offers to invoke `/opsx:sync`; accept it (or invoke `/opsx:sync <name>` yourself) **before** the move. Once the directory has moved, the deltas are no longer at the path the sync skill looks at, and the main specs will silently miss the update. This is especially important when a delta introduces a *new* capability (a directory under `specs/` that does not yet exist under `openspec/specs/`) — sync is the only step that creates the new main spec.
 
+   **CLI fallback after manual sync:** if you bypass the `opsx:archive` skill and invoke `openspec archive <name> --yes` directly (e.g. mid-`/full_task2` after `/opsx:sync` already applied the deltas), the CLI will refuse with `... ADDED failed for header "<requirement>" - already exists` and abort. Pass `--skip-specs`: `openspec archive <name> --yes --skip-specs`. The skill's `mv`-based path does not hit this because it never re-applies deltas; only the CLI does. Confirmed in PR #55's `/done_pr` run on 2026-04-27 — sync had been completed by hand, the CLI tried to re-apply, and `--skip-specs` was the unblock.
+
 1a. **Record task2 benchmark (if task2 was touched).**
    - Detect: `git diff --name-only origin/master...HEAD -- task2/` — if empty, skip this step entirely.
    - **Pre-check Qwen reachability** before starting the benchmark (the run takes minutes and silently degrades with a dead endpoint):
