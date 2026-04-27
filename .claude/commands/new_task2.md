@@ -92,7 +92,7 @@ Agent call:
 - `prompt`: must include:
   - The exact change name and the path `openspec/changes/<change-name>/`.
   - The current branch name (`task2/<change-name>`) and instruction: "Stay on this branch. Do not switch branches, rebase, push, or open a PR — those are handled outside this subagent."
-  - Instruction: "Invoke the `/opsx:apply` skill on `<change-name>` and drive every task in `tasks.md` to completion under TDD discipline (red → green → refactor; tests live under `task2/tests/`)."
+  - Instruction: "Invoke the `/opsx:apply` skill on `<change-name>` and drive every task in `tasks.md` to completion under TDD discipline (red → green → refactor; tests live under `task2/tests/`). **As you complete each numbered task, edit `openspec/changes/<change-name>/tasks.md` to flip its `- [ ]` checkbox to `- [x]`** and stage that edit into the same commit that satisfies the task. Do not leave the file with all-unchecked boxes at the end and rely on a separate bookkeeping commit — that is a contract violation. Why: confirmed in PR #64 on 2026-04-27, the implementer reported 'all tasks complete' but every box was still `[ ]`, forcing a manual `sed` + extra `chore(task2): mark ... tasks complete` commit. How to apply: after each `feat(task2):` or `fix(task2):` commit, run `grep -c '\[ \]' openspec/changes/<change-name>/tasks.md` and confirm the count dropped by the number of tasks just satisfied."
   - **Tooling** — every command runs from the `task2/` directory:
     - One-time setup if not already done: `uv sync && uv run playwright install chromium`.
     - Tests: `uv run pytest`.
