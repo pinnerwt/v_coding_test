@@ -313,6 +313,48 @@ Candidate tickets, ordered roughly by impact-per-effort. Each is TDD-shaped so i
 
 45. **Surface tracebacks from `_run_agent`'s internal-error path.** `task2/api/server.py:93-104` catches `Exception` and writes a `final.failure.reason="internal error"` row, but the `except Exception: pass` block (`api/server.py:103-104`) swallows the underlying traceback entirely — it never reaches the uvicorn log, so a smoke-test failure surfaces only as `status=failed, reason="internal error"`, with no signal as to whether the cause was an LLM 404, a Playwright timeout, an import error, or a database lock. Observed during ticket #32's smoke run: first invocation timed out at 60s, server log contained only INFO request lines, and the diagnostic had to be reproduced by hand-instrumenting `_run_agent` in a one-off script. Add structured error logging on the outer `except Exception` (e.g. `logger.exception("agent run failed", extra={"run_id": run_id})`) so the traceback lands in stderr / uvicorn's structured log, and keep the inner `except Exception: pass` only around the `writer.close_run` retry. Tests: a synthetic `_run_agent(run_id, task_req)` where `loop()` raises `RuntimeError("boom")` produces a stderr line containing `RuntimeError: boom` and the file/line of the raise, while still writing the `final.failure.reason="internal error"` row; the inner-close swallowing is unchanged. *Why useful:* removes a recurring "smoke failed but I can't tell why" debugging round that adds 5–10 min per failed iteration.
 
+## Undone
+
+Tickets not yet merged, ordered by urgency. `/new_task2` step 1 selects from this list — pick the highest-urgency entry available; tie-break by lowest ticket number.
+
+New tickets are appended here by `/new_task2` step 11 alongside the full text in `## TDD tickets` / `## Benchmark improvements`. When a ticket merges, the corresponding entry should be removed (currently a manual cleanup; track under a future skill update to `/done_pr`).
+
+Urgency tags:
+- **P0** — unblocks other tickets or removes recurring debugging friction.
+- **P1** — observed bug or correctness gap blocking the brief's done bar.
+- **P2** — measurable improvement to the eval / scoreboard / mechanisms.
+- **P3** — nice-to-have polish.
+
+### P0 — unblocks other work
+
+- **#44** — Align eval-runner `LLM_MODEL` default with `api/server.py`. Every Task 7.1 currently defers because the eval default (`qwen3`) 404s against the local Qwen (`qwen3-5-27b`).
+- **#45** — Surface tracebacks from `_run_agent`'s internal-error path. Removes the recurring "smoke failed but I can't tell why" debug round.
+
+### P1 — observed bugs
+
+_(none currently)_
+
+### P2 — measurable improvements
+
+- **#33** — Per-category pass-rate rows + done-bar traffic lights in scoreboard.
+- **#34** — Skip-reason tagging.
+- **#35** — N-run statistical bench mode (`--repeats N`).
+- **#36** — Auto-diff scoreboard against master baseline.
+- **#37** — Canary suite: must-always-pass cases, hard-blocking on regression.
+- **#38** — Per-step token / latency breakdown surfacing.
+- **#41** — Cache-hit visibility separate from invalidations.
+- **#42** — Failure-clustering histogram across the suite (depends on #31, which is done).
+- **#43** — `tool_error` should also classify `ActEvent(outcome="timeout")`.
+
+### P3 — nice-to-have
+
+- **#39** — Robustness mini-suite (prompt injection, malformed fixtures).
+- **#40** — Cost & latency budget overruns as soft failures (`near_budget` flag).
+
+### In flight
+
+- **#32** — Audit mechanism-firing rates [in PR #62; awaiting `/done_pr` archive + merge]. Will be removed from this rubric on archive.
+
 ## Honest risks / tradeoffs
 
 - **Local Qwen3.5 27B is weaker than frontier on long-horizon planning.** Mitigation: short bounded plans, constrained tool-call grammar, structured observations. Will measure and surface in README.
