@@ -11,7 +11,7 @@ The system SHALL provide `agent.loop.loop(task, browser, llm_client, *, max_step
 - `step_breakdown[i]` SHALL have `step=i+1`, `latency_ms`, `prompt_tokens`, `completion_tokens`, `usd`, `tool_calls` (list of tool name strings called in that step).
 - The loop SHALL call `agent.plan.plan()` once after the first observation and inject "Plan progress" into every subsequent decision user message.
 - On supervisor `policy="halt"`, the loop SHALL trigger at most one `agent.plan.replan()` before returning `RunResult(status="failed")`.
-- The new `locator_cache: LocatorCache | None = None` kwarg SHALL be accepted and, when not `None`, threaded into every `locate()` call made during `read` tool dispatch with a non-empty `intent`. When `None`, the loop SHALL not pass any cache to `locate()` (current default behavior is preserved for all existing callers).
+- The new `locator_cache: LocatorCache | None = None` kwarg SHALL be accepted and, when not `None`, threaded as the cache argument into `_locate_with_supervisor` during `read` tool dispatch with a non-empty `intent`. When `None`, the loop SHALL not pass any cache to `_locate_with_supervisor` (current default behavior is preserved for all existing callers).
 - When `locator_cache` is not `None` AND `trace_writer` and `run_id` are also provided, the loop SHALL emit a `LocateEvent` for each cache action taken inside `_locate_with_supervisor`:
   - `cache_action="read"` + `outcome="hit"` + `tier="cache"` when a cached entry's live fingerprint matches.
   - `cache_action="invalidate"` + `outcome="miss"` + `tier="cache"` whenever `cache.invalidate(...)` is called.
@@ -39,14 +39,14 @@ The system SHALL provide `agent.loop.loop(task, browser, llm_client, *, max_step
 #### Scenario: locator_cache=None leaves existing callers unaffected
 
 - **WHEN** `loop(task, browser, llm_client)` is called without the `locator_cache` argument (default `None`)
-- **THEN** the loop SHALL behave identically to before this change: no cache is passed to `locate()` calls, and no `LocateEvent` with `cache_action` is emitted for cache-related reasons
+- **THEN** the loop SHALL behave identically to before this change: no cache is passed to `_locate_with_supervisor`, and no `LocateEvent` with `cache_action` is emitted for cache-related reasons
 
 #### Scenario: locator_cache is threaded into read dispatch when provided
 
 - **GIVEN** a shared `LocatorCache` instance `cache` passed as `locator_cache=cache` to `loop()`
 - **AND** the LLM emits a `read(intent="Submit button")` tool call
 - **WHEN** the loop dispatches that tool call
-- **THEN** `agent.locate.locate(page, "Submit button", cache=cache)` SHALL be called (the cache object is forwarded)
+- **THEN** `_locate_with_supervisor(page, "Submit button", supervisor, cache=cache, ...)` SHALL be called with the cache forwarded as the cache keyword argument
 
 #### Scenario: Cache hit from v1 is invalidated when loop runs on v2 page
 
