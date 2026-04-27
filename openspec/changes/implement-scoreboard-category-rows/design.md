@@ -23,7 +23,7 @@
 
 ### Suite derivation: id prefix matching, not YAML category field
 
-`score.py` only sees the results JSON; it has no access to case YAML at scoreboard time. Case IDs already carry suite information in their prefixes (`drift-`, `fixture-`, `live-`, `maintenance-drift-`, `correction-`). Prefix matching against `SUITE_THRESHOLDS[suite]["id_prefixes"]` is O(n·p) and deterministic. Cases not matching any prefix fall into an "other" bucket with no threshold, rendered without a traffic-light glyph.
+`score.py` only sees the results JSON; it has no access to case YAML at scoreboard time. Case IDs already carry suite information in their prefixes (`drift-`, `fixture-`, `live-`, `maintenance-drift-`, `correction-`). Prefix matching against `SUITE_THRESHOLDS[suite]["id_prefixes"]` is O(n·p) and deterministic. Cases not matching any prefix are silently omitted from the category summary so the summary surfaces only the suites the Done bar names.
 
 **Alternative considered**: encoding suite in the results JSON at eval time. Rejected — it would require touching the eval pipeline and the results schema, adding scope beyond ticket #33.
 
@@ -49,7 +49,7 @@ A `dict[str, dict]` keyed by suite identifier makes it easy to iterate in a stab
 
 ## Risks / Trade-offs
 
-- [Risk] A new case id that doesn't follow existing prefix conventions will silently land in "other" with no threshold. → Mitigation: "other" bucket is visible in the summary table; implementers will see it in test output.
+- [Risk] A new case id that doesn't follow existing prefix conventions will be silently absent from the category summary. → Mitigation: it still appears in the per-case table below, so a missing suite-row is the signal to extend `SUITE_THRESHOLDS`.
 - [Risk] The category summary table is rendered as plain text lines (not a markdown table) per the ticket's example format. If reviewers prefer a markdown table, the format will need revisiting. → Mitigation: the spec scenario tests the exact rendered lines; changing format requires updating the spec first.
 - [Risk] Unicode glyphs may not render in some CI log environments. → Acceptable: GitHub markdown and the Zeabur-hosted README render them correctly.
 

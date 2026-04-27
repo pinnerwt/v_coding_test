@@ -6,7 +6,7 @@ The scoreboard currently shows only aggregate totals, making it impossible to te
 
 - `task2/scripts/score.py` gains a module-level `SUITE_THRESHOLDS` config block mapping suite keys to `name`, `id_prefixes`, and `target_pct`.
 - `generate_scoreboard()` is extended to prepend a **category summary table** above the existing per-case table. Each row shows: suite name, passed/ran count, percentage, target, and a traffic-light symbol (✅ / ❌ / ⏭️).
-- Cases are bucketed into suites by matching their `id` field against `id_prefixes` in `SUITE_THRESHOLDS`; unmatched cases fall into an "other" bucket with no threshold.
+- Cases are bucketed into suites by matching their `id` field against `id_prefixes` in `SUITE_THRESHOLDS`; unmatched cases are silently omitted from the category summary.
 - A new vendored fixture `task2/tests/fixtures/score_categories_results.json` is authored to drive the new tests.
 - New tests in `task2/tests/test_score.py` assert the exact category summary lines rendered by `generate_scoreboard()`.
 
