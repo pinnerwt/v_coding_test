@@ -142,17 +142,25 @@ def test_stub_llm_client_returns_in_order():
     )
 
     stub = StubLLMClient([r1, r2])
-    assert stub.chat([]) is r1
-    assert stub.chat([]) is r2
+    assert stub.chat([], tools=[]) is r1
+    assert stub.chat([], tools=[]) is r2
     assert stub.responses_consumed == [r1, r2]
+
+
+def test_stub_llm_client_plan_call_returns_stub_plan():
+    stub = StubLLMClient([])
+    result = stub.chat([])
+    assert result.content is not None
+    assert "steps" in result.content
+    assert stub.responses_consumed == []
 
 
 def test_stub_llm_client_exhausted_returns_noop():
     r1 = _make_chat_response("goto", {"url": "http://a"})
     stub = StubLLMClient([r1])
 
-    _first = stub.chat([])
-    second = stub.chat([])  # exhausted
+    _first = stub.chat([], tools=[])
+    second = stub.chat([], tools=[])  # exhausted
 
     assert second.tool_calls == []
     assert second.finish_reason == "stop"
@@ -1104,6 +1112,29 @@ def test_replay_run_normalizes_dict_form_tool_arguments(tmp_path):
 
     result = replay_run(fixture)
     assert result.matched is True, f"Expected match; got divergence={result.first_divergence!r}"
+
+
+def test_observation_from_call_strips_plan_progress_prefix():
+    from agent.replay import _observation_from_call
+
+    obs = {"url": "http://x/", "title": "Hi", "text": "the body"}
+    user_content = f"Plan progress:\n1. find it\n2. return it\n\nCurrent state: {json.dumps(obs)}"
+    call = LLMCallEvent(
+        run_id="r",
+        seq=1,
+        ts="2024-01-01T00:00:00Z",
+        step_id="s",
+        llm_call_id="lc",
+        purpose="decide",
+        model="stub",
+        base_url="http://stub.local",
+        prompt={"messages": [{"role": "user", "content": user_content}]},
+        response={"content": None, "tool_calls": [], "finish_reason": "stop"},
+        tokens={"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        usd=0.0,
+        ms=0,
+    )
+    assert _observation_from_call(call) == obs
 
 
 def test_stub_browser_no_playwright_import():

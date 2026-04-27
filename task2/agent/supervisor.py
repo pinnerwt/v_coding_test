@@ -22,6 +22,8 @@ class Supervisor:
     def __init__(self, *, max_attempts: int = 3) -> None:
         self._max_attempts = max_attempts
         self._attempts: dict[tuple[str, str], int] = {}
+        self.last_policy: str | None = None
+        self.replan_used: bool = False
 
     def handle(self, miss: LocatorMiss, *, current_tier: str) -> EscalationDecision:
         key = (current_tier, miss.reason)
@@ -29,10 +31,16 @@ class Supervisor:
         self._attempts[key] = attempt
 
         if attempt > self._max_attempts:
-            return EscalationDecision(next_tier=None, policy="halt", attempt=attempt)
+            decision = EscalationDecision(next_tier=None, policy="halt", attempt=attempt)
+            self.last_policy = decision.policy
+            return decision
 
         next_tier = _ESCALATION_TABLE.get(key)
         if next_tier is not None:
-            return EscalationDecision(next_tier=next_tier, policy="next_tier", attempt=attempt)
+            decision = EscalationDecision(next_tier=next_tier, policy="next_tier", attempt=attempt)
+            self.last_policy = decision.policy
+            return decision
 
-        return EscalationDecision(next_tier=None, policy="halt", attempt=attempt)
+        decision = EscalationDecision(next_tier=None, policy="halt", attempt=attempt)
+        self.last_policy = decision.policy
+        return decision

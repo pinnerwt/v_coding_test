@@ -243,7 +243,9 @@ Print a short summary to the user:
 - Ticket implemented (number + title).
 - Change directory.
 - Test + ruff status (pass/clean).
-- Smoke test status (pass, plus how many verify/simplify loops it took if >1).
+- Verify status (clean / commits added).
+- Simplify status (clean / commits added).
+- Smoke test status — verify and simplify always run before this; report `pass` (first run) or `pass after N loops` if Step 9's regression-test → verify → simplify → re-run-smoke loop fired (Step 9 explicitly re-invokes Steps 7–8). Never word this as "no verify/simplify needed" — those are mandatory steps, not optional ones bypassed by a green smoke test.
 - PR URL.
 - Outstanding follow-ups: either "none" or the numbered list of new tickets appended to `task2/plan.md` in Step 11 (with their numbers).
 - Suggested next step: `/opsx:archive <change-name>` (do **not** archive automatically).

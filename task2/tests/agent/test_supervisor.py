@@ -89,3 +89,29 @@ def test_l1_miss_supervisor_escalate_l2_succeeds(fixture_server, playwright_chro
 
         result = locate_l2(page, role="button", name="Submit")
         assert result.tier == "L2_dom"
+
+
+def test_supervisor_last_policy_is_none_on_construction():
+    sup = Supervisor()
+    assert sup.last_policy is None
+
+
+def test_supervisor_last_policy_reflects_next_tier():
+    miss = LocatorMiss(reason="zero_matches", match_count=0)
+    sup = Supervisor()
+    decision = sup.handle(miss, current_tier="L1_ax")
+    assert decision.policy == "next_tier"
+    assert sup.last_policy == "next_tier"
+
+
+def test_supervisor_last_policy_is_halt_after_exhaustion():
+    miss = LocatorMiss(reason="zero_matches", match_count=0)
+    sup = Supervisor(max_attempts=1)
+    sup.handle(miss, current_tier="L1_ax")
+    sup.handle(miss, current_tier="L1_ax")
+    assert sup.last_policy == "halt"
+
+
+def test_supervisor_replan_used_is_false_on_construction():
+    sup = Supervisor()
+    assert sup.replan_used is False
