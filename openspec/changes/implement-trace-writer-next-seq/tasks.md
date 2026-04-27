@@ -21,16 +21,16 @@
 
 ## 4. Implementation — Remove plan_seq from loop.py (Green)
 
-- [ ] 4.1 In `task2/agent/loop.py`, remove the `seq: int = 0` parameter from `_emit_plan_event`'s signature.
-- [ ] 4.2 In `_emit_plan_event`, replace `seq=seq if use_writer else 0` with `seq=trace_writer.next_seq(run_id) if use_writer else 0`. The `next_seq` call must happen before the `PlanEvent(...)` constructor so the seq is captured at emit time.
-- [ ] 4.3 Remove the `plan_seq: int = 0` local variable from `loop()`.
-- [ ] 4.4 Remove the two `plan_seq += 1` lines from `loop()` (one before the initial plan emit, one before the replan emit).
-- [ ] 4.5 Update both `_emit_plan_event(...)` call-sites in `loop()` to remove the `seq=plan_seq` argument.
-- [ ] 4.6 Run `uv run pytest task2/tests/agent/test_loop.py -k "interleaved"` and confirm the interleaved test passes (green).
-- [ ] 4.7 Run `uv run pytest task2/tests/agent/test_loop.py` (full file) and confirm all existing tests still pass (back-compat).
+- [x] 4.1 In `task2/agent/loop.py`, remove the `seq: int = 0` parameter from `_emit_plan_event`'s signature.
+- [x] 4.2 In `_emit_plan_event`, replace `seq=seq if use_writer else 0` with `seq=trace_writer.next_seq(run_id) if use_writer else 0`. The `next_seq` call must happen before the `PlanEvent(...)` constructor so the seq is captured at emit time.
+- [x] 4.3 Remove the `plan_seq: int = 0` local variable from `loop()`.
+- [x] 4.4 Remove the two `plan_seq += 1` lines from `loop()` (one before the initial plan emit, one before the replan emit).
+- [x] 4.5 Update both `_emit_plan_event(...)` call-sites in `loop()` to remove the `seq=plan_seq` argument.
+- [x] 4.6 Run `uv run pytest task2/tests/agent/test_loop.py -k "interleaved"` and confirm the interleaved test passes (green).
+- [x] 4.7 Run `uv run pytest task2/tests/agent/test_loop.py` (full file) and confirm all existing tests still pass (back-compat).
 
 ## 5. Pre-commit Gate
 
-- [ ] 5.1 Run `uv run ruff format . && uv run ruff check .` from `task2/` and confirm exit 0.
-- [ ] 5.2 Run `uv run pytest` from `task2/` (full suite) and confirm exit 0.
-- [ ] 5.3 Commit with message `feat(task2): add TraceWriter.next_seq and remove plan_seq counter from loop.py`.
+- [x] 5.1 Run `uv run ruff format . && uv run ruff check .` from `task2/` and confirm exit 0.
+- [x] 5.2 Run `uv run pytest` from `task2/` (full suite) and confirm exit 0.
+- [x] 5.3 Commit with message `feat(task2): add TraceWriter.next_seq and remove plan_seq counter from loop.py`.
