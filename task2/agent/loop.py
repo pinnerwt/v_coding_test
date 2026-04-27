@@ -232,32 +232,22 @@ def _emit_plan_event(
     run_id: str | None = None,
     seq: int = 0,
 ) -> None:
-    if trace_writer is not None and run_id is not None:
-        trace_writer.append_event(
-            PlanEvent(
-                run_id=run_id,
-                seq=seq,
-                ts=datetime.now(UTC).isoformat(),
-                step_id=None,
-                reason=reason,
-                steps=steps,
-                llm_call_id=call_id,
-            )
-        )
+    use_writer = trace_writer is not None and run_id is not None
+    event = PlanEvent(
+        run_id=run_id if use_writer else "loop",
+        seq=seq if use_writer else 0,
+        ts=datetime.now(UTC).isoformat() if use_writer else "",
+        step_id=None,
+        reason=reason,
+        steps=steps,
+        llm_call_id=call_id,
+    )
+    if use_writer:
+        trace_writer.append_event(event)
         return
     if events is None:
         return
-    events.append(
-        PlanEvent(
-            run_id="loop",
-            seq=0,
-            ts="",
-            step_id=None,
-            reason=reason,
-            steps=steps,
-            llm_call_id=call_id,
-        )
-    )
+    events.append(event)
 
 
 def _plan_progress_block(steps: list[str]) -> str:
@@ -286,7 +276,7 @@ def loop(
     step_num = 0
     last_actions: list[dict] = []
     active_plan: plan_module.Plan | None = None
-    _seq: int = 0
+    plan_seq: int = 0
 
     for _ in range(max_steps):
         step_num += 1
@@ -300,7 +290,7 @@ def loop(
             cum_prompt_tokens += plan_resp.usage.prompt_tokens
             cum_completion_tokens += plan_resp.usage.completion_tokens
             cum_usd += plan_resp.usd
-            _seq += 1
+            plan_seq += 1
             _emit_plan_event(
                 events,
                 "initial",
@@ -308,7 +298,7 @@ def loop(
                 str(uuid.uuid4()),
                 trace_writer=trace_writer,
                 run_id=run_id,
-                seq=_seq,
+                seq=plan_seq,
             )
 
         assert active_plan is not None
@@ -452,7 +442,7 @@ def loop(
                     cum_usd += replan_resp.usd
                     supervisor.replan_used = True
                     active_plan = new_plan
-                    _seq += 1
+                    plan_seq += 1
                     _emit_plan_event(
                         events,
                         "replan",
@@ -460,7 +450,7 @@ def loop(
                         str(uuid.uuid4()),
                         trace_writer=trace_writer,
                         run_id=run_id,
-                        seq=_seq,
+                        seq=plan_seq,
                     )
                     break
                 else:

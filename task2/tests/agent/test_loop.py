@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import dataclasses
 import json
+from datetime import datetime
 
 import pytest
 
 from agent.browser import Browser
 from agent.llm import ChatResponse, ToolCall, Usage
 from agent.loop import RunResult, loop
+from agent.trace import PlanEvent, Run, RunBudget, RunLLM, TraceWriter
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -965,51 +967,54 @@ def test_plan_progress_block_in_step2_decision_prompt(fixture_server, playwright
     assert "2. read result" in content
 
 
+_DEFAULT_HALT_PLAN_JSON = '{"steps": ["step 1", "step 2"], "expected_end_state": "done"}'
+_DEFAULT_HALT_REPLAN_JSON = (
+    '{"steps": ["alt step 1", "alt step 2"], "expected_end_state": "alt done"}'
+)
+
+
+class _HaltReplanLLM:
+    def __init__(
+        self,
+        fixture_url: str,
+        plan_json: str = _DEFAULT_HALT_PLAN_JSON,
+        replan_json: str = _DEFAULT_HALT_REPLAN_JSON,
+    ):
+        self._fixture_url = fixture_url
+        self._plan_json = plan_json
+        self._replan_json = replan_json
+        self._call_index = 0
+        self._replan_sent = False
+        self._done_after_replan = False
+
+    def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
+        idx = self._call_index
+        self._call_index += 1
+        if idx == 0:
+            return _fake_text_response(self._plan_json)
+        if tools is None and not self._replan_sent:
+            self._replan_sent = True
+            return _fake_text_response(self._replan_json)
+        if self._replan_sent and tools is not None and not self._done_after_replan:
+            self._done_after_replan = True
+            return _response_with_tool_call(
+                _tool_call(
+                    "done",
+                    {
+                        "result": {"ok": True},
+                        "evidence": {"url": self._fixture_url, "text_snippet": "Hello"},
+                    },
+                    call_id="tc-done",
+                )
+            )
+        return _response_with_tool_call(
+            _tool_call("read", {"intent": "Submit button"}, call_id=f"tc-r{idx}")
+        )
+
+
 def test_supervisor_halt_triggers_replan_event(fixture_server, playwright_chromium):
     fixture_url = f"{fixture_server}/index.html"
-    plan_json = '{"steps": ["step 1", "step 2"], "expected_end_state": "done"}'
-    replan_json = '{"steps": ["alt step 1", "alt step 2"], "expected_end_state": "alt done"}'
-
-    class _HaltReplanLLM:
-        """
-        Call sequence (tools=None → planner/replan call, tools=TOOLS → decision call):
-        idx=0: plan call → plan_json
-        idx=1+: decision calls → keep returning read (triggers halt)
-               once replan is triggered (no tools, after first halt):
-               → replan_json
-               then decision calls → done
-        """
-
-        def __init__(self):
-            self._call_index = 0
-            self._replan_sent = False
-            self._done_after_replan = False
-
-        def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
-            idx = self._call_index
-            self._call_index += 1
-            if idx == 0:
-                return _fake_text_response(plan_json)
-            if tools is None and not self._replan_sent:
-                self._replan_sent = True
-                return _fake_text_response(replan_json)
-            if self._replan_sent and tools is not None and not self._done_after_replan:
-                self._done_after_replan = True
-                return _response_with_tool_call(
-                    _tool_call(
-                        "done",
-                        {
-                            "result": {"ok": True},
-                            "evidence": {"url": fixture_url, "text_snippet": "Hello"},
-                        },
-                        call_id="tc-done",
-                    )
-                )
-            return _response_with_tool_call(
-                _tool_call("read", {"intent": "Submit button"}, call_id=f"tc-r{idx}")
-            )
-
-    llm = _HaltReplanLLM()
+    llm = _HaltReplanLLM(fixture_url)
     events: list = []
 
     with Browser(playwright_browser=playwright_chromium) as browser:
@@ -1322,14 +1327,10 @@ def test_error_outcome_preserved_in_last_actions(fixture_server, playwright_chro
     assert "error" in obs["last_actions"][1]
 
 
-# ---------------------------------------------------------------------------
-# TraceWriter integration: PlanEvent wiring tests (Tasks 1.1–1.6)
-# ---------------------------------------------------------------------------
+# TraceWriter integration: PlanEvent wiring tests
 
 
-def _make_writer_with_run(run_id: str):
-    from agent.trace import Run, RunBudget, RunLLM, TraceWriter
-
+def _make_writer_with_run(run_id: str) -> TraceWriter:
     writer = TraceWriter(":memory:")
     run = Run(
         run_id=run_id,
@@ -1348,44 +1349,20 @@ def _make_writer_with_run(run_id: str):
     return writer
 
 
-def _plan_rows(writer) -> list[dict]:
-    import json
-
-    conn = writer._conn
-    rows = conn.execute("SELECT payload FROM traces_events ORDER BY seq ASC").fetchall()
-    return [json.loads(r[0]) for r in rows if json.loads(r[0]).get("kind") == "plan"]
-
-
-def _all_rows(writer) -> list[dict]:
-    import json
-
-    conn = writer._conn
-    rows = conn.execute("SELECT payload FROM traces_events ORDER BY seq ASC").fetchall()
+def _all_rows(writer: TraceWriter) -> list[dict]:
+    rows = writer._conn.execute("SELECT payload FROM traces_events ORDER BY seq ASC").fetchall()
     return [json.loads(r[0]) for r in rows]
 
 
-def _make_done_llm(fixture_url: str) -> _FakeLLMClient:
-    return _FakeLLMClient(
-        [
-            _response_with_tool_call(
-                _tool_call(
-                    "done",
-                    {
-                        "result": {"ok": True},
-                        "evidence": {"url": fixture_url, "text_snippet": "hi"},
-                    },
-                    call_id="tc-done",
-                )
-            )
-        ]
-    )
+def _plan_rows(writer: TraceWriter) -> list[dict]:
+    return [r for r in _all_rows(writer) if r.get("kind") == "plan"]
 
 
 def test_loop_with_trace_writer_plan_event_has_real_run_id(fixture_server, playwright_chromium):
     fixture_url = f"{fixture_server}/loop_happy_path.html"
     run_id = "test-run-1"
     writer = _make_writer_with_run(run_id)
-    fake_llm = _make_done_llm(fixture_url)
+    fake_llm = _FakeLLMClient([_done_response(fixture_url)])
 
     with Browser(playwright_browser=playwright_chromium) as browser:
         loop("task", browser, fake_llm, trace_writer=writer, run_id=run_id)
@@ -1400,7 +1377,7 @@ def test_loop_with_trace_writer_plan_event_has_nonzero_seq(fixture_server, playw
     fixture_url = f"{fixture_server}/loop_happy_path.html"
     run_id = "test-run-2"
     writer = _make_writer_with_run(run_id)
-    fake_llm = _make_done_llm(fixture_url)
+    fake_llm = _FakeLLMClient([_done_response(fixture_url)])
 
     with Browser(playwright_browser=playwright_chromium) as browser:
         loop("task", browser, fake_llm, trace_writer=writer, run_id=run_id)
@@ -1412,12 +1389,10 @@ def test_loop_with_trace_writer_plan_event_has_nonzero_seq(fixture_server, playw
 
 
 def test_loop_with_trace_writer_plan_event_has_iso_ts(fixture_server, playwright_chromium):
-    from datetime import datetime
-
     fixture_url = f"{fixture_server}/loop_happy_path.html"
     run_id = "test-run-3"
     writer = _make_writer_with_run(run_id)
-    fake_llm = _make_done_llm(fixture_url)
+    fake_llm = _FakeLLMClient([_done_response(fixture_url)])
 
     with Browser(playwright_browser=playwright_chromium) as browser:
         loop("task", browser, fake_llm, trace_writer=writer, run_id=run_id)
@@ -1436,17 +1411,17 @@ def test_loop_with_trace_writer_plan_events_interleaved_with_decisions(
     fixture_url = f"{fixture_server}/loop_happy_path.html"
     run_id = "test-run-4"
     writer = _make_writer_with_run(run_id)
-    fake_llm = _make_done_llm(fixture_url)
+    fake_llm = _FakeLLMClient([_done_response(fixture_url)])
 
     with Browser(playwright_browser=playwright_chromium) as browser:
         loop("task", browser, fake_llm, trace_writer=writer, run_id=run_id)
 
     rows = _all_rows(writer)
     seqs = [r["seq"] for r in rows]
-    assert seqs == sorted(set(seqs)), "seqs must be strictly increasing"
+    assert seqs == sorted(set(seqs))
 
     plan_seqs = [r["seq"] for r in rows if r["kind"] == "plan"]
-    assert plan_seqs, "expected at least one plan event"
+    assert plan_seqs
     assert min(plan_seqs) >= 1
     writer.close()
 
@@ -1457,41 +1432,7 @@ def test_loop_with_trace_writer_replan_seq_before_next_decision(
     fixture_url = f"{fixture_server}/index.html"
     run_id = "test-run-5"
     writer = _make_writer_with_run(run_id)
-
-    plan_json = '{"steps": ["step 1", "step 2"], "expected_end_state": "done"}'
-    replan_json = '{"steps": ["alt step 1", "alt step 2"], "expected_end_state": "alt done"}'
-
-    class _HaltReplanWriterLLM:
-        def __init__(self):
-            self._call_index = 0
-            self._replan_sent = False
-            self._done_after_replan = False
-
-        def chat(self, messages, *, tools=None, **_kwargs):
-            idx = self._call_index
-            self._call_index += 1
-            if idx == 0:
-                return _fake_text_response(plan_json)
-            if tools is None and not self._replan_sent:
-                self._replan_sent = True
-                return _fake_text_response(replan_json)
-            if self._replan_sent and tools is not None and not self._done_after_replan:
-                self._done_after_replan = True
-                return _response_with_tool_call(
-                    _tool_call(
-                        "done",
-                        {
-                            "result": {"ok": True},
-                            "evidence": {"url": fixture_url, "text_snippet": "Hello"},
-                        },
-                        call_id="tc-done",
-                    )
-                )
-            return _response_with_tool_call(
-                _tool_call("read", {"intent": "Submit button"}, call_id=f"tc-r{idx}")
-            )
-
-    fake_llm = _HaltReplanWriterLLM()
+    fake_llm = _HaltReplanLLM(fixture_url)
 
     with Browser(playwright_browser=playwright_chromium) as browser:
         loop(
@@ -1503,34 +1444,27 @@ def test_loop_with_trace_writer_replan_seq_before_next_decision(
             run_id=run_id,
         )
 
-    rows = _all_rows(writer)
-    plan_rows = [r for r in rows if r["kind"] == "plan"]
+    plan_rows = _plan_rows(writer)
     replan_rows = [r for r in plan_rows if r.get("reason") == "replan"]
     initial_rows = [r for r in plan_rows if r.get("reason") == "initial"]
     assert len(replan_rows) >= 1
     assert len(initial_rows) >= 1
-    replan_seq = replan_rows[0]["seq"]
-    initial_seq = initial_rows[0]["seq"]
-    assert initial_seq < replan_seq
+    assert initial_rows[0]["seq"] < replan_rows[0]["seq"]
     writer.close()
 
 
 def test_loop_with_trace_writer_no_double_emit(fixture_server, playwright_chromium):
-    from agent.trace import PlanEvent
-
     fixture_url = f"{fixture_server}/loop_happy_path.html"
     run_id = "test-run-6"
     writer = _make_writer_with_run(run_id)
-    fake_llm = _make_done_llm(fixture_url)
+    fake_llm = _FakeLLMClient([_done_response(fixture_url)])
     events: list = []
 
     with Browser(playwright_browser=playwright_chromium) as browser:
         loop("task", browser, fake_llm, trace_writer=writer, run_id=run_id, events=events)
 
     plan_objects_in_events = [e for e in events if isinstance(e, PlanEvent)]
-    assert len(plan_objects_in_events) == 0, (
-        "no PlanEvent objects should appear in events list when trace_writer is provided"
-    )
+    assert plan_objects_in_events == []
     plan_rows = _plan_rows(writer)
     assert len(plan_rows) >= 1
     writer.close()
