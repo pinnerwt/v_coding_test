@@ -1,0 +1,216 @@
+{
+  "run_at": "2026-04-27T06:37:57.648240+00:00",
+  "cases": [
+    {
+      "id": "drift-submit-form-v1",
+      "status": "failed",
+      "steps": 1,
+      "usd": 0.002224,
+      "l_tier_counts": {},
+      "validators": [
+        {
+          "name": "status.nonempty",
+          "ok": false
+        }
+      ],
+      "prompt_tokens": 960,
+      "completion_tokens": 632,
+      "latency_ms_total": 20918,
+      "latency_ms_per_step": [
+        20918
+      ],
+      "step_breakdown": [
+        {
+          "step": 1,
+          "latency_ms": 20918,
+          "prompt_tokens": 790,
+          "completion_tokens": 279,
+          "usd": 0.001348,
+          "tool_calls": [
+            "fail"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "drift-submit-form-v2",
+      "status": "failed",
+      "steps": 1,
+      "usd": 0.002224,
+      "l_tier_counts": {},
+      "validators": [
+        {
+          "name": "status.nonempty",
+          "ok": false
+        }
+      ],
+      "prompt_tokens": 960,
+      "completion_tokens": 632,
+      "latency_ms_total": 20328,
+      "latency_ms_per_step": [
+        20328
+      ],
+      "step_breakdown": [
+        {
+          "step": 1,
+          "latency_ms": 20328,
+          "prompt_tokens": 790,
+          "completion_tokens": 279,
+          "usd": 0.001348,
+          "tool_calls": [
+            "fail"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "fixture-count",
+      "status": "unverified",
+      "steps": 2,
+      "usd": 0.0033480000000000003,
+      "l_tier_counts": {},
+      "validators": [
+        {
+          "name": "items.len_gte: 1",
+          "ok": false
+        }
+      ],
+      "prompt_tokens": 1922,
+      "completion_tokens": 713,
+      "latency_ms_total": 23487,
+      "latency_ms_per_step": [
+        17778,
+        5709
+      ],
+      "step_breakdown": [
+        {
+          "step": 1,
+          "latency_ms": 17778,
+          "prompt_tokens": 796,
+          "completion_tokens": 131,
+          "usd": 0.0010580000000000001,
+          "tool_calls": [
+            "read"
+          ]
+        },
+        {
+          "step": 2,
+          "latency_ms": 5709,
+          "prompt_tokens": 953,
+          "completion_tokens": 168,
+          "usd": 0.001289,
+          "tool_calls": [
+            "done"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "fixture-heading",
+      "status": "failed",
+      "steps": 2,
+      "usd": 0.0037040000000000003,
+      "l_tier_counts": {},
+      "validators": [
+        {
+          "name": "title.nonempty",
+          "ok": false
+        }
+      ],
+      "prompt_tokens": 1982,
+      "completion_tokens": 861,
+      "latency_ms_total": 28157,
+      "latency_ms_per_step": [
+        21781,
+        6376
+      ],
+      "step_breakdown": [
+        {
+          "step": 1,
+          "latency_ms": 21781,
+          "prompt_tokens": 790,
+          "completion_tokens": 156,
+          "usd": 0.0011020000000000001,
+          "tool_calls": [
+            "read"
+          ]
+        },
+        {
+          "step": 2,
+          "latency_ms": 6376,
+          "prompt_tokens": 1022,
+          "completion_tokens": 187,
+          "usd": 0.001396,
+          "tool_calls": [
+            "fail"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "live-conditional-pick",
+      "status": "skipped",
+      "steps": 0,
+      "usd": 0.0,
+      "l_tier_counts": {},
+      "validators": [],
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "latency_ms_total": 0,
+      "latency_ms_per_step": [],
+      "step_breakdown": []
+    },
+    {
+      "id": "live-form-fill",
+      "status": "skipped",
+      "steps": 0,
+      "usd": 0.0,
+      "l_tier_counts": {},
+      "validators": [],
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "latency_ms_total": 0,
+      "latency_ms_per_step": [],
+      "step_breakdown": []
+    },
+    {
+      "id": "live-multi-page-nav",
+      "status": "skipped",
+      "steps": 0,
+      "usd": 0.0,
+      "l_tier_counts": {},
+      "validators": [],
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "latency_ms_total": 0,
+      "latency_ms_per_step": [],
+      "step_breakdown": []
+    },
+    {
+      "id": "live-read-summarize",
+      "status": "skipped",
+      "steps": 0,
+      "usd": 0.0,
+      "l_tier_counts": {},
+      "validators": [],
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "latency_ms_total": 0,
+      "latency_ms_per_step": [],
+      "step_breakdown": []
+    },
+    {
+      "id": "live-search-extract",
+      "status": "skipped",
+      "steps": 0,
+      "usd": 0.0,
+      "l_tier_counts": {},
+      "validators": [],
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "latency_ms_total": 0,
+      "latency_ms_per_step": [],
+      "step_breakdown": []
+    }
+  ]
+}
