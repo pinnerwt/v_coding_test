@@ -26,13 +26,20 @@ Save the HEAD SHA and the porcelain output as `before_sha` / `before_status` for
 
 ### 2. Run codex review
 
-Invoke codex non-interactively against the diff vs `master`:
+Codex's bwrap sandbox cannot read the repo on this host (errors with `bwrap: loopback: Failed RTM_NEWADDR`). Pipe the diff in explicitly via stdin. Use `git diff master` (NOT `git diff master...HEAD`): the working tree may have uncommitted iteration changes that we want included in the review.
 
 ```bash
-codex exec "review the diff against master"
+git diff master > /tmp/effective.diff
+cat /tmp/effective.diff | codex exec "Review the following diff against master for correctness, regressions, test coverage gaps, and TDD discipline. Be specific about file/line. The diff follows on stdin."
 ```
 
-Capture the full stdout — this is the review report. If `codex` fails (non-zero exit, missing binary, auth error), stop and surface the error to the user; do not loop.
+Capture the full stdout — this is the review report.
+
+**Failure handling, in order:**
+- **Auth / model error** (e.g. `invalid_request_error: The 'X' model is not supported when using Codex with a ChatGPT account`): stop and surface to the user. Do not loop. Do not silently switch models — `~/.codex/config.toml` is the user's choice.
+- **Missing binary**: stop and surface.
+- **Trailing `ERROR codex_core::session: failed to record rollout items: thread ... not found`**: this is non-fatal noise emitted after a successful review. If review content was produced before this line, accept the review and proceed. The bash exit code may still be non-zero; that alone does NOT mean the review failed.
+- **No review content at all** (only error lines): stop and surface.
 
 ### 3. Read the report and decide
 
@@ -41,7 +48,10 @@ Read the codex report carefully. If it explicitly reports no issues / nothing to
 Otherwise, you (the orchestrator) must now do the diagnostic work yourself before dispatching anyone:
 
 - Read the relevant files cited by codex with the `Read` tool. Do not trust the report blindly — verify each finding against the current code.
-- Categorize each finding as: (a) valid and in-scope, (b) valid but out-of-scope for this branch (defer), or (c) invalid (codex misread). Drop (b) and (c) from the plan.
+- **Cross-check against the change's OpenSpec docs.** If the branch has an active change directory under `openspec/changes/<change>/`, grep its `spec.md`, `design.md`, and `tasks.md` for any mention of the symbols/contracts codex flagged. A "remove this dead fallback" finding may collide with a `Requirement: Fallback when X` in the spec — that mismatch is itself a finding (either restore the fallback OR update the spec to match the simpler contract; pick one and document why).
+- **Recognize codex blind spots.** Codex reads only the diff you piped in. It does NOT see prior iterations' decisions, the OpenSpec change docs, or earlier conversation context. If a finding repeats a complaint you already resolved by tightening a spec or by deliberate design choice in an earlier iteration, treat it as (c) invalid — not as a regression. Common case: codex re-flags a fallback you removed and a spec you updated to match; the spec change itself is the resolution.
+- Categorize each finding as: (a) valid and in-scope, (b) valid but out-of-scope for this branch (defer), or (c) invalid (codex misread / didn't see context). Drop (b) and (c) from the plan.
+- **If after categorization there are zero (a) findings**, the plan is empty. Skip step 5 (no subagent dispatch) and proceed to step 6 with `iteration_changed=false`. This is distinct from codex saying "no findings" but produces the same loop outcome.
 - For each (a) finding, decide the concrete fix: which file, which lines, which tests to add or update first (TDD), and any quality gate the implementer must rerun.
 
 ### 4. Write the implementation plan
@@ -70,9 +80,21 @@ Use the **Agent** tool with:
 
 Wait for the subagent to return. Verify with `git status --porcelain` whether files actually changed; record `subagent_changed=true`/`false`. If the subagent reports a task as blocked, surface that to the user after the loop — do not silently retry the same plan.
 
+**Verify "pre-existing failures" claims.** If the subagent's report says some tests "were already failing before my changes" or "are pre-existing failures unrelated to this work", DO NOT trust that without checking. Stash the subagent's edits and run the same tests on the clean baseline:
+
+```bash
+git stash
+(cd <task-dir> && uv run pytest <claimed-pre-existing-test-file>)
+git stash pop
+```
+
+If those tests pass on the baseline, the subagent caused the regression and the plan needs another step. Common cause in this repo: tightening a contract (e.g. removing a `getattr(..., default)` fallback) breaks duck-typed test stubs in unrelated files (e.g. `agent/replay.py:StubBrowser`). Fix the stub, don't roll back the contract.
+
 ### 6. Run /simplify
 
 Invoke the **simplify** skill on the working tree. This may further modify files. After it returns, note whether anything changed since the start of step 6.
+
+**Avoid redundant /simplify dispatches.** If this iteration produced no new working-tree changes since the last `/simplify` pass (i.e. step 5 was skipped or made no edits, and the diff is identical to what `/simplify` already reviewed last iteration), don't re-dispatch the three parallel review agents — `/simplify`'s findings on the same diff will recur and waste tokens. Instead, do a quick self-review of any doc-only deltas and confirm clean. Re-dispatch the full skill when production code or tests changed.
 
 ### 7. Stop condition
 
@@ -112,3 +134,7 @@ After the loop exits, check `git status --porcelain` once more.
 - The orchestrator owns the plan; the subagent owns the keystrokes. If you find yourself writing "figure out X" or "decide whether Y" in the plan, stop and decide it yourself first.
 - Never disable or weaken tests to make the loop converge. If a test is genuinely wrong, that is its own commit with its own reasoning, surfaced to the user.
 - If the working tree is already dirty when the command starts, **stop and ask** the user how to proceed (commit / stash / discard) before running codex — mixing pre-existing changes with review fixes corrupts the audit trail.
+- **Don't commit between iterations.** Working-tree changes accumulate across the loop and are committed once at step 8. Use `git diff master` (not `git diff master...HEAD`) so each iteration's review sees both committed and uncommitted state.
+- **Working dir hygiene.** `cd <task-dir>` persists across `Bash` tool calls, but absolute paths (`uv run pytest --rootdir /home/pgi/vici/task2 ...`) or `(cd /home/pgi/vici/task2 && ...)` subshells are safer when later calls assume repo root. A previous `cd task2` makes a later `cd task2` fail with "no such file or directory".
+- **Codex repeats blind-spot findings across iterations.** Codex sees only the piped diff, not your prior reasoning. Iteration 2 may flag the same thing iteration 1 resolved (e.g. "you removed a fallback the spec requires" after you've also updated the spec to drop that requirement). That's why step 3 cross-checks against the OpenSpec change docs and tracks "already resolved" as a (c) category.
+- **Iterations 3+ usually converge as no-op.** If iteration 2 ended in spec/doc edits only, iteration 3's codex run typically replays the same complaints and is rejected via (b)/(c). Treat empty-after-categorization as the natural stop signal — don't keep running iterations to chase codex into agreeing with you.

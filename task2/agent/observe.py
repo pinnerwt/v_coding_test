@@ -27,21 +27,35 @@ MAX_NAME_LEN: int = 80
 _EMPTY_FINGERPRINT: str = hashlib.sha256(b"").hexdigest()
 
 
-def _ax_nodes(page) -> tuple[list[dict], int]:
+def _detach_silently(session) -> None:
     try:
-        ctx = page.context
-        cdp = ctx.new_cdp_session(page)
+        session.detach()
     except Exception:  # noqa: BLE001
-        return [], 0
+        pass
+
+
+def _ax_nodes(browser) -> tuple[list[dict], int]:
+    page = browser._page
+    sessions = browser._cdp_sessions
+
+    cdp = sessions.get(id(page))
+    if cdp is None:
+        for stale in sessions.values():
+            _detach_silently(stale)
+        sessions.clear()
+        try:
+            cdp = page.context.new_cdp_session(page)
+        except Exception:  # noqa: BLE001
+            return [], 0
+        sessions[id(page)] = cdp
+
     try:
         result = cdp.send("Accessibility.getFullAXTree")
     except Exception:  # noqa: BLE001
+        _detach_silently(cdp)
+        sessions.pop(id(page), None)
         return [], 0
-    finally:
-        try:
-            cdp.detach()
-        except Exception:  # noqa: BLE001
-            pass
+
     out: list[dict] = []
     total = 0
     for n in result.get("nodes", []):
@@ -91,7 +105,7 @@ def build_observation(browser: Browser, last_action: dict | None) -> dict:
             "last_action": last_action,
         }
 
-    capped, total_found = _ax_nodes(page)
+    capped, total_found = _ax_nodes(browser)
     ax_tree_digest = _serialize(capped, total_found)
     ax_fingerprint = hashlib.sha256(ax_tree_digest.encode()).hexdigest()
 

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import types
+import unittest.mock
+
 import pytest
 
 from agent.browser import (
@@ -122,3 +125,20 @@ def test_click_at_after_exit_raises_browser_closed(fixture_server, playwright_ch
         b.goto(f"{fixture_server}/index.html")
     with pytest.raises(BrowserClosed):
         b.click_at(10, 20)
+
+
+def test_cdp_sessions_initialized_empty():
+    b = Browser()
+    assert b._cdp_sessions == {}
+    assert isinstance(b._cdp_sessions, dict)
+
+
+def test_exit_suppresses_detach_errors_and_clears_cache(playwright_chromium):
+    failing_session = types.SimpleNamespace(
+        detach=unittest.mock.Mock(side_effect=RuntimeError("detach boom"))
+    )
+    with Browser(playwright_browser=playwright_chromium) as b:
+        b._cdp_sessions[id(b._page)] = failing_session
+
+    assert b._cdp_sessions == {}
+    failing_session.detach.assert_called_once()

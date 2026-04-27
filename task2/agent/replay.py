@@ -110,6 +110,7 @@ class StubBrowser:
         observations: list[dict] | None = None,
     ) -> None:
         self._page: _StubPage = _StubPage(url=initial_url, observations=observations)
+        self._cdp_sessions: dict = {}
 
     def goto(self, url: str) -> None:
         self._page.set_url(url)
