@@ -111,7 +111,11 @@ def _aggregate_diagnostics(writer: TraceWriter, run_id: str) -> tuple[list[dict]
             to_tier: str | None = None
             for j in range(i + 1, len(events)):
                 nxt = events[j]
-                if isinstance(nxt, LocateEvent) and nxt.outcome == "hit":
+                if (
+                    isinstance(nxt, LocateEvent)
+                    and nxt.step_id == ev.step_id
+                    and nxt.outcome == "hit"
+                ):
                     to_tier = nxt.tier
                     break
             escalations.append(

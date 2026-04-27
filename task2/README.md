@@ -107,7 +107,7 @@ Per-case `Escalations`, `Replans`, and `Cache Inv.` columns appear in the scoreb
 ### Known gaps
 
 - Single replan budget: the supervisor fires replan at most once per run (`replan_used` flag). A multi-replan budget is out of scope for this ticket.
-- Adjacency heuristic for `from_tier`/`to_tier`: `_aggregate_diagnostics` derives `to_tier` from the first `LocateEvent(outcome="hit")` after the `SupervisorEvent` in trace sequence. This is correct for the three short deterministic test cases but may mis-attribute tiers in longer traces with interleaved steps. A follow-up can add an explicit `to_tier` field to `SupervisorEvent`.
+- `to_tier` heuristic within a step: `from_tier` is exact (resolved via `trigger_event_seq`); `to_tier` is the first `LocateEvent(outcome="hit")` scoped to the supervisor's `step_id`, so two escalations within the same step for different intents could in principle overlap (rare — most steps escalate at most one intent).
 - Replan path tested via partial mock: the `correction-replan` eval assertion uses a mocked `loop()` that emits a `PlanEvent(reason="replan")` directly. Full end-to-end coverage (with a real LLM call on the deadend fixture) is recorded as a gap.
 - Vision tier uncached: `L4_vision` results are intentionally not cached; the `maintenance-drift-rename` case only exercises the AX-fingerprint path.
 - No transient-failure retry: the current supervisor handles `LocatorMiss`, `Ambiguous`, and `NoEffect` but does not retry transient browser errors (e.g., network timeouts).
