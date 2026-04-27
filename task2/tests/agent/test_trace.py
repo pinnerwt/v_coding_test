@@ -886,7 +886,7 @@ def test_iter_events_on_closed_writer_raises():
     writer = TraceWriter(":memory:")
     writer.close()
     with pytest.raises(sqlite3.ProgrammingError):
-        list(writer.iter_events("any-run-id"))
+        writer.iter_events("any-run-id")
 
 
 def test_iter_events_on_closed_run_still_yields():

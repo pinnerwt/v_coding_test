@@ -48,7 +48,7 @@ The method SHALL be a generator (uses `yield`) so events are not all loaded into
 #### Scenario: iter_events on a closed TraceWriter raises ProgrammingError
 
 - **GIVEN** a `TraceWriter` that has been closed via `writer.close()`
-- **WHEN** `writer.iter_events(run_id)` is called and iterated
+- **WHEN** `writer.iter_events(run_id)` is called (without iterating)
 - **THEN** `sqlite3.ProgrammingError` SHALL be raised
 
 #### Scenario: iter_events on a closed run still yields events

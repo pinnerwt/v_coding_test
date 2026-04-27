@@ -306,6 +306,9 @@ class TraceWriter:
 
     def iter_events(self, run_id: str) -> Iterator[AnyEvent]:
         conn = self._require_conn()
+        return self._iter_events_inner(conn, run_id)
+
+    def _iter_events_inner(self, conn: sqlite3.Connection, run_id: str) -> Iterator[AnyEvent]:
         for row in conn.execute(_SELECT_EVENTS_SQL, (run_id,)):
             yield _any_event_adapter.validate_json(row[0])
 
