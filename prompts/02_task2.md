@@ -65,3 +65,7 @@ Update /done_pr to insert benchmark results before the commit. Add a PR workflow
 /new_task2 (plan-replan)
 
 Create a script that - run after we finished the benchmark in /done_pr, - read all the results.json in task2/benchmark/*/ , - create different figures that will be displayed at the top of README.md , showcase the benchmark evolution over time.
+
+/new_task2, and iterate different skills (ask claude to update the skill from what it has learned)
+
+Can you check how we show the benchmark results in /done_pr , how we adjust the task2/README.md ? Propose a better way to visualize the benchmark evolution: 1. please add latest benchmark results as a table. 2. The latest benchmark has higher success rate, while the cost/latency got higher. But this is natural because we spend more steps on the successful task. Adjust the visualization to handle this.

@@ -94,7 +94,7 @@ def _serialize(nodes: list[dict], total_found: int) -> str:
     return "\n".join(lines)
 
 
-def build_observation(browser: Browser, last_action: dict | None) -> dict:
+def build_observation(browser: Browser, last_actions: list[dict]) -> dict:
     page = browser._page
     if page is None:
         return {
@@ -102,7 +102,7 @@ def build_observation(browser: Browser, last_action: dict | None) -> dict:
             "title": "",
             "ax_tree_digest": "",
             "ax_fingerprint": _EMPTY_FINGERPRINT,
-            "last_action": last_action,
+            "last_actions": last_actions,
         }
 
     capped, total_found = _ax_nodes(browser)
@@ -114,5 +114,5 @@ def build_observation(browser: Browser, last_action: dict | None) -> dict:
         "title": page.title(),
         "ax_tree_digest": ax_tree_digest,
         "ax_fingerprint": ax_fingerprint,
-        "last_action": last_action,
+        "last_actions": last_actions,
     }

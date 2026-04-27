@@ -29,6 +29,7 @@ class ObservationEvent(EventBase):
     ax_fingerprint: str
     screenshot_ref: str
     viewport: dict[str, Any]
+    last_actions: list[dict] = []
 
 
 class PlanEvent(EventBase):

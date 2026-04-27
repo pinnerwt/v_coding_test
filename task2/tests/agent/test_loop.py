@@ -781,7 +781,7 @@ def test_first_step_last_action_null(fixture_server, playwright_chromium):
     assert capturing_llm.captured_messages is not None
     obs_msg = capturing_llm.captured_messages[1]
     obs_json = _extract_obs_json(obs_msg["content"])
-    assert obs_json["last_action"] is None
+    assert obs_json["last_actions"] == []
 
 
 class _TwoStepCapturingClient:
@@ -829,8 +829,8 @@ def test_second_step_last_action_populated(fixture_server, playwright_chromium):
         if m["role"] == "user" and "Current state:" in m.get("content", "")
     )
     obs_json = _extract_obs_json(obs_msg["content"])
-    assert obs_json["last_action"] is not None
-    assert obs_json["last_action"]["tool"] == "goto"
+    assert obs_json["last_actions"]
+    assert obs_json["last_actions"][0]["tool"] == "goto"
 
 
 # ---------------------------------------------------------------------------
@@ -1211,6 +1211,115 @@ def test_replan_does_not_leave_orphan_tool_call_in_message_history(
 
     post_replan_messages = llm.all_messages[-1]
     _assert_tool_calls_have_responses(post_replan_messages)
+
+
+class _ScriptedFirstStepClient:
+    def __init__(self, first_step_calls: list[ToolCall], done_evidence_url: str):
+        self._first_step_calls = first_step_calls
+        self._done_evidence_url = done_evidence_url
+        self._call_index = 0
+        self.all_captures: list[list[dict]] = []
+
+    def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
+        if tools is None:
+            return _plan_stub_response()
+        self.all_captures.append(list(messages))
+        self._call_index += 1
+        if self._call_index == 1:
+            return ChatResponse(
+                content=None,
+                tool_calls=self._first_step_calls,
+                finish_reason="tool_calls",
+                model="fake",
+                usage=_DUMMY_USAGE,
+                raw={},
+            )
+        return _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"ok": True},
+                    "evidence": {"url": self._done_evidence_url, "text_snippet": "Hello, loop"},
+                },
+                call_id="tc-done",
+            )
+        )
+
+
+def _step_observation(captures: list[list[dict]], step_index: int) -> dict:
+    messages = captures[step_index]
+    obs_msg = next(
+        m
+        for m in reversed(messages)
+        if m["role"] == "user" and "Current state:" in m.get("content", "")
+    )
+    return _extract_obs_json(obs_msg["content"])
+
+
+def test_multi_tool_last_actions_both_in_observation(fixture_server, playwright_chromium):
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+    llm = _ScriptedFirstStepClient(
+        [
+            _tool_call("goto", {"url": fixture_url}, call_id="tc-goto"),
+            _tool_call("read", {}, call_id="tc-read"),
+        ],
+        fixture_url,
+    )
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        loop("task", browser, llm, max_steps=3)
+
+    assert len(llm.all_captures) >= 2
+    obs = _step_observation(llm.all_captures, 1)
+    assert len(obs["last_actions"]) == 2
+    assert obs["last_actions"][0]["tool"] == "goto"
+    assert obs["last_actions"][1]["tool"] == "read"
+
+
+def test_single_tool_last_actions_length_one(fixture_server, playwright_chromium):
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+    two_step_llm = _TwoStepCapturingClient(fixture_url)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        loop("task", browser, two_step_llm, max_steps=3)
+
+    assert len(two_step_llm.all_captures) >= 2
+    obs = _step_observation(two_step_llm.all_captures, 1)
+    assert len(obs["last_actions"]) == 1
+
+
+def test_observation_uses_last_actions_key_not_last_action(fixture_server, playwright_chromium):
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+    capturing_llm = _CapturingLLMClient([_done_response(fixture_url)])
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        browser.goto(fixture_url)
+        loop("task", browser, capturing_llm, max_steps=2)
+
+    assert capturing_llm.captured_messages is not None
+    obs_msg = capturing_llm.captured_messages[1]
+    obs_json = _extract_obs_json(obs_msg["content"])
+    assert "last_actions" in obs_json
+    assert "last_action" not in obs_json
+
+
+def test_error_outcome_preserved_in_last_actions(fixture_server, playwright_chromium):
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+    llm = _ScriptedFirstStepClient(
+        [
+            _tool_call("goto", {"url": fixture_url}, call_id="tc-good"),
+            _tool_call("goto", {"url": ""}, call_id="tc-bad"),
+        ],
+        fixture_url,
+    )
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        loop("task", browser, llm, max_steps=3)
+
+    assert len(llm.all_captures) >= 2
+    obs = _step_observation(llm.all_captures, 1)
+    assert len(obs["last_actions"]) == 2
+    assert obs["last_actions"][0]["outcome"] == "ok"
+    assert obs["last_actions"][1]["outcome"] == "error"
+    assert "error" in obs["last_actions"][1]
 
 
 def test_loop_module_does_not_require_playwright(monkeypatch):

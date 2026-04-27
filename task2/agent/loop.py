@@ -261,14 +261,15 @@ def loop(
     latency_ms_per_step: list[int] = []
     step_breakdown: list[dict] = []
     step_num = 0
-    last_action: dict | None = None
+    last_actions: list[dict] = []
     active_plan: plan_module.Plan | None = None
 
     for _ in range(max_steps):
         step_num += 1
         t0 = time.monotonic()
 
-        observation = observe.build_observation(browser, last_action)
+        observation = observe.build_observation(browser, last_actions)
+        last_actions = []
 
         if step_num == 1:
             active_plan, plan_resp = plan_module.plan(task, observation, llm_client)
@@ -390,19 +391,15 @@ def loop(
 
             tool_result = _dispatch(tool_call.name, args, browser, supervisor)
 
-            if tool_result.startswith("Error:"):
-                last_action = {
-                    "tool": tool_call.name,
-                    "intent": str(args),
-                    "outcome": "error",
-                    "error": tool_result,
-                }
-            else:
-                last_action = {
-                    "tool": tool_call.name,
-                    "intent": str(args),
-                    "outcome": "ok",
-                }
+            is_error = tool_result.startswith("Error:")
+            action: dict = {
+                "tool": tool_call.name,
+                "intent": str(args),
+                "outcome": "error" if is_error else "ok",
+            }
+            if is_error:
+                action["error"] = tool_result
+            last_actions.append(action)
             messages.append(
                 {
                     "role": "tool",
@@ -411,7 +408,7 @@ def loop(
                 }
             )
 
-            if tool_result.startswith("Error:") and supervisor.last_policy == "halt":
+            if is_error and supervisor.last_policy == "halt":
                 supervisor.last_policy = None
                 if not supervisor.replan_used:
                     new_plan, replan_resp = plan_module.replan(

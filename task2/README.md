@@ -5,9 +5,21 @@
 
 ![Pass rate over time](benchmark/_trends/pass_rate.svg)
 
-![Latency over time](benchmark/_trends/latency.svg)
+![Latency by status (p50 solid, p95 dashed)](benchmark/_trends/latency.svg)
 
-![Cost per run](benchmark/_trends/cost.svg)
+![Cost by status](benchmark/_trends/cost.svg)
+
+Cost and latency are split into passed vs. failed cases: a failing case bails out early, so a higher pass rate naturally raises totals. Compare the green (passed) and red (failed) series within a branch, not the totals across branches.
+
+### Latest run — `task2-implement-loop-multi-tool-last-action` (2026-04-27 03:43 UTC)
+
+| Case | Status | Steps | Latency | Tokens | USD |
+|---|---|---:|---:|---:|---:|
+| `drift-submit-form-v1` | failed | 0 | 0 ms | 0 | $0.0000 |
+| `drift-submit-form-v2` | failed | 0 | 0 ms | 0 | $0.0000 |
+| `fixture-count` | succeeded | 2 | 75.5 s | 12,303 | $0.0142 |
+| `fixture-heading` | succeeded | 3 | 48.2 s | 18,711 | $0.0197 |
+| **Total (4 cases, 2 passed)** | | 5 | 123.6 s | 31,014 | $0.0339 |
 <!-- TRENDS:END -->
 
 
