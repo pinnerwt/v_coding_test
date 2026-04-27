@@ -48,8 +48,9 @@ Read the codex report carefully. If it explicitly reports no issues / nothing to
 Otherwise, you (the orchestrator) must now do the diagnostic work yourself before dispatching anyone:
 
 - Read the relevant files cited by codex with the `Read` tool. Do not trust the report blindly — verify each finding against the current code.
-- **Cross-check against the change's OpenSpec docs.** If the branch has an active change directory under `openspec/changes/<change>/`, grep its `spec.md`, `design.md`, and `tasks.md` for any mention of the symbols/contracts codex flagged. A "remove this dead fallback" finding may collide with a `Requirement: Fallback when X` in the spec — that mismatch is itself a finding (either restore the fallback OR update the spec to match the simpler contract; pick one and document why).
+- **Cross-check against the change's OpenSpec docs.** If the branch has an active change directory under `openspec/changes/<change>/`, grep its `proposal.md`, `spec.md`, `design.md`, and `tasks.md` for any mention of the symbols/contracts codex flagged. A "remove this dead fallback" finding may collide with a `Requirement: Fallback when X` in the spec — that mismatch is itself a finding (either restore the fallback OR update the spec to match the simpler contract; pick one and document why). Don't skip `proposal.md`: the "What Changes" bullets there often make stronger claims than the spec scenarios (e.g. "seq is assigned by the writer") and drift the moment you narrow scope.
 - **Recognize codex blind spots.** Codex reads only the diff you piped in. It does NOT see prior iterations' decisions, the OpenSpec change docs, or earlier conversation context. If a finding repeats a complaint you already resolved by tightening a spec or by deliberate design choice in an earlier iteration, treat it as (c) invalid — not as a regression. Common case: codex re-flags a fallback you removed and a spec you updated to match; the spec change itself is the resolution.
+- **Recognize "tracked follow-up ticket" findings.** When codex flags concern X and the spec, proposal, PR notes, or `task2/plan.md` already says "X is tracked under ticket #N" (or "out of scope here, see ticket #N"), that is prima facie (b) deferred — not (a). Don't re-implement deferred work just because codex re-surfaces it; the deferral is the documented decision. By iteration 3-4 codex often *acknowledges* this itself once the plan.md follow-up is in the diff (`/new_task2` step 11 puts it there) — easy convergence signal.
 - Categorize each finding as: (a) valid and in-scope, (b) valid but out-of-scope for this branch (defer), or (c) invalid (codex misread / didn't see context). Drop (b) and (c) from the plan.
 - **If after categorization there are zero (a) findings**, the plan is empty. Skip step 5 (no subagent dispatch) and proceed to step 6 with `iteration_changed=false`. This is distinct from codex saying "no findings" but produces the same loop outcome.
 - For each (a) finding, decide the concrete fix: which file, which lines, which tests to add or update first (TDD), and any quality gate the implementer must rerun.
@@ -116,25 +117,37 @@ Otherwise → loop back to step 1.
 
 ### 8. Commit any pending changes
 
-After the loop exits, check `git status --porcelain` once more.
+**Prefer per-iteration commits over one bundled commit at the end.** When iteration N produces a cohesive set of fixes that resolves a distinct codex topic (e.g. "apply review fixes", "sync tasks.md with narrowed spec", "align proposal.md with as-built behavior"), commit it at the end of that iteration with a topic-specific subject. The next iteration's `git diff master` then includes the prior commit, so codex sees the full state and the audit trail explains *why each iteration happened*. This is what worked in practice; the older "single bundled commit" rule made the squash log opaque.
 
-- If clean: print "review_task2: no changes" and stop.
-- If dirty: stage the relevant files (do **not** `git add -A` blindly — exclude `.venv/`, scratch files, anything not tied to the review fixes) and create a single commit:
+Subject conventions for the per-iteration pattern:
+- `chore(task2): apply codex review fixes` — the iteration that addresses the bulk of (a) findings.
+- `chore(task2): sync tasks.md with narrowed spec scenarios` — when the iteration only updates tasks.md/checklist text to match a spec narrowed in an earlier iteration.
+- `chore(task2): align proposal.md with as-built <X> behavior` — when the iteration only fixes proposal.md drift.
 
-  ```
-  chore(task2): apply codex review fixes
+Each commit:
+- Stages only the relevant files (do **not** `git add -A` blindly — exclude `.venv/`, scratch files, anything not tied to the review fixes).
+- Uses a HEREDOC for the message body listing each finding addressed.
+- Includes the standard `Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>` trailer.
+- Does NOT push, amend, or use `--no-verify`.
 
-  - <one-line summary per finding addressed>
-  ```
+After the loop exits, check `git status --porcelain` once more:
 
-  Use a HEREDOC for the message. Do not push. Do not amend. Do not use `--no-verify`.
+- If clean (because every iteration already committed): print `review_task2: <N> commits, <M> iterations` and stop.
+- If dirty (the loop made an edit you forgot to commit): stage and commit it now with the appropriate topic-specific subject.
+
+**Single-bundled-commit fallback.** If iterations all addressed the same topic (no distinct narrowing/sync passes), one `chore(task2): apply codex review fixes` commit at step 8 with a multi-bullet body is fine. The rule is: subject should describe the diff, not the loop.
 
 ## Notes
 
 - The orchestrator owns the plan; the subagent owns the keystrokes. If you find yourself writing "figure out X" or "decide whether Y" in the plan, stop and decide it yourself first.
 - Never disable or weaken tests to make the loop converge. If a test is genuinely wrong, that is its own commit with its own reasoning, surfaced to the user.
 - If the working tree is already dirty when the command starts, **stop and ask** the user how to proceed (commit / stash / discard) before running codex — mixing pre-existing changes with review fixes corrupts the audit trail.
-- **Don't commit between iterations.** Working-tree changes accumulate across the loop and are committed once at step 8. Use `git diff master` (not `git diff master...HEAD`) so each iteration's review sees both committed and uncommitted state.
+- **Per-iteration commits are fine — even preferred — when each iteration resolves a distinct topic.** See step 8. Use `git diff master` (not `git diff master...HEAD`) so each iteration's review sees both committed and uncommitted state from prior iterations.
 - **Working dir hygiene.** `cd <task-dir>` persists across `Bash` tool calls, but absolute paths (`uv run pytest --rootdir /home/pgi/vici/task2 ...`) or `(cd /home/pgi/vici/task2 && ...)` subshells are safer when later calls assume repo root. A previous `cd task2` makes a later `cd task2` fail with "no such file or directory".
 - **Codex repeats blind-spot findings across iterations.** Codex sees only the piped diff, not your prior reasoning. Iteration 2 may flag the same thing iteration 1 resolved (e.g. "you removed a fallback the spec requires" after you've also updated the spec to drop that requirement). That's why step 3 cross-checks against the OpenSpec change docs and tracks "already resolved" as a (c) category.
-- **Iterations 3+ usually converge as no-op.** If iteration 2 ended in spec/doc edits only, iteration 3's codex run typically replays the same complaints and is rejected via (b)/(c). Treat empty-after-categorization as the natural stop signal — don't keep running iterations to chase codex into agreeing with you.
+- **Iterations 3+ usually converge as no-op.** If iteration 2 ended in spec/doc edits only, iteration 3's codex run typically replays the same complaints and is rejected via (b)/(c). Treat empty-after-categorization as the natural stop signal — don't keep running iterations to chase codex into agreeing with you. 4 iterations is normal when codex repeatedly flags the same deferred concern; the abort-at-5 thrash guard is the real ceiling.
+
+- **Adjacent-artifact drift cascades across iterations.** Each time you narrow a spec.md scenario in iteration N (e.g. drop a cross-kind ordering claim because it's deferred), the next iteration's codex pass tends to surface the *adjacent* artifact (`tasks.md`, `proposal.md`, sometimes `design.md`) still asserting the wider claim. This isn't iteration-N's bug — it's expected drift. To shorten the loop, when you fix spec.md in any iteration, immediately grep `tasks.md` / `proposal.md` for the same removed phrase and update them in the *same* iteration's commit, not wait for codex to flag it next time. Common drift sources after a scenario narrowing:
+    - `tasks.md` items that name the old test-name (renamed in spec) or describe the old assertion.
+    - `proposal.md` "What Changes" bullets that paraphrase the old requirement (e.g. "seq is assigned by the writer" when implementation now uses a local counter).
+    - `design.md` flow diagrams that show the old ordering.
