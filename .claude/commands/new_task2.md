@@ -35,7 +35,12 @@ From the current branch, create and switch to a new branch:
 git checkout -b task2/<change-name>
 ```
 
-If the working tree is dirty, **stop and ask** the user how to proceed — do not stash or discard. The most common case is a leftover `task2/plan.md` modification from a prior run's Step 11 (follow-up ticket appended but never committed/pushed). When in doubt, surface the diff and offer four options via **AskUserQuestion**: (a) commit on master and proceed, (b) carry into next branch (commit it as a `docs(task2):` on the new branch — this is the typical answer for unpushed Step 11 work), (c) discard, (d) pause for manual handling. Never silently stash or run `git restore`.
+If the working tree is dirty, **stop and ask** the user how to proceed — do not stash or discard. Two known patterns:
+
+- **`task2/plan.md` modified** — leftover from a prior run's Step 11 (follow-up ticket appended but never committed/pushed). Typical answer: carry into the next branch as a `docs(task2):` commit.
+- **`.claude/skills/<name>/SKILL.md` or `.claude/commands/<name>.md` modified** — a sibling skill update authored in a separate lessons-learned thread (e.g. tightening `/done_pr`). Typical answer: commit on master *before* branching, as a `chore(skills):` commit. These are unrelated to task2 and don't belong in the PR.
+
+When in doubt, surface the diff and offer four options via **AskUserQuestion**: (a) commit on master and proceed, (b) carry into next branch, (c) discard, (d) pause for manual handling. Never silently stash or run `git restore`.
 
 ### 3. Scaffold the OpenSpec change
 
@@ -100,7 +105,8 @@ Agent call:
     ```
     All three must be clean. Stage any `ruff format` rewrites into the same commit. Never commit with failing tests or ruff errors. Never use `--no-verify`.
   - Keep commits small enough that the diff matches the message. Do not bundle unrelated changes.
-  - If a task surfaces a design problem, **stop and report back** (per `/opsx:apply` guardrails) instead of papering over it.
+  - **Renames / signature changes need a repo-wide grep.** When a task renames a symbol or changes a parameter shape (e.g. `last_action` → `last_actions`, or `dict | None` → `list[dict]`), the artifact `tasks.md` typically only enumerates the obvious touch points. After the migration step, `grep -rn '<old name>\|<old shape sentinel>' task2/` and update every remaining caller — including tests not listed in `tasks.md`. Python doesn't enforce type hints at runtime, so stale `None` arguments to a now-`list`-typed parameter pass tests but violate the new contract; the verify step (Step 7) will flag them otherwise.
+  - If a task surfaces a design problem, **stop and report back** (per `/opsx:apply` guardrails) instead of papering over it. **Exception:** if the contradiction is purely in the literal `tasks.md` wording (e.g. "reset before X" when correct semantics is "reset after X") and the right behavior is unambiguous from the spec/tests, implement the correct behavior, note the divergence in the report-back, and continue. Don't block on prose drift in scaffold artifacts.
   - Honor `task2/CLAUDE.md` and the repo-root `CLAUDE.md` (TDD, `uv`, `ruff`, configurable LLM base URL).
   - Required report back: list of commits made (sha + subject), final `pytest` / `ruff` status, any tasks left unchecked in `tasks.md`, and any design questions that surfaced.
 
@@ -140,6 +146,9 @@ Invoke the `/simplify` skill scoped to the diff introduced on this branch. Focus
 - **Dead fallback branches.** When the ticket adds a new attribute to a class (`self._cdp_sessions`, `self._foo`) and you've already updated test fixtures / `SimpleNamespace` doubles to set it, any `getattr(obj, attr, None)` "fallback" branch is dead code. Drop the branch entirely; assume the attribute is present. Keep it only if a real, non-test caller exists.
 - **Per-test boilerplate.** Three new tests building the same `data:text/html;base64,...` URL inline → hoist to a module-level constant (`_BUTTON_DATA_URL`) or fixture. Ditto duplicated `import base64 as _b64` shadowing a module-level `import base64`.
 - **Branch-duplicated `try/finally`.** If two if/else branches both end in the same `cdp.send(...)` + `try: cdp.detach() except: pass` pattern, consolidate to one send + one finally below the if/else and gate the detach on a `transient` flag. (Then per the dead-branch rule above, often one branch can be removed entirely.)
+- **Branch-duplicated `dict` builds.** Two if/else branches both build a dict that shares 3-of-4 keys (e.g. `last_actions.append({"tool": ..., "intent": ..., "outcome": "ok"})` vs. `... "outcome": "error", "error": tool_result`). Collapse to one dict literal with a ternary on the differing key, then conditionally `dict[extra_key] = value` for the error-only field. Reuse the boolean (`is_error = ...`) for any later branch that re-checks the same condition (e.g. supervisor halt detection two lines down).
+- **Per-test scripted-LLM client classes.** When two new `loop.py` tests each define a near-identical `_FooClient` with `chat(messages, *, tools=...)` returning a different first-step `ChatResponse` and the same final `done` response, parameterize one shared `_ScriptedFirstStepClient(first_step_calls, done_evidence_url)` instead. The pattern is "first call returns scripted tool calls, second call returns `done`" — only the `tool_calls` list and the evidence URL vary.
+- **Repeated observation-from-captures extraction.** The pattern `obs_msg = next(m for m in reversed(captures[N]) if m["role"] == "user" and "Current state:" in m.get("content", "")); obs = _extract_obs_json(obs_msg["content"])` repeats across multi-step loop tests. Hoist a `_step_observation(captures, step_index) -> dict` helper next to `_extract_obs_json`. Apply it to existing migrated assertions too (e.g. `test_second_step_last_action_populated`), not just the new tests, to keep the file consistent.
 
 Apply the simplifier's suggestions only where they hold under the existing tests. From `task2/`, re-run the full pre-commit gate (`uv run ruff format . && uv run ruff check . && uv run pytest`) to confirm green.
 
