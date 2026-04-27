@@ -1497,21 +1497,15 @@ def test_loop_module_does_not_require_playwright(monkeypatch):
 def test_interleaved_emitters_no_seq_error(fixture_server, playwright_chromium):
     """loop() emits PlanEvent at seq=1; caller then appends ObservationEvent at
     next_seq(); both rows persist with strictly-increasing seq and no SeqError."""
-    from agent.trace import ObservationEvent, SeqError
+    from agent.trace import ObservationEvent
 
     fixture_url = f"{fixture_server}/loop_happy_path.html"
     run_id = "test-interleaved-1"
     writer = _make_writer_with_run(run_id)
     fake_llm = _FakeLLMClient([_done_response(fixture_url)])
 
-    raised: list[Exception] = []
-    try:
-        with Browser(playwright_browser=playwright_chromium) as browser:
-            loop("task", browser, fake_llm, trace_writer=writer, run_id=run_id)
-    except SeqError as exc:
-        raised.append(exc)
-
-    assert not raised, f"SeqError was raised: {raised[0]}"
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        loop("task", browser, fake_llm, trace_writer=writer, run_id=run_id)
 
     next_s = writer.next_seq(run_id)
     obs = ObservationEvent(
