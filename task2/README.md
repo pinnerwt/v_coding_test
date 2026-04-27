@@ -91,3 +91,25 @@ Environment variables consumed by the LLM client (see `agent/llm.py`):
 - `LLM_BASE_URL` — defaults to `http://localhost:8090`
 - `LLM_MODEL` — required (no default)
 - `LLM_API_KEY` — optional, forwarded as `Authorization: Bearer ...`
+
+## Self-correction & self-maintenance — measured
+
+Three eval cases in `eval/cases/` exercise the agent's self-correction and self-maintenance mechanisms end-to-end:
+
+- `correction-l1-miss-l2-hit` — forces the L1→L2 escalation path: the fixture page (`tests/fixtures/correction_l1_miss.html`) has a `<div class="btn">Submit</div>` with no ARIA role, so L1 (`get_by_role`) returns zero matches and the Supervisor escalates to L2 (CSS taxonomy selector). The `CaseResult.escalations` field must be non-empty.
+
+- `correction-replan` — forces the supervisor-halt → one-shot replan path: the fixture page (`tests/fixtures/correction_replan_deadend.html`) has only a heading and no actionable elements, causing repeated locate misses that exhaust the supervisor's attempts, triggering `halt` and then `plan_module.replan()`. The eval test mocks `loop()` to emit a `PlanEvent(reason="replan")` to the trace writer. `CaseResult.replans` must equal 1.
+
+- `maintenance-drift-rename` (variants `v1`, `v2`, `shared_cache: true`) — forces cache invalidation: v1 caches a selector for `<button>Submit</button>`, then v2 presents `<button>Send</button>`. The warm cache entry's AX fingerprint (accessible name "Submit") differs from the live element ("Send"), so `locate()` calls `cache.invalidate()` and falls through to the L1–L4 ladder. `CaseResult.cache_events["invalidations"]` for v2 must be ≥ 1.
+
+Per-case `Escalations`, `Replans`, and `Cache Inv.` columns appear in the scoreboard (see `<!-- SCOREBOARD:BEGIN -->` below) alongside a "Mechanism firing rates" block.
+
+### Known gaps
+
+- Single replan budget: the supervisor fires replan at most once per run (`replan_used` flag). A multi-replan budget is out of scope for this ticket.
+- Adjacency heuristic for `from_tier`/`to_tier`: `_aggregate_diagnostics` derives `to_tier` from the first `LocateEvent(outcome="hit")` after the `SupervisorEvent` in trace sequence. This is correct for the three short deterministic test cases but may mis-attribute tiers in longer traces with interleaved steps. A follow-up can add an explicit `to_tier` field to `SupervisorEvent`.
+- Replan path tested via partial mock: the `correction-replan` eval assertion uses a mocked `loop()` that emits a `PlanEvent(reason="replan")` directly. Full end-to-end coverage (with a real LLM call on the deadend fixture) is recorded as a gap.
+- Vision tier uncached: `L4_vision` results are intentionally not cached; the `maintenance-drift-rename` case only exercises the AX-fingerprint path.
+- No transient-failure retry: the current supervisor handles `LocatorMiss`, `Ambiguous`, and `NoEffect` but does not retry transient browser errors (e.g., network timeouts).
+- No post-action assertion: the agent does not verify that a click or type had the intended effect before advancing.
+- Coarse AX fingerprint: the fingerprint is built from accessible role + name only; layout or style changes that don't affect the AX tree are invisible to the cache invalidation path.
