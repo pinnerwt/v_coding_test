@@ -628,6 +628,35 @@ def test_aggregate_diagnostics_cache_events():
     assert cache_events["misses"] == 1
 
 
+def test_aggregate_diagnostics_empty_trace_returns_zero_values():
+    run_id = _make_run_id()
+    writer = _writer_with_run(run_id)
+
+    escalations, replans, cache_events = _aggregate_diagnostics(writer, run_id)
+    assert escalations == []
+    assert replans == 0
+    assert cache_events == {"hits": 0, "invalidations": 0, "misses": 0}
+
+
+def test_aggregate_diagnostics_does_not_import_any_event_adapter():
+    import ast
+    import pathlib
+
+    src = pathlib.Path(__file__).parent.parent / "scripts" / "eval.py"
+    src_text = src.read_text()
+    tree = ast.parse(src_text)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module == "agent.trace":
+            names = [alias.name for alias in node.names]
+            assert "_any_event_adapter" not in names, (
+                "eval.py must not import _any_event_adapter from agent.trace"
+            )
+    assert "_any_event_adapter" not in src_text, (
+        "eval.py must not reference _any_event_adapter in any form"
+        " (import, attribute access, comment, etc.)"
+    )
+
+
 _CANNED_SUCCESS = RunResult(
     status="succeeded",
     result={},

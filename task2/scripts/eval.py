@@ -24,7 +24,6 @@ from agent.trace import (
     RunLLM,
     SupervisorEvent,
     TraceWriter,
-    _any_event_adapter,
 )
 
 _REQUIRED_FIELDS = ("id", "domain", "category", "task", "expect", "budget")
@@ -83,16 +82,7 @@ class CaseResult:
 
 
 def _aggregate_diagnostics(writer: TraceWriter, run_id: str) -> tuple[list[dict], int, dict]:
-    rows = (
-        writer._require_conn()
-        .execute(
-            "SELECT payload FROM traces_events WHERE run_id = ? ORDER BY seq",
-            (run_id,),
-        )
-        .fetchall()
-    )
-
-    events: list[AnyEvent] = [_any_event_adapter.validate_json(row[0]) for row in rows]
+    events: list[AnyEvent] = list(writer.iter_events(run_id))
     locates_by_seq: dict[int, LocateEvent] = {
         ev.seq: ev for ev in events if isinstance(ev, LocateEvent)
     }
