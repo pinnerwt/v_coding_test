@@ -390,7 +390,6 @@ def test_run_agent_closes_llm_client_on_loop_exception(temp_db, monkeypatch):
 
 
 def test_run_agent_logs_traceback(temp_db, monkeypatch, caplog):
-    """ERROR log with traceback appears when loop() raises; DB row is written."""
     run_id = "run-log-traceback-001"
     writer = TraceWriter(temp_db)
     writer.open_run(_make_run(run_id))
