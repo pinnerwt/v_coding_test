@@ -1,7 +1,7 @@
 ## 1. Red — Failing Test
 
-- [ ] 1.1 In `task2/tests/api/test_server.py`, add `test_run_agent_logs_traceback`: patch `agent.loop.loop` to raise `RuntimeError("boom")`, call `_run_agent(run_id, task_req)` with a temp SQLite DB, assert that a `logging.ERROR` record on the `api.server` logger contains `"RuntimeError"` and `"boom"` in `exc_text`, and assert the `traces_runs` row has `status="failed"` and `final` JSON containing `failure.reason="internal error"`.
-- [ ] 1.2 Run `uv run pytest task2/tests/api/test_server.py::test_run_agent_logs_traceback -x` and confirm it fails (no log record found).
+- [x] 1.1 In `task2/tests/api/test_server.py`, add `test_run_agent_logs_traceback`: patch `agent.loop.loop` to raise `RuntimeError("boom")`, call `_run_agent(run_id, task_req)` with a temp SQLite DB, assert that a `logging.ERROR` record on the `api.server` logger contains `"RuntimeError"` and `"boom"` in `exc_text`, and assert the `traces_runs` row has `status="failed"` and `final` JSON containing `failure.reason="internal error"`.
+- [x] 1.2 Run `uv run pytest task2/tests/api/test_server.py::test_run_agent_logs_traceback -x` and confirm it fails (no log record found).
 
 ## 2. Green — Minimal Implementation
 

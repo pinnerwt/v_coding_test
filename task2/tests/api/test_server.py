@@ -388,6 +388,43 @@ def test_run_agent_closes_llm_client_on_loop_exception(temp_db, monkeypatch):
     assert len(close_calls) == 1
 
 
+def test_run_agent_logs_traceback(temp_db, monkeypatch, caplog):
+    """ERROR log with traceback appears when loop() raises; DB row is written."""
+    import logging
+
+    run_id = "run-log-traceback-001"
+    writer = TraceWriter(temp_db)
+    writer.open_run(_make_run(run_id))
+    writer.close()
+
+    def _raise(*_a, **_kw):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("api.server.loop", _raise)
+    monkeypatch.setattr("api.server.Browser", _FakeBrowser)
+
+    with caplog.at_level(logging.ERROR, logger="api.server"):
+        _run_agent(run_id, TaskRequest(task="do a thing"))
+
+    error_records = [r for r in caplog.records if r.levelno == logging.ERROR and r.name == "api.server"]
+    assert error_records, "expected an ERROR record on api.server logger"
+    rec = error_records[0]
+    assert rec.exc_text is not None, "exc_text should be populated"
+    assert "RuntimeError" in rec.exc_text
+    assert "boom" in rec.exc_text
+
+    conn = sqlite3.connect(temp_db)
+    row = conn.execute(
+        "SELECT status, payload FROM traces_runs WHERE run_id = ?", (run_id,)
+    ).fetchone()
+    conn.close()
+    assert row is not None
+    status, payload = row
+    assert status == "failed"
+    final_data = json.loads(payload)
+    assert final_data["final"]["failure"]["reason"] == "internal error"
+
+
 def test_run_agent_passes_trace_writer_and_run_id_to_loop(tmp_path, monkeypatch):
     captured: dict = {}
 
