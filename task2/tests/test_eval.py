@@ -14,6 +14,9 @@ from agent.loop import RunResult
 from agent.trace import (
     LocateEvent,
     PlanEvent,
+    Run,
+    RunBudget,
+    RunLLM,
     SupervisorEvent,
     TraceWriter,
 )
@@ -910,14 +913,12 @@ def test_aggregate_diagnostics_escalation_to_tier_scoped_to_step_id():
 
 
 # ---------------------------------------------------------------------------
-# locator_cache forwarding tests (RED until _run_case passes cache to loop())
+# locator_cache forwarding tests
 # ---------------------------------------------------------------------------
 
 
 def test_run_case_forwards_cache_to_loop():
     """_run_case must pass its cache argument as locator_cache= to loop()."""
-    from unittest.mock import MagicMock
-
     from agent.locator_cache import LocatorCache
 
     captured: list[dict] = []
@@ -939,13 +940,10 @@ def test_run_case_forwards_cache_to_loop():
 
 def test_maintenance_drift_rename_real_loop_cache_invalidation(playwright_chromium, fixture_server):
     """Real loop run with shared LocatorCache: v2 page causes cache invalidation >= 1."""
-    import json
-
     from agent.browser import Browser
     from agent.llm import ChatResponse, ToolCall, Usage
     from agent.locator_cache import LocatorCache
     from agent.loop import loop as real_loop
-    from agent.trace import Run, RunBudget, RunLLM, TraceWriter
 
     _usage = Usage(prompt_tokens=1, completion_tokens=1, total_tokens=2)
 

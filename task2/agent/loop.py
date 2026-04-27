@@ -9,7 +9,15 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import agent.observe as observe
 import agent.plan as plan_module
-from agent.locate import LocatorMiss, locate_l1, locate_l2, parse_intent
+from agent.locate import (
+    LocateResult,
+    LocatorMiss,
+    _canonical_ax_fingerprint,
+    locate_l1,
+    locate_l2,
+    parse_intent,
+)
+from agent.locator_cache import CacheEntry, _origin_from_url
 from agent.supervisor import Supervisor
 from agent.trace import LocateEvent, PlanEvent, TraceWriter
 
@@ -18,7 +26,6 @@ if TYPE_CHECKING:
 
     from agent.browser import Browser
     from agent.llm import LLMClient
-    from agent.locate import LocateResult
     from agent.locator_cache import LocatorCache
 
 RunStatus = Literal["succeeded", "unverified", "failed", "timeout"]
@@ -241,9 +248,6 @@ def _locate_with_supervisor(
     if cache is None:
         return _locate_via_ladder(page, intent, supervisor)
 
-    from agent.locate import LocateResult, _canonical_ax_fingerprint
-    from agent.locator_cache import CacheEntry, _origin_from_url
-
     origin = _origin_from_url(page.url)
     entry = cache.get(origin=origin, intent=intent)
     if entry is not None:
@@ -297,8 +301,11 @@ def _locate_with_supervisor(
 
     result = _locate_via_ladder(page, intent, supervisor)
 
-    canonical = _canonical_ax_fingerprint(page, role=result.role, selector=result.selector)
-    stored_fingerprint = canonical if canonical is not None else result.ax_fingerprint
+    if result.tier == "L4_vision":
+        stored_fingerprint = result.ax_fingerprint
+    else:
+        canonical = _canonical_ax_fingerprint(page, role=result.role, selector=result.selector)
+        stored_fingerprint = canonical if canonical is not None else result.ax_fingerprint
     written_at = datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
     cache.put(
         CacheEntry(
@@ -335,6 +342,7 @@ def _dispatch(
     args: dict,
     browser: Browser,
     supervisor: Supervisor,
+    *,
     locator_cache: LocatorCache | None = None,
     trace_writer: TraceWriter | None = None,
     run_id: str | None = None,
@@ -564,7 +572,7 @@ def loop(
                 args,
                 browser,
                 supervisor,
-                locator_cache,
+                locator_cache=locator_cache,
                 trace_writer=trace_writer,
                 run_id=run_id,
             )

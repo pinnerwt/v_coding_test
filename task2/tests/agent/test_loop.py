@@ -1536,7 +1536,7 @@ def test_interleaved_emitters_no_seq_error(fixture_server, playwright_chromium):
 
 
 # ---------------------------------------------------------------------------
-# locator_cache kwarg tests (RED until loop() gains the kwarg)
+# locator_cache kwarg tests
 # ---------------------------------------------------------------------------
 
 
@@ -1589,7 +1589,7 @@ def test_loop_forwards_cache_to_locate(fixture_server, playwright_chromium):
 
 
 # ---------------------------------------------------------------------------
-# LocateEvent emission on the read-dispatch cache path (RED until emission lands)
+# LocateEvent emission on the read-dispatch cache path
 # ---------------------------------------------------------------------------
 
 
