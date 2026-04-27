@@ -219,7 +219,6 @@ def _locate_via_ladder(
             chosen=None,
             step_id=step_id,
         )
-        # seq of the L1 miss event just written is next_seq - 1
         l1_miss_seq = (trace_writer.next_seq(run_id) - 1) if (trace_writer and run_id) else 0
         decision = supervisor.handle(miss, current_tier="L1_ax")
         _emit_supervisor_event(
