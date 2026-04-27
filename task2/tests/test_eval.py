@@ -643,13 +643,18 @@ def test_aggregate_diagnostics_does_not_import_any_event_adapter():
     import pathlib
 
     src = pathlib.Path(__file__).parent.parent / "scripts" / "eval.py"
-    tree = ast.parse(src.read_text())
+    src_text = src.read_text()
+    tree = ast.parse(src_text)
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module == "agent.trace":
             names = [alias.name for alias in node.names]
             assert "_any_event_adapter" not in names, (
                 "eval.py must not import _any_event_adapter from agent.trace"
             )
+    assert "_any_event_adapter" not in src_text, (
+        "eval.py must not reference _any_event_adapter in any form"
+        " (import, attribute access, comment, etc.)"
+    )
 
 
 _CANNED_SUCCESS = RunResult(
