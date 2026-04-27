@@ -11,15 +11,15 @@
 
 Cost and latency are split into passed vs. failed cases: a failing case bails out early, so a higher pass rate naturally raises totals. Compare the green (passed) and red (failed) series within a branch, not the totals across branches.
 
-### Latest run — `task2-implement-cdp-session-reuse` (2026-04-27 02:13 UTC)
+### Latest run — `task2-implement-loop-multi-tool-last-action` (2026-04-27 03:43 UTC)
 
 | Case | Status | Steps | Latency | Tokens | USD |
 |---|---|---:|---:|---:|---:|
-| `drift-submit-form-v1` | failed | 4 | 47.0 s | 6,047 | $0.0073 |
-| `drift-submit-form-v2` | failed | 2 | 34.8 s | 4,408 | $0.0053 |
-| `fixture-count` | succeeded | 2 | 39.5 s | 4,568 | $0.0057 |
-| `fixture-heading` | succeeded | 2 | 25.1 s | 4,127 | $0.0048 |
-| **Total (4 cases, 2 passed)** | | 10 | 146.4 s | 19,150 | $0.0231 |
+| `drift-submit-form-v1` | failed | 0 | 0 ms | 0 | $0.0000 |
+| `drift-submit-form-v2` | failed | 0 | 0 ms | 0 | $0.0000 |
+| `fixture-count` | succeeded | 2 | 75.5 s | 12,303 | $0.0142 |
+| `fixture-heading` | succeeded | 3 | 48.2 s | 18,711 | $0.0197 |
+| **Total (4 cases, 2 passed)** | | 5 | 123.6 s | 31,014 | $0.0339 |
 <!-- TRENDS:END -->
 
 

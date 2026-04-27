@@ -1,0 +1,203 @@
+{
+  "run_at": "2026-04-27T03:43:44.518503+00:00",
+  "cases": [
+    {
+      "id": "drift-submit-form-v1",
+      "status": "failed",
+      "steps": 0,
+      "usd": 0.0,
+      "l_tier_counts": {},
+      "validators": [
+        {
+          "name": "exception",
+          "ok": false,
+          "error": "IntentParseError(\"unknown role token 'fields' in intent 'the Submit button in the form with First name and Last name fields'; supported: ['button', 'checkbox', 'heading', 'link', 'textbox']\")"
+        }
+      ],
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "latency_ms_total": 0,
+      "latency_ms_per_step": [],
+      "step_breakdown": []
+    },
+    {
+      "id": "drift-submit-form-v2",
+      "status": "failed",
+      "steps": 0,
+      "usd": 0.0,
+      "l_tier_counts": {},
+      "validators": [
+        {
+          "name": "exception",
+          "ok": false,
+          "error": "IntentParseError(\"unknown role token 'fields' in intent 'the Submit button in the form with First name and Last name fields'; supported: ['button', 'checkbox', 'heading', 'link', 'textbox']\")"
+        }
+      ],
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "latency_ms_total": 0,
+      "latency_ms_per_step": [],
+      "step_breakdown": []
+    },
+    {
+      "id": "fixture-count",
+      "status": "succeeded",
+      "steps": 2,
+      "usd": 0.014154,
+      "l_tier_counts": {},
+      "validators": [
+        {
+          "name": "items.len_gte: 1",
+          "ok": true
+        }
+      ],
+      "prompt_tokens": 10452,
+      "completion_tokens": 1851,
+      "latency_ms_total": 75455,
+      "latency_ms_per_step": [
+        27194,
+        48261
+      ],
+      "step_breakdown": [
+        {
+          "step": 1,
+          "latency_ms": 27194,
+          "prompt_tokens": 2801,
+          "completion_tokens": 105,
+          "usd": 0.0030110000000000002,
+          "tool_calls": [
+            "read"
+          ]
+        },
+        {
+          "step": 2,
+          "latency_ms": 48261,
+          "prompt_tokens": 5473,
+          "completion_tokens": 1257,
+          "usd": 0.007987,
+          "tool_calls": [
+            "done"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "fixture-heading",
+      "status": "succeeded",
+      "steps": 3,
+      "usd": 0.019719,
+      "l_tier_counts": {},
+      "validators": [
+        {
+          "name": "title.nonempty",
+          "ok": true
+        }
+      ],
+      "prompt_tokens": 17703,
+      "completion_tokens": 1008,
+      "latency_ms_total": 48185,
+      "latency_ms_per_step": [
+        24553,
+        11837,
+        11795
+      ],
+      "step_breakdown": [
+        {
+          "step": 1,
+          "latency_ms": 24553,
+          "prompt_tokens": 2795,
+          "completion_tokens": 193,
+          "usd": 0.0031810000000000002,
+          "tool_calls": [
+            "read"
+          ]
+        },
+        {
+          "step": 2,
+          "latency_ms": 11837,
+          "prompt_tokens": 5032,
+          "completion_tokens": 245,
+          "usd": 0.005522,
+          "tool_calls": [
+            "read"
+          ]
+        },
+        {
+          "step": 3,
+          "latency_ms": 11795,
+          "prompt_tokens": 7701,
+          "completion_tokens": 232,
+          "usd": 0.008165,
+          "tool_calls": [
+            "done"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "live-conditional-pick",
+      "status": "skipped",
+      "steps": 0,
+      "usd": 0.0,
+      "l_tier_counts": {},
+      "validators": [],
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "latency_ms_total": 0,
+      "latency_ms_per_step": [],
+      "step_breakdown": []
+    },
+    {
+      "id": "live-form-fill",
+      "status": "skipped",
+      "steps": 0,
+      "usd": 0.0,
+      "l_tier_counts": {},
+      "validators": [],
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "latency_ms_total": 0,
+      "latency_ms_per_step": [],
+      "step_breakdown": []
+    },
+    {
+      "id": "live-multi-page-nav",
+      "status": "skipped",
+      "steps": 0,
+      "usd": 0.0,
+      "l_tier_counts": {},
+      "validators": [],
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "latency_ms_total": 0,
+      "latency_ms_per_step": [],
+      "step_breakdown": []
+    },
+    {
+      "id": "live-read-summarize",
+      "status": "skipped",
+      "steps": 0,
+      "usd": 0.0,
+      "l_tier_counts": {},
+      "validators": [],
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "latency_ms_total": 0,
+      "latency_ms_per_step": [],
+      "step_breakdown": []
+    },
+    {
+      "id": "live-search-extract",
+      "status": "skipped",
+      "steps": 0,
+      "usd": 0.0,
+      "l_tier_counts": {},
+      "validators": [],
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "latency_ms_total": 0,
+      "latency_ms_per_step": [],
+      "step_breakdown": []
+    }
+  ]
+}
