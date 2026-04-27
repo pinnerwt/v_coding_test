@@ -8,7 +8,7 @@ Each eval case SHALL be expressed as a YAML file under `task2/eval/cases/` with 
 
 - `id: str` — unique kebab-case identifier for the case (used as the key in results JSON).
 - `domain: str` — the target domain or fixture identifier (e.g. `fixture`, `arxiv.org`).
-- `category: str` — one of: `search-and-extract`, `form-filling`, `multi-page-navigation`, `conditional-pick`, `read-and-summarize`, `drift`.
+- `category: str` — one of: `search-and-extract`, `form-filling`, `multi-page-navigation`, `conditional-pick`, `read-and-summarize`, `drift`, `correction`.
 - `task: str` — the natural-language task string passed verbatim to the agent loop.
 - `expect.schema: dict` — the expected output key types (e.g. `{ title: str, authors: list[str] }`). Stored and forwarded to the loop; full JSONSchema validation is deferred.
 - `expect.validators: list[str]` — list of validator expressions evaluated against the loop's `result` dict. Supported vocabulary for this ticket: `<key>.nonempty` and `<key>.len_gte: <N>`.
@@ -17,6 +17,7 @@ Each eval case SHALL be expressed as a YAML file under `task2/eval/cases/` with 
 - `budget.seconds: int` — wall-clock timeout in seconds.
 - `fixture: bool` (optional, default `false`) — when `true`, the case is CI-safe and runs without `--live`.
 - `variants: list[str]` (optional) — when present, the runner expands this case into one sub-run per variant. Each variant value is a short identifier (e.g. `"v1"`, `"v2"`) appended to the case `id` with a hyphen to form the sub-run id. If absent or empty, the case runs as a single run with its original `id`.
+- `shared_cache: bool` (optional, default `false`) — when `true` and `variants` is present, the runner constructs a single `LocatorCache(path=":memory:")` shared across all variant sub-runs of this case and passes it to each `loop()` call. When `false` or absent, each sub-run gets no shared cache (the default behaviour).
 
 #### Scenario: Valid case YAML loads without error
 - **WHEN** `task2/eval/cases/fixture-heading.yaml` is loaded via `scripts/eval.py`
@@ -40,11 +41,20 @@ Each eval case SHALL be expressed as a YAML file under `task2/eval/cases/` with 
 - **WHEN** `task2/eval/cases/drift-submit-form.yaml` is loaded
 - **THEN** the returned dict SHALL have `variants == ["v1", "v2"]`
 
+#### Scenario: shared_cache field is optional and backward-compatible
+
+- **WHEN** a YAML case file does not contain a `shared_cache` key
+- **THEN** `load_cases` SHALL succeed and the case SHALL run with `shared_cache` defaulting to `false`
+
 ### Requirement: Variant expansion
 When a case dict has a `variants` key containing a non-empty list of strings, `run_suite` SHALL expand the case into one sub-run per variant before executing. For each variant `v`:
 
 - The sub-run's `id` SHALL equal `<original-case-id>-<v>` (e.g. `drift-submit-form-v1`).
 - The task, budget, expect, and fixture fields are inherited unchanged from the parent case.
+
+When the case also has `shared_cache: true`, `run_suite` SHALL construct one `LocatorCache(path=":memory:")` instance for the parent case and pass it to each variant sub-run's `_run_case` call via a `cache` parameter. Each variant sub-run runs sequentially within the parent case so the cache state from v1 is visible when v2 runs.
+
+When `shared_cache` is absent or `false`, no shared cache is constructed; each sub-run gets no cache.
 
 The results JSON SHALL contain one `CaseResult` entry per variant sub-run (not one entry for the parent case). The total number of entries in the results JSON equals the sum of: non-variantized cases (count 1 each) plus variantized cases expanded to len(variants) entries each.
 
@@ -54,6 +64,13 @@ The results JSON SHALL contain one `CaseResult` entry per variant sub-run (not o
 - **THEN** the results JSON `cases` array SHALL contain exactly two entries
 - **AND** the first entry SHALL have `id == "drift-submit-form-v1"`
 - **AND** the second entry SHALL have `id == "drift-submit-form-v2"`
+
+#### Scenario: shared_cache=true passes same LocatorCache instance to both variant sub-runs
+
+- **GIVEN** a case with `variants: [v1, v2]`, `fixture: true`, and `shared_cache: true`
+- **AND** `_run_case` is instrumented to capture the `cache` argument it receives
+- **WHEN** `run_suite` processes both variants
+- **THEN** both `_run_case` calls SHALL receive the same `LocatorCache` object (identity `is` check)
 
 #### Scenario: Non-variantized and variantized cases coexist in one suite run
 - **GIVEN** a suite with two fixture cases: `fixture-heading` (no variants) and `drift-submit-form` (variants: v1, v2)

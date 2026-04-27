@@ -15,11 +15,12 @@ TBD - created by archiving change implement-quantitative-eval. Update Purpose af
 
 The scoreboard SHALL contain all of the following sections, in order:
 
-- **Per-case status table**: columns `Case`, `Status`, `Steps`, `Latency (ms)`, `USD`, `Tokens (P+C)`.
+- **Per-case status table**: columns `Case`, `Status`, `Steps`, `Latency (ms)`, `USD`, `Tokens (P+C)`, `Escalations`, `Replans`, `Cache Inv.`
 - **Summary line**: `N/M succeeded (X%)` where N = passed (succeeded + unverified), M = total non-skipped.
 - **Latency percentiles**: `p50: Xms  p95: Xms` computed over `latency_ms_total` values of non-skipped cases.
 - **Totals**: `Total USD: $X.XXXX   Total tokens: P prompt + C completion`.
 - **Locator-tier mix**: table of tier name → count across all cases, rendered as `| Tier | Count |`.
+- **Mechanism firing rates**: table rendered as `| Mechanism | Cases with ≥1 firing |` with rows for `L1→L2 escalation`, `Replan`, and `Cache invalidation`, each showing `N/M` (non-skipped cases with at least one firing / total non-skipped).
 
 #### Scenario: score.py reads the fixture results file and produces non-empty markdown
 
@@ -28,6 +29,8 @@ The scoreboard SHALL contain all of the following sections, in order:
 - **THEN** stdout SHALL contain a markdown table with at least one `|` row per case
 - **AND** stdout SHALL contain the string `succeeded`
 - **AND** stdout SHALL contain `p50:`
+- **AND** stdout SHALL contain `Escalations`
+- **AND** stdout SHALL contain `Mechanism firing rates`
 
 #### Scenario: score.py output matches golden snapshot
 
@@ -47,6 +50,13 @@ The scoreboard SHALL contain all of the following sections, in order:
 - **WHEN** `score.py` computes the summary line
 - **THEN** the denominator M SHALL equal `1` (not `2`)
 - **AND** the skipped case SHALL NOT contribute to latency percentile computation
+
+#### Scenario: Mechanism rates block is backward-compatible with old results missing mechanism fields
+
+- **GIVEN** a results file whose case objects have no `escalations`, `replans`, or `cache_events` keys
+- **WHEN** `score.py` emits the scoreboard
+- **THEN** the mechanism columns SHALL default to `0` and the firing rate rows SHALL show `0/M`
+- **AND** no exception SHALL be raised
 
 ### Requirement: score.py --update-readme splices scoreboard into README
 
