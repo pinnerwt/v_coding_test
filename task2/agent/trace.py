@@ -292,6 +292,16 @@ class TraceWriter:
         )
         conn.commit()
 
+    def next_seq(self, run_id: str) -> int:
+        conn = self._require_conn()
+        row = conn.execute(_RUN_STATE_SQL, (run_id,)).fetchone()
+        if row is None:
+            raise self._missing_run(run_id)
+        status, max_seq = row
+        if status is not None:
+            raise self._closed_run(run_id)
+        return (max_seq or 0) + 1
+
     def close_run(
         self,
         run_id: str,

@@ -14,10 +14,10 @@
 
 ## 3. Implementation — TraceWriter.next_seq (Green)
 
-- [ ] 3.1 In `task2/agent/trace.py`, add a `_NEXT_SEQ_SQL` constant: `"SELECT status, (SELECT MAX(seq) FROM traces_events WHERE run_id = r.run_id) FROM traces_runs r WHERE r.run_id = ?"`.
-- [ ] 3.2 Add `next_seq(self, run_id: str) -> int` to `TraceWriter`: execute `_NEXT_SEQ_SQL`, raise `LookupError` (via `_missing_run`) if no row, raise `LookupError` (via `_closed_run`) if `status` is not `None`, return `(max_seq or 0) + 1`.
-- [ ] 3.3 Run `uv run pytest task2/tests/agent/test_trace.py -k "next_seq"` and confirm all `next_seq` tests pass (green).
-- [ ] 3.4 Run `uv run pytest task2/tests/agent/test_trace.py` (full file) and confirm no regressions.
+- [x] 3.1 In `task2/agent/trace.py`, add a `_NEXT_SEQ_SQL` constant: `"SELECT status, (SELECT MAX(seq) FROM traces_events WHERE run_id = r.run_id) FROM traces_runs r WHERE r.run_id = ?"`. **Divergence: reused existing `_RUN_STATE_SQL` (identical query) instead of adding a duplicate constant. No new constant needed.**
+- [x] 3.2 Add `next_seq(self, run_id: str) -> int` to `TraceWriter`: execute `_RUN_STATE_SQL`, raise `LookupError` (via `_missing_run`) if no row, raise `LookupError` (via `_closed_run`) if `status` is not `None`, return `(max_seq or 0) + 1`.
+- [x] 3.3 Run `uv run pytest task2/tests/agent/test_trace.py -k "next_seq"` and confirm all `next_seq` tests pass (green).
+- [x] 3.4 Run `uv run pytest task2/tests/agent/test_trace.py` (full file) and confirm no regressions.
 
 ## 4. Implementation — Remove plan_seq from loop.py (Green)
 
