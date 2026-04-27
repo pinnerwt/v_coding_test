@@ -3,10 +3,11 @@
 - [x] 1.1 In `task2/tests/agent/test_loop.py`, add `test_loop_with_trace_writer_plan_event_has_real_run_id`: call `loop()` with a `:memory:` `TraceWriter` (opened with a real `run_id`) and assert the JSONL row for `kind="plan"` has `run_id` equal to the real value, not `"loop"`.
 - [x] 1.2 Add `test_loop_with_trace_writer_plan_event_has_nonzero_seq`: same setup; assert the `kind="plan"` row has `seq >= 1`.
 - [x] 1.3 Add `test_loop_with_trace_writer_plan_event_has_iso_ts`: same setup; assert the `kind="plan"` row's `ts` field is non-empty and parseable as ISO 8601.
-- [x] 1.4 Add `test_loop_with_trace_writer_plan_events_interleaved_with_decisions`: run a 2-step loop with a `TraceWriter`; assert all events have strictly increasing `seq` and the initial plan `seq` is less than the first decision `seq`.
-- [x] 1.5 Add `test_loop_with_trace_writer_replan_seq_before_next_decision`: trigger a replan via supervisor halt with a `TraceWriter`; assert the `reason="replan"` plan event `seq` is less than the seq of any subsequent decision events.
+- [x] 1.4 Add `test_loop_with_trace_writer_plan_event_seq_strictly_increasing`: run a loop with a `TraceWriter`; assert all `kind="plan"` rows have strictly increasing `seq` values and the first plan event has `seq >= 1`. Cross-kind ordering between plan and decision events is out of scope (tracked under `task2/plan.md` ticket #20 and ticket #26).
+- [x] 1.5 Add `test_loop_with_trace_writer_replan_seq_after_initial_seq`: trigger a replan via supervisor halt with a `TraceWriter`; assert the `reason="replan"` plan event `seq` is strictly greater than the initial plan event `seq`.
 - [x] 1.6 Add `test_loop_with_trace_writer_no_double_emit`: call `loop()` with both `trace_writer` and `events=[]`; assert the `events` list has no `PlanEvent` objects after the run.
-- [x] 1.7 Run `uv run pytest task2/tests/agent/test_loop.py -k "trace_writer"` and confirm all new tests fail (red).
+- [x] 1.7 Add `test_loop_with_trace_writer_without_run_id_raises`: call `loop()` with a `TraceWriter` and no `run_id`; assert it raises `ValueError` with a message mentioning `run_id`.
+- [x] 1.8 Run `uv run pytest task2/tests/agent/test_loop.py -k "trace_writer"` and confirm all new tests fail (red).
 
 ## 2. Type Fix
 
@@ -21,8 +22,9 @@
 - [x] 3.3 Update `_emit_plan_event` to accept `trace_writer: TraceWriter | None`, `run_id: str | None`, and a `seq_ref` (or equivalent) so it can construct a `PlanEvent` with real metadata and call `trace_writer.append_event()`. When `trace_writer` is provided, do not append to `events`.
 - [x] 3.4 Update both call-sites of `_emit_plan_event` in `loop()` (initial plan at step 1, replan at supervisor-halt boundary) to pass `trace_writer`, `run_id`, and the incremented seq.
 - [x] 3.5 Add `from datetime import UTC, datetime` import to `loop.py` (if not already present) for ISO timestamp generation.
-- [x] 3.6 Run `uv run pytest task2/tests/agent/test_loop.py -k "trace_writer"` and confirm all new tests pass (green).
-- [x] 3.7 Run `uv run pytest task2/tests/agent/test_loop.py` (full file) to confirm existing tests still pass (back-compat).
+- [x] 3.6 At the top of `loop()`, raise `ValueError` when `trace_writer` is not `None` and `run_id` is `None` to prevent silent fallback to the in-memory `events` path.
+- [x] 3.7 Run `uv run pytest task2/tests/agent/test_loop.py -k "trace_writer"` and confirm all new tests pass (green).
+- [x] 3.8 Run `uv run pytest task2/tests/agent/test_loop.py` (full file) to confirm existing tests still pass (back-compat).
 
 ## 4. Wire Callers
 
