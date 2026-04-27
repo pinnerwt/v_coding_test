@@ -855,3 +855,55 @@ def test_correction_replan_yaml_loads():
     c = cases[0]
     assert c["fixture"] is True
     assert c["category"] == "correction"
+
+
+def test_aggregate_diagnostics_escalation_to_tier_scoped_to_step_id():
+    run_id = _make_run_id()
+    writer = _writer_with_run(run_id)
+
+    locate_miss_s1 = LocateEvent(
+        run_id=run_id,
+        seq=writer.next_seq(run_id),
+        ts=_ts(),
+        step_id="s1",
+        intent="Submit button",
+        tier="L1_ax",
+        outcome="miss",
+        candidates=[],
+        chosen=None,
+        cache_action=None,
+        ms=10,
+    )
+    writer.append_event(locate_miss_s1)
+
+    sup_s1 = SupervisorEvent(
+        run_id=run_id,
+        seq=writer.next_seq(run_id),
+        ts=_ts(),
+        step_id="s1",
+        trigger_event_seq=locate_miss_s1.seq,
+        classified_as="LocatorMiss",
+        policy="next_tier",
+        attempt=1,
+    )
+    writer.append_event(sup_s1)
+
+    locate_hit_s2 = LocateEvent(
+        run_id=run_id,
+        seq=writer.next_seq(run_id),
+        ts=_ts(),
+        step_id="s2",
+        intent="Cancel link",
+        tier="L4_vision",
+        outcome="hit",
+        candidates=[],
+        chosen={"selector": "a"},
+        cache_action="write",
+        ms=20,
+    )
+    writer.append_event(locate_hit_s2)
+
+    escalations, _, _ = _aggregate_diagnostics(writer, run_id)
+    assert len(escalations) == 1
+    assert escalations[0]["from_tier"] == "L1_ax"
+    assert escalations[0]["to_tier"] is None
