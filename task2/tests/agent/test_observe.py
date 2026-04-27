@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import re
 import types
+import unittest.mock
 
 import pytest
 
@@ -185,7 +186,7 @@ def test_build_observation_falls_back_when_new_cdp_session_raises():
         title=lambda: "Example",
         context=fake_context,
     )
-    fake_browser = types.SimpleNamespace(_page=fake_page)
+    fake_browser = types.SimpleNamespace(_page=fake_page, _cdp_sessions={})
 
     obs = build_observation(fake_browser, None)
 
@@ -194,3 +195,63 @@ def test_build_observation_falls_back_when_new_cdp_session_raises():
     assert obs["ax_tree_digest"] == ""
     assert obs["ax_fingerprint"] == _EMPTY_FINGERPRINT
     assert obs["last_action"] is None
+
+
+def test_cdp_session_reused_across_n_observations(playwright_chromium):
+    import base64 as _b64
+
+    html = "<!DOCTYPE html><html><body><button>Click</button></body></html>"
+    encoded = _b64.b64encode(html.encode()).decode()
+    data_url = f"data:text/html;base64,{encoded}"
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        browser.goto(data_url)
+        with unittest.mock.patch.object(
+            browser._page.context,
+            "new_cdp_session",
+            wraps=browser._page.context.new_cdp_session,
+        ) as spy:
+            observations = [build_observation(browser, None) for _ in range(10)]
+
+    assert spy.call_count == 1
+    assert all(obs["ax_tree_digest"] != "" for obs in observations)
+
+
+def test_new_page_invalidates_cached_session(playwright_chromium):
+    import base64 as _b64
+
+    html = "<!DOCTYPE html><html><body><button>Click</button></body></html>"
+    encoded = _b64.b64encode(html.encode()).decode()
+    data_url = f"data:text/html;base64,{encoded}"
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        browser.goto(data_url)
+        with unittest.mock.patch.object(
+            browser._context,
+            "new_cdp_session",
+            wraps=browser._context.new_cdp_session,
+        ) as spy:
+            build_observation(browser, None)
+            old_page = browser._page
+            browser._page = browser._context.new_page()
+            browser._page.goto(data_url)
+            build_observation(browser, None)
+            browser._page.close()
+            browser._page = old_page
+
+    assert spy.call_count == 2
+
+
+def test_browser_exit_detaches_without_raising(playwright_chromium):
+    import base64 as _b64
+
+    html = "<!DOCTYPE html><html><body><button>Click</button></body></html>"
+    encoded = _b64.b64encode(html.encode()).decode()
+    data_url = f"data:text/html;base64,{encoded}"
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        browser.goto(data_url)
+        build_observation(browser, None)
+        assert len(browser._cdp_sessions) == 1
+
+    assert browser._cdp_sessions == {}
