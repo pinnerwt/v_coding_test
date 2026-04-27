@@ -7,7 +7,7 @@ When `_run_agent` in `api/server.py` catches the outer `Exception`, it silently 
 - Add `logger.exception("agent run failed", extra={"run_id": run_id})` in the outer `except Exception` block of `_run_agent` so the full traceback reaches stderr / uvicorn's structured log.
 - Keep the inner `except Exception: pass` only around `writer.close_run` (the retry path) — it continues to suppress close failures silently.
 - Add a module-level `logger = logging.getLogger(__name__)` to `api/server.py`.
-- Add a regression test: a synthetic `_run_agent` call where `loop()` raises `RuntimeError("boom")` asserts that stderr contains `RuntimeError: boom` and the raise site file/line, while the `final.failure.reason="internal error"` row is still written and `writer.close_run` swallowing is unchanged.
+- Add a regression test: a synthetic `_run_agent` call where `loop()` raises `RuntimeError("boom")` captures the `logging` record via `caplog` and asserts `exc_text` contains `RuntimeError: boom` and the raise site file name, while the `final.failure.reason="internal error"` row is still written and `writer.close_run` swallowing is unchanged.
 
 ## Capabilities
 
