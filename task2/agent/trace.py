@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
+from collections.abc import Iterator
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, TypeAdapter
@@ -228,6 +229,7 @@ _RUN_STATE_SQL = (
 )
 _SELECT_RUN_PAYLOAD_SQL = "SELECT payload FROM traces_runs WHERE run_id = ?"
 _INSERT_EVENT_SQL = "INSERT INTO traces_events (run_id, seq, payload) VALUES (?, ?, ?)"
+_SELECT_EVENTS_SQL = "SELECT payload FROM traces_events WHERE run_id = ? ORDER BY seq"
 _UPDATE_RUN_SQL = (
     "UPDATE traces_runs "
     "SET status = ?, ended_at = ?, final_json = ?, totals_json = ?, payload = ? "
@@ -301,6 +303,11 @@ class TraceWriter:
         if status is not None:
             raise self._closed_run(run_id)
         return (max_seq or 0) + 1
+
+    def iter_events(self, run_id: str) -> Iterator[AnyEvent]:
+        conn = self._require_conn()
+        for row in conn.execute(_SELECT_EVENTS_SQL, (run_id,)):
+            yield _any_event_adapter.validate_json(row[0])
 
     def close_run(
         self,
