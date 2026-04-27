@@ -23,8 +23,10 @@ def generate_scoreboard(data: dict) -> str:
     lines.append(f"Generated from eval run: {run_at}")
     lines.append("")
 
-    _hdr = "| Case | Status | Steps | Latency (ms) | USD | Tokens (P+C)"
-    lines.append(_hdr + " | Escalations | Replans | Cache Inv. |")
+    lines.append(
+        "| Case | Status | Steps | Latency (ms) | USD | Tokens (P+C) "
+        "| Escalations | Replans | Cache Inv. |"
+    )
     lines.append("|---|---|---|---|---|---|---|---|---|")
 
     non_skipped = []

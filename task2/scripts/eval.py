@@ -83,13 +83,19 @@ class CaseResult:
 
 
 def _aggregate_diagnostics(writer: TraceWriter, run_id: str) -> tuple[list[dict], int, dict]:
-    assert writer._conn is not None
-    rows = writer._conn.execute(
-        "SELECT payload FROM traces_events WHERE run_id = ? ORDER BY seq",
-        (run_id,),
-    ).fetchall()
+    rows = (
+        writer._require_conn()
+        .execute(
+            "SELECT payload FROM traces_events WHERE run_id = ? ORDER BY seq",
+            (run_id,),
+        )
+        .fetchall()
+    )
 
     events: list[AnyEvent] = [_any_event_adapter.validate_json(row[0]) for row in rows]
+    locates_by_seq: dict[int, LocateEvent] = {
+        ev.seq: ev for ev in events if isinstance(ev, LocateEvent)
+    }
 
     escalations: list[dict] = []
     replan_count = 0
@@ -99,17 +105,14 @@ def _aggregate_diagnostics(writer: TraceWriter, run_id: str) -> tuple[list[dict]
 
     for i, ev in enumerate(events):
         if isinstance(ev, SupervisorEvent) and ev.policy == "next_tier":
-            from_tier: str | None = None
+            trigger = locates_by_seq.get(ev.trigger_event_seq)
+            from_tier = trigger.tier if trigger is not None else None
+            intent_str = trigger.intent if trigger is not None else ""
             to_tier: str | None = None
-            intent_str = ""
-            for j in range(i - 1, -1, -1):
-                if isinstance(events[j], LocateEvent):
-                    from_tier = events[j].tier
-                    intent_str = events[j].intent
-                    break
             for j in range(i + 1, len(events)):
-                if isinstance(events[j], LocateEvent) and events[j].outcome == "hit":
-                    to_tier = events[j].tier
+                nxt = events[j]
+                if isinstance(nxt, LocateEvent) and nxt.outcome == "hit":
+                    to_tier = nxt.tier
                     break
             escalations.append(
                 {
@@ -160,27 +163,27 @@ def _open_trace_run(writer: TraceWriter, run_id: str, case: dict) -> None:
 
 def _run_case(case: dict[str, Any], llm_client: Any, browser: Any, cache: Any = None) -> CaseResult:
     run_id = str(uuid.uuid4())
-    writer = TraceWriter(path=":memory:")
-    _open_trace_run(writer, run_id, case)
-    try:
-        run_result: RunResult = loop(
-            case["task"],
-            browser,
-            llm_client,
-            max_steps=case["budget"]["steps"],
-            trace_writer=writer,
-            run_id=run_id,
-        )
-    except Exception as exc:
-        return CaseResult(
-            id=case["id"],
-            status="failed",
-            steps=0,
-            usd=0.0,
-            l_tier_counts={},
-            validators=[{"name": "exception", "ok": False, "error": repr(exc)}],
-        )
-    escalations, replans, cache_events = _aggregate_diagnostics(writer, run_id)
+    with TraceWriter(path=":memory:") as writer:
+        _open_trace_run(writer, run_id, case)
+        try:
+            run_result: RunResult = loop(
+                case["task"],
+                browser,
+                llm_client,
+                max_steps=case["budget"]["steps"],
+                trace_writer=writer,
+                run_id=run_id,
+            )
+        except Exception as exc:
+            return CaseResult(
+                id=case["id"],
+                status="failed",
+                steps=0,
+                usd=0.0,
+                l_tier_counts={},
+                validators=[{"name": "exception", "ok": False, "error": repr(exc)}],
+            )
+        escalations, replans, cache_events = _aggregate_diagnostics(writer, run_id)
     validator_results = run_validators(
         case.get("expect", {}).get("validators", []),
         run_result.result or {},
@@ -211,9 +214,6 @@ def _skipped_result(case: dict) -> CaseResult:
         usd=0.0,
         l_tier_counts={},
         validators=[],
-        escalations=[],
-        replans=0,
-        cache_events={},
     )
 
 
