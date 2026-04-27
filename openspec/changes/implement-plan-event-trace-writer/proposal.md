@@ -5,10 +5,11 @@
 ## What Changes
 
 - `_emit_plan_event` in `loop.py` gains a `Literal["initial", "replan"]` type annotation on `reason`, removing the existing `# type: ignore[arg-type]` comment.
-- The `loop()` function is wired to accept an optional `TraceWriter` parameter alongside the existing `events: list | None` parameter; when a `TraceWriter` is supplied, `PlanEvent` rows are written through it with the run's actual `run_id`, monotonic `seq` (assigned by the writer via its strictly-increasing counter), and ISO-format `ts`.
+- The `loop()` function is wired to accept an optional `TraceWriter` parameter alongside the existing `events: list | None` parameter; when a `TraceWriter` is supplied, `PlanEvent` rows are written through it with the run's actual `run_id`, a monotonic `seq` assigned by a local counter in `loop()` starting at 1, and ISO-format `ts`.
 - The in-memory `events: list | None` path is preserved unchanged (back-compat) — plan events still accumulate there when no `TraceWriter` is provided.
 - No double-emit: a single call to `_emit_plan_event` either appends to the in-memory list or writes to the `TraceWriter`, not both.
-- The "initial" plan event is written before the first `DecisionEvent`; the "replan" event is written at the supervisor-halt boundary, before the next `DecisionEvent`.
+- The "initial" plan event is written at step 1; the "replan" event is written at the supervisor-halt boundary. Cross-kind ordering between plan and decision/observation events is out of scope here and is tracked under `task2/plan.md` ticket #20 and ticket #26 (`TraceWriter.next_seq(run_id)` accessor).
+- `loop()` raises `ValueError` when called with a `trace_writer` but no `run_id`, preventing silent fallback to the in-memory `events` path in production callers.
 
 ## Capabilities
 
