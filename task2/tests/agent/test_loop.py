@@ -2429,11 +2429,21 @@ def test_real_loop_correction_l1_miss_produces_escalation(fixture_server, playwr
     with Browser(playwright_browser=playwright_chromium) as browser:
         loop("submit the form", browser, fake_llm, trace_writer=writer, run_id=run_id)
 
-    _events, escalations, _replans, _cache = _aggregate_diagnostics(writer, run_id)
+    events, escalations, _replans, _cache = _aggregate_diagnostics(writer, run_id)
     assert len(escalations) >= 1, (
         f"expected at least one escalation from L1 miss on correction_l1_miss fixture, "
         f"got escalations={escalations}"
     )
-    from_tiers = [e["from_tier"] for e in escalations]
-    assert "L1_ax" in from_tiers, f"expected from_tier=L1_ax in escalations, got {from_tiers}"
+    l1_escalation = next((e for e in escalations if e["from_tier"] == "L1_ax"), None)
+    assert l1_escalation is not None, (
+        f"expected from_tier=L1_ax in escalations, got {[e['from_tier'] for e in escalations]}"
+    )
+    assert l1_escalation["to_tier"] == "L2_dom", (
+        f"expected to_tier=L2_dom for the L1_ax escalation, got {l1_escalation['to_tier']}"
+    )
+    l2_locate = next(
+        (e for e in events if isinstance(e, LocateEvent) and e.tier == "L2_dom"),
+        None,
+    )
+    assert l2_locate is not None, "expected at least one LocateEvent(tier='L2_dom') in the trace"
     writer.close()
