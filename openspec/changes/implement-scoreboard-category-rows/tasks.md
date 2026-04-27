@@ -12,7 +12,7 @@
 
 - [x] 2.4 Add `test_category_summary_skipped_live`: same fixture, assert output contains `"Live: 0/0 ran [target 60%] ⏭️"`. Run — confirm failure (red).
 
-- [x] 2.5 Add `test_category_summary_before_per_case_table`: same fixture, assert the position of `"Drift suite:"` in the output string is less than the position of the first `"| "` character that begins the per-case table header. Run — confirm failure (red).
+- [x] 2.5 Add `test_category_summary_before_per_case_table_header`: same fixture, assert the position of `"Drift suite:"` in the output string is less than the position of the first `"| "` character that begins the per-case table header. Run — confirm failure (red).
 
 ## 3. Minimal Implementation (Green)
 
@@ -22,7 +22,7 @@
 
 - [x] 3.3 In `generate_scoreboard()`, before appending the per-case table header, build and prepend the category summary lines. For each suite in `SUITE_THRESHOLDS` insertion order: compute `ran = len([c for c in suite_cases if c["status"] != "skipped"])`, `passed = len([c for c in suite_cases if c["status"] in ("succeeded", "unverified")])`, and choose the glyph. When `ran == 0` emit `"<name>: 0/0 ran [target <target_pct>%] ⏭️"`; otherwise emit `"<name>: <passed>/<ran> (<pct>%) [target <target_pct>%] <glyph>"`. Append a blank line after all suite rows. Run all four category tests — confirm green.
 
-- [x] 3.4 Run `test_category_summary_before_per_case_table` — confirm green.
+- [x] 3.4 Run `test_category_summary_before_per_case_table_header` — confirm green.
 
 - [x] 3.5 Run the full test suite: `uv run pytest tests/test_score.py -x`. Confirm all previously passing tests still pass (no regressions). If `test_score_output_matches_golden_snapshot` fails due to the new summary rows, update `tests/fixtures/results/sample_results_scoreboard.md` to include the new category lines at the top.
 
