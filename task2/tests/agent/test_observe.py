@@ -278,3 +278,22 @@ def test_browser_exit_detaches_without_raising(playwright_chromium):
         assert len(browser._cdp_sessions) == 1
 
     assert browser._cdp_sessions == {}
+
+
+def test_last_actions_empty_on_first_step(browser_on_mixed):
+    obs = build_observation(browser_on_mixed, [])
+    assert "last_actions" in obs
+    assert obs["last_actions"] == []
+
+
+def test_last_actions_single_entry(browser_on_mixed):
+    action = {"tool": "goto", "intent": "navigate", "outcome": "ok"}
+    obs = build_observation(browser_on_mixed, [action])
+    assert obs["last_actions"][0]["tool"] == "goto"
+
+
+def test_last_actions_error_entry_preserved(browser_on_mixed):
+    action = {"tool": "goto", "intent": "navigate", "outcome": "error", "error": "bad url"}
+    obs = build_observation(browser_on_mixed, [action])
+    assert "error" in obs["last_actions"][0]
+    assert obs["last_actions"][0]["error"] == "bad url"

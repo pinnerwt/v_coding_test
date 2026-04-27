@@ -715,6 +715,52 @@ def test_append_event_rejects_after_close_run():
             writer.append_event(_observation_event(run_id=run.run_id, seq=2))
 
 
+def test_observation_event_last_actions_default_empty():
+    event = _observation_event()
+    assert event.last_actions == []
+    data = json.loads(event.model_dump_json())
+    assert data["last_actions"] == []
+
+
+def test_observation_event_last_actions_round_trip():
+    action = {"tool": "goto", "intent": "x", "outcome": "ok"}
+    event = ObservationEvent(
+        run_id=RUN_ID,
+        seq=1,
+        ts=TS,
+        step_id="step-1",
+        url="https://example.com",
+        title="Example",
+        ax_tree_digest="[button Submit]",
+        ax_fingerprint="fp123",
+        screenshot_ref="/tmp/shot.png",
+        viewport={"w": 1280, "h": 800},
+        last_actions=[action],
+    )
+    restored = ObservationEvent.model_validate_json(event.model_dump_json())
+    assert restored.last_actions == [action]
+
+
+def test_observation_event_error_entry_round_trip():
+    action = {"tool": "goto", "intent": "x", "outcome": "error", "error": "bad url"}
+    event = ObservationEvent(
+        run_id=RUN_ID,
+        seq=1,
+        ts=TS,
+        step_id="step-1",
+        url="https://example.com",
+        title="Example",
+        ax_tree_digest="[button Submit]",
+        ax_fingerprint="fp123",
+        screenshot_ref="/tmp/shot.png",
+        viewport={"w": 1280, "h": 800},
+        last_actions=[action],
+    )
+    restored = ObservationEvent.model_validate_json(event.model_dump_json())
+    assert "error" in restored.last_actions[0]
+    assert restored.last_actions[0]["error"] == "bad url"
+
+
 def test_redact_handles_non_dict_messages():
     """redact must not crash when prompt['messages'] entries aren't dicts."""
     ev = _llm_call_event(messages=["a bare string", {"role": "user", "content": "ok"}])
