@@ -36,4 +36,4 @@
 
 ## 7. Smoke-check benchmark results
 
-- [x] 7.1 Run `uv run python -m scripts.eval --case correction-l1-miss-l2-hit` from `task2/` against the local Qwen instance (or scripted stub) and confirm `escalations` is non-empty in the output JSON. If Qwen is unavailable, this step is advisory — the integration test (step 5.1) is the binding done-bar. **Deferred** — local Qwen serves `qwen3.5-27b` but eval runner default `LLM_MODEL=qwen3` 404s; pre-existing infra mismatch unrelated to this change. Binding done-bar (5.1) is GREEN.
+- [ ] 7.1 Run `uv run python -m scripts.eval --case correction-l1-miss-l2-hit` from `task2/` against the local Qwen instance (or scripted stub) and confirm `escalations` is non-empty in the output JSON. If Qwen is unavailable, this step is advisory — the integration test (step 5.1) is the binding done-bar. **Deferred (tracked under ticket #44)** — local Qwen serves `qwen3-5-27b` but eval runner default `LLM_MODEL=qwen3` 404s; pre-existing infra mismatch unrelated to this change. Binding done-bar (5.1) is GREEN.

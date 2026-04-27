@@ -60,9 +60,9 @@ A secondary concern is verifying that ticket #28's `locator_cache` forwarding (`
 
 ## Risks / Trade-offs
 
-- **seq calculation for `trigger_event_seq`**: Using `next_seq - 1` is fragile if any other code emits an event between the L1 `LocateEvent` and the `SupervisorEvent`. Mitigation: the `_locate_with_supervisor` call path is synchronous and single-threaded; no interleaving is possible. We explicitly document this invariant in a comment.
+- **seq calculation for `trigger_event_seq`**: Using `next_seq - 1` would be fragile if any other code emitted an event between the L1 `LocateEvent` and the `SupervisorEvent`. Resolution: `_emit_locate_event` returns the allocated `seq` directly, and `_locate_via_ladder` captures that return value to pass as `trigger_event_seq`. No `next_seq - 1` arithmetic is used, so the invariant is enforced by the call structure rather than by a comment.
 - **Integration test flakiness via Playwright**: Using `page.set_content()` avoids a local HTTP server, which is simpler and more portable. Mitigation: use `page.set_content()` so the test never depends on a network port.
-- **L2 miss case not tested**: If L2 also misses, `_locate_via_ladder` currently raises `LocatorMiss` which propagates out of `_locate_with_supervisor` as an error. The `LocateEvent` for L2 miss may not be emitted in that path. Scope: emit L2 miss events on `except LocatorMiss` within `_locate_via_ladder`. This is a small addition with high coverage value.
+- **L2-miss emission landed:** `_locate_via_ladder` emits a `LocateEvent(tier="L2_dom", outcome="miss")` before re-raising on L2 failure; covered by `test_locate_via_ladder_l1_miss_l2_miss_emits_events_and_raises`. The original risk that this path was untested is resolved.
 
 ## Open Questions
 

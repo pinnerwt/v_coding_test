@@ -209,7 +209,7 @@ def _locate_via_ladder(
     except LocatorMiss as miss:
         if miss.reason != "zero_matches":
             raise
-        _emit_locate_event(
+        l1_miss_seq = _emit_locate_event(
             trace_writer=trace_writer,
             run_id=run_id,
             intent=intent,
@@ -219,14 +219,13 @@ def _locate_via_ladder(
             chosen=None,
             step_id=step_id,
         )
-        l1_miss_seq = (trace_writer.next_seq(run_id) - 1) if (trace_writer and run_id) else 0
         decision = supervisor.handle(miss, current_tier="L1_ax")
         _emit_supervisor_event(
             trace_writer=trace_writer,
             run_id=run_id,
             decision=decision,
             miss=miss,
-            trigger_event_seq=l1_miss_seq,
+            trigger_event_seq=l1_miss_seq or 0,
             step_id=step_id,
         )
         if decision.next_tier != "L2_dom":
@@ -268,9 +267,9 @@ def _emit_locate_event(
     cache_action: Literal["read", "write", "invalidate"] | None,
     chosen: dict[str, Any] | None,
     step_id: str | None = None,
-) -> None:
+) -> int | None:
     if trace_writer is None or run_id is None:
-        return
+        return None
     seq = trace_writer.next_seq(run_id)
     event = LocateEvent(
         run_id=run_id,
@@ -286,13 +285,7 @@ def _emit_locate_event(
         ms=0,
     )
     trace_writer.append_event(event)
-
-
-_MISS_REASON_TO_CLASSIFIED_AS: dict[str, str] = {
-    "zero_matches": "LocatorMiss",
-    "ambiguous": "Ambiguous",
-    "vision_miss": "LocatorMiss",
-}
+    return seq
 
 
 def _emit_supervisor_event(
@@ -306,7 +299,7 @@ def _emit_supervisor_event(
 ) -> None:
     if trace_writer is None or run_id is None:
         return
-    classified_as = _MISS_REASON_TO_CLASSIFIED_AS.get(miss.reason, "LocatorMiss")
+    classified_as = "Ambiguous" if miss.reason == "ambiguous" else "LocatorMiss"
     seq = trace_writer.next_seq(run_id)
     event = SupervisorEvent(
         run_id=run_id,
@@ -314,7 +307,7 @@ def _emit_supervisor_event(
         ts=datetime.now(UTC).isoformat(),
         step_id=step_id,
         trigger_event_seq=trigger_event_seq,
-        classified_as=classified_as,  # type: ignore[arg-type]
+        classified_as=classified_as,
         policy=decision.policy,  # type: ignore[arg-type]
         attempt=decision.attempt,
     )

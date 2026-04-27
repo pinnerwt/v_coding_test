@@ -1756,14 +1756,11 @@ def test_loop_emits_locate_event_invalidate_then_write_on_drift(
 
     v2_rows = _locate_rows(writer_v2)
     cache_actions = [r.get("cache_action") for r in v2_rows]
-    assert "invalidate" in cache_actions, (
-        f"expected cache_action=invalidate in v2 locate rows, got: {cache_actions}"
-    )
-    assert "write" in cache_actions, (
-        f"expected cache_action=write in v2 locate rows, got: {cache_actions}"
-    )
-    assert cache_actions.index("invalidate") < cache_actions.index("write"), (
-        "invalidate must precede write"
+    non_null_actions = [a for a in cache_actions if a is not None]
+    assert non_null_actions == ["invalidate", "write"], (
+        f"expected exactly one invalidate followed by one write on v2 run "
+        f"(ignoring None ladder events), got non-null={non_null_actions} "
+        f"full={cache_actions}"
     )
     cache.close()
     writer_v2.close()
@@ -2093,6 +2090,47 @@ def test_loop_emit_locate_event_step_id_on_cache_hit(fixture_server, playwright_
 
 
 # ---------------------------------------------------------------------------
+# _emit_locate_event return-value unit tests
+# ---------------------------------------------------------------------------
+
+
+def test_emit_locate_event_returns_allocated_seq():
+    from agent.loop import _emit_locate_event
+
+    run_id = "emit-locate-ret-1"
+    writer = _make_writer_with_run(run_id)
+
+    result = _emit_locate_event(
+        trace_writer=writer,
+        run_id=run_id,
+        intent="Submit button",
+        tier="L1_ax",
+        outcome="miss",
+        cache_action=None,
+        chosen=None,
+        step_id=None,
+    )
+
+    events = list(writer.iter_events(run_id))
+    assert len(events) == 1
+    assert result == events[0].seq
+
+    result_none = _emit_locate_event(
+        trace_writer=None,
+        run_id=None,
+        intent="Submit button",
+        tier="L1_ax",
+        outcome="miss",
+        cache_action=None,
+        chosen=None,
+        step_id=None,
+    )
+    assert result_none is None
+
+    writer.close()
+
+
+# ---------------------------------------------------------------------------
 # _emit_supervisor_event unit tests
 # ---------------------------------------------------------------------------
 
@@ -2101,6 +2139,9 @@ def test_emit_supervisor_event_noop_when_trace_writer_none():
     from agent.locate import LocatorMiss
     from agent.loop import _emit_supervisor_event
     from agent.supervisor import EscalationDecision
+
+    run_id = "sv-noop-1"
+    writer = _make_writer_with_run(run_id)
 
     decision = EscalationDecision(next_tier="L2_dom", policy="next_tier", attempt=1)
     miss = LocatorMiss(reason="zero_matches", match_count=0)
@@ -2112,6 +2153,9 @@ def test_emit_supervisor_event_noop_when_trace_writer_none():
         trigger_event_seq=1,
         step_id=None,
     )
+
+    assert list(writer.iter_events(run_id)) == []
+    writer.close()
 
 
 def test_emit_supervisor_event_writes_correct_fields():
@@ -2261,7 +2305,7 @@ def test_locate_via_ladder_l1_miss_l2_hit_emits_three_events(fixture_server, pla
 
 
 def test_locate_via_ladder_l1_miss_l2_miss_emits_events_and_raises(
-    fixture_server, playwright_chromium
+    playwright_chromium,
 ):
     from agent.locate import LocatorMiss
     from agent.loop import _locate_via_ladder
@@ -2270,9 +2314,8 @@ def test_locate_via_ladder_l1_miss_l2_miss_emits_events_and_raises(
     writer = _make_writer_with_run(run_id)
     supervisor = _make_mock_supervisor_next_tier()
 
-    fixture_url = f"{fixture_server}/loop_happy_path.html"
     with Browser(playwright_browser=playwright_chromium) as browser:
-        browser.goto(fixture_url)
+        browser._page.set_content("<html><body><h1>Empty</h1></body></html>")
         with pytest.raises(LocatorMiss):
             _locate_via_ladder(
                 browser._page,
@@ -2306,6 +2349,7 @@ def test_locate_via_ladder_no_trace_kwargs_no_emission(fixture_server, playwrigh
         result = _locate_via_ladder(browser._page, "Submit button", supervisor)
 
     assert result is not None
+    assert result.tier == "L2_dom"
 
 
 # ---------------------------------------------------------------------------
