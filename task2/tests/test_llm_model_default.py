@@ -27,12 +27,14 @@ def test_build_clients_uses_shared_default_when_env_unset():
         assert kwargs.get("model") == llm_mod._DEFAULT_LLM_MODEL
 
 
-def test_server_default_matches_shared_constant():
+def test_build_run_uses_shared_default_when_env_unset():
+    from api.server import TaskRequest, _build_run
+
     env = {k: v for k, v in os.environ.items() if k != "LLM_MODEL"}
     with patch.dict(os.environ, env, clear=True):
-        resolved = os.environ.get("LLM_MODEL", llm_mod._DEFAULT_LLM_MODEL)
-        assert resolved == "qwen3-5-27b"
-        assert resolved == llm_mod._DEFAULT_LLM_MODEL
+        run = _build_run("test-run-id", TaskRequest(task="hello"))
+        assert run.llm.model == llm_mod._DEFAULT_LLM_MODEL
+        assert run.llm.model == "qwen3-5-27b"
 
 
 def test_qwen3_literal_absent_from_eval_py():
