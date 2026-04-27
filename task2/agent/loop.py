@@ -4,13 +4,14 @@ import json
 import time
 import uuid
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Literal
 
 import agent.observe as observe
 import agent.plan as plan_module
 from agent.locate import LocatorMiss, locate_l1, locate_l2, parse_intent
 from agent.supervisor import Supervisor
-from agent.trace import PlanEvent
+from agent.trace import PlanEvent, TraceWriter
 
 if TYPE_CHECKING:
     from playwright.sync_api import Page
@@ -212,7 +213,6 @@ def _dispatch(tool_name: str, args: dict, browser: Browser, supervisor: Supervis
                 locate_result = _locate_with_supervisor(page, intent, supervisor)
             except LocatorMiss as miss:
                 return f"Error: could not locate element for intent {intent!r} ({miss})"
-            # Local import: agent.replay imports agent.loop and must stay playwright-free.
             from agent.browser import ElementNotFound
 
             try:
@@ -223,20 +223,31 @@ def _dispatch(tool_name: str, args: dict, browser: Browser, supervisor: Supervis
     return f"Error: unknown tool {tool_name!r}"
 
 
-def _emit_plan_event(events: list | None, reason: str, steps: list[str], call_id: str) -> None:
+def _emit_plan_event(
+    events: list | None,
+    reason: Literal["initial", "replan"],
+    steps: list[str],
+    call_id: str,
+    trace_writer: TraceWriter | None = None,
+    run_id: str | None = None,
+    seq: int = 0,
+) -> None:
+    use_writer = trace_writer is not None and run_id is not None
+    event = PlanEvent(
+        run_id=run_id if use_writer else "loop",
+        seq=seq if use_writer else 0,
+        ts=datetime.now(UTC).isoformat() if use_writer else "",
+        step_id=None,
+        reason=reason,
+        steps=steps,
+        llm_call_id=call_id,
+    )
+    if use_writer:
+        trace_writer.append_event(event)
+        return
     if events is None:
         return
-    events.append(
-        PlanEvent(
-            run_id="loop",
-            seq=0,
-            ts="",
-            step_id=None,
-            reason=reason,  # type: ignore[arg-type]
-            steps=steps,
-            llm_call_id=call_id,
-        )
-    )
+    events.append(event)
 
 
 def _plan_progress_block(steps: list[str]) -> str:
@@ -251,7 +262,11 @@ def loop(
     *,
     max_steps: int = 20,
     events: list | None = None,
+    run_id: str | None = None,
+    trace_writer: TraceWriter | None = None,
 ) -> RunResult:
+    if trace_writer is not None and run_id is None:
+        raise ValueError("run_id is required when trace_writer is provided")
     messages: list[dict] = [{"role": "system", "content": _build_system_prompt(task)}]
     supervisor = Supervisor()
 
@@ -263,6 +278,7 @@ def loop(
     step_num = 0
     last_actions: list[dict] = []
     active_plan: plan_module.Plan | None = None
+    plan_seq: int = 0
 
     for _ in range(max_steps):
         step_num += 1
@@ -276,7 +292,16 @@ def loop(
             cum_prompt_tokens += plan_resp.usage.prompt_tokens
             cum_completion_tokens += plan_resp.usage.completion_tokens
             cum_usd += plan_resp.usd
-            _emit_plan_event(events, "initial", active_plan.steps, str(uuid.uuid4()))
+            plan_seq += 1
+            _emit_plan_event(
+                events,
+                "initial",
+                active_plan.steps,
+                str(uuid.uuid4()),
+                trace_writer=trace_writer,
+                run_id=run_id,
+                seq=plan_seq,
+            )
 
         assert active_plan is not None
         plan_prefix = _plan_progress_block(active_plan.steps)
@@ -419,7 +444,16 @@ def loop(
                     cum_usd += replan_resp.usd
                     supervisor.replan_used = True
                     active_plan = new_plan
-                    _emit_plan_event(events, "replan", new_plan.steps, str(uuid.uuid4()))
+                    plan_seq += 1
+                    _emit_plan_event(
+                        events,
+                        "replan",
+                        new_plan.steps,
+                        str(uuid.uuid4()),
+                        trace_writer=trace_writer,
+                        run_id=run_id,
+                        seq=plan_seq,
+                    )
                     break
                 else:
                     _record_step(

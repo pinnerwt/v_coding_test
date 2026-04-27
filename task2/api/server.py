@@ -71,7 +71,13 @@ def _run_agent(run_id: str, task_req: TaskRequest) -> None:
             LLMClient(model=os.environ.get("LLM_MODEL", _DEFAULT_LLM_MODEL)) as llm_client,
             Browser() as browser,
         ):
-            result: RunResult = loop(task_req.task, browser, llm_client)
+            result: RunResult = loop(
+                task_req.task,
+                browser,
+                llm_client,
+                trace_writer=writer,
+                run_id=run_id,
+            )
         ended_at = datetime.now(UTC).isoformat()
         writer.close_run(
             run_id,
