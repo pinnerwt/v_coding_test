@@ -410,6 +410,7 @@ def test_run_case_populates_metrics_from_run_result():
     assert result.latency_ms_total == 1200
     assert result.latency_ms_per_step == [400, 400, 400]
     assert len(result.step_breakdown) == 3
+    assert result.failure_class is None
 
 
 def test_case_result_default_has_zero_quantitative_fields():
@@ -1086,6 +1087,38 @@ def test_maintenance_drift_rename_real_loop_cache_invalidation(playwright_chromi
     )
     assert result_v1.status in {"succeeded", "unverified"}, f"v1 status: {result_v1.status}"
     assert result_v2.status in {"succeeded", "unverified"}, f"v2 status: {result_v2.status}"
+
+
+_FAILED_RUN_RESULT = RunResult(
+    status="failed",
+    result=None,
+    evidence=None,
+    verifier=None,
+)
+
+
+def test_run_case_failure_class_is_none_for_succeeded():
+    with patch("scripts.eval.loop", return_value=_METRICS_RUN_RESULT):
+        result = _run_case(_FIXTURE_CASE, llm_client=None, browser=None)
+    assert result.failure_class is None
+
+
+_NO_VALIDATOR_CASE = {
+    "id": "no-validator-case",
+    "domain": "fixture",
+    "category": "read-and-summarize",
+    "task": "Read the page heading",
+    "expect": {"schema": {}, "validators": []},
+    "budget": {"steps": 5, "usd": 0.05, "seconds": 30},
+    "fixture": True,
+}
+
+
+def test_run_case_failure_class_no_done_emitted_when_loop_returns_failed():
+    with patch("scripts.eval.loop", return_value=_FAILED_RUN_RESULT):
+        result = _run_case(_NO_VALIDATOR_CASE, llm_client=None, browser=None)
+    assert result.status == "failed"
+    assert result.failure_class == "no_done_emitted"
 
 
 # ---------------------------------------------------------------------------
