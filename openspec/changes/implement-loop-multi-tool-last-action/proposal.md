@@ -6,7 +6,7 @@ When an LLM response carries N>1 tool calls in one reply, the loop assigns `last
 
 - Replace the single `last_action: dict | None` variable in `loop.py` with `last_actions: list[dict]` — an ordered list of every action dispatched since the previous observation.
 - After all tool calls in a step are dispatched, pass `last_actions` (the full list) into `observe.build_observation`.
-- Change `observe.build_observation` signature to accept `last_actions: list[dict] | None` and emit a `last_actions` key (list) in the observation dict instead of `last_action` (single dict).
+- Change `observe.build_observation` signature to accept `last_actions: list[dict]` and emit a `last_actions` key (list) in the observation dict instead of `last_action` (single dict).
 - Update `ObservationEvent` in `trace.py` to carry `last_actions: list[dict]` instead of (or in addition to) `last_action`.
 - Keep backward-compat: existing callers that only supply a single action still produce a length-1 list, not a regression.
 

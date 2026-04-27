@@ -28,7 +28,7 @@
 ## 5. Green — implement loop.py changes
 
 - [x] 5.1 In `task2/agent/loop.py`, remove `last_action: dict | None = None` initialization and replace with `last_actions: list[dict] = []`.
-- [x] 5.2 Inside the loop body, add `last_actions = []` at the top of each iteration (before `observe.build_observation`) to reset per step.
+- [x] 5.2 Inside the loop body, add `last_actions = []` at the start of each iteration (immediately after `observe.build_observation`, before any new dispatches in that iteration) to reset per step.
 - [x] 5.3 Change the `observe.build_observation(browser, last_action)` call to `observe.build_observation(browser, last_actions)`.
 - [x] 5.4 In the dispatch loop, replace the two `last_action = {...}` assignments with `last_actions.append({...})` (one for `"ok"`, one for `"error"`).
 - [x] 5.5 Run `uv run pytest task2/tests/agent/test_loop.py -k "last_actions"` — confirm new tests pass.
