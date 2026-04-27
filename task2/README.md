@@ -11,15 +11,15 @@
 
 Cost and latency are split into passed vs. failed cases: a failing case bails out early, so a higher pass rate naturally raises totals. Compare the green (passed) and red (failed) series within a branch, not the totals across branches.
 
-### Latest run — `task2-implement-loop-multi-tool-last-action` (2026-04-27 03:43 UTC)
+### Latest run — `task2-implement-plan-event-trace-writer` (2026-04-27 05:33 UTC)
 
 | Case | Status | Steps | Latency | Tokens | USD |
 |---|---|---:|---:|---:|---:|
-| `drift-submit-form-v1` | failed | 0 | 0 ms | 0 | $0.0000 |
-| `drift-submit-form-v2` | failed | 0 | 0 ms | 0 | $0.0000 |
-| `fixture-count` | succeeded | 2 | 75.5 s | 12,303 | $0.0142 |
-| `fixture-heading` | succeeded | 3 | 48.2 s | 18,711 | $0.0197 |
-| **Total (4 cases, 2 passed)** | | 5 | 123.6 s | 31,014 | $0.0339 |
+| `drift-submit-form-v1` | failed | 1 | 24.8 s | 1,644 | $0.0023 |
+| `drift-submit-form-v2` | failed | 1 | 22.8 s | 1,582 | $0.0022 |
+| `fixture-count` | failed | 2 | 26.2 s | 2,661 | $0.0034 |
+| `fixture-heading` | failed | 2 | 30.9 s | 2,858 | $0.0037 |
+| **Total (4 cases, 0 passed)** | | 6 | 104.7 s | 8,745 | $0.0117 |
 <!-- TRENDS:END -->
 
 
