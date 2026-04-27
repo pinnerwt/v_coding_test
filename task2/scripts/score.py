@@ -5,6 +5,24 @@ import json
 import sys
 from pathlib import Path
 
+SUITE_THRESHOLDS: dict[str, dict] = {
+    "drift": {
+        "name": "Drift suite",
+        "id_prefixes": ["drift-", "maintenance-drift-", "correction-"],
+        "target_pct": 100,
+    },
+    "fixture": {
+        "name": "Fixture",
+        "id_prefixes": ["fixture-"],
+        "target_pct": 80,
+    },
+    "live": {
+        "name": "Live",
+        "id_prefixes": ["live-"],
+        "target_pct": 60,
+    },
+}
+
 
 def _percentile(values: list[int], pct: int) -> int:
     if not values:
@@ -15,12 +33,38 @@ def _percentile(values: list[int], pct: int) -> int:
     return sorted_vals[idx]
 
 
+def _bucket_cases_by_suite(cases: list[dict]) -> dict[str, list[dict]]:
+    buckets: dict[str, list[dict]] = {key: [] for key in SUITE_THRESHOLDS}
+    for case in cases:
+        cid = case.get("id", "")
+        for suite_key, suite in SUITE_THRESHOLDS.items():
+            if any(cid.startswith(prefix) for prefix in suite["id_prefixes"]):
+                buckets[suite_key].append(case)
+                break
+    return buckets
+
+
 def generate_scoreboard(data: dict) -> str:
     cases = data.get("cases", [])
     run_at = data.get("run_at", "unknown")
 
     lines: list[str] = []
     lines.append(f"Generated from eval run: {run_at}")
+    lines.append("")
+
+    buckets = _bucket_cases_by_suite(cases)
+    for suite_key, suite in SUITE_THRESHOLDS.items():
+        suite_cases = buckets[suite_key]
+        name = suite["name"]
+        target_pct = suite["target_pct"]
+        ran = len([c for c in suite_cases if c.get("status") != "skipped"])
+        passed = len([c for c in suite_cases if c.get("status") in ("succeeded", "unverified")])
+        if ran == 0:
+            lines.append(f"{name}: 0/0 ran [target {target_pct}%] ⏭️")
+        else:
+            pct = int(100 * passed / ran)
+            glyph = "✅" if pct >= target_pct else "❌"
+            lines.append(f"{name}: {passed}/{ran} ({pct}%) [target {target_pct}%] {glyph}")
     lines.append("")
 
     lines.append(
