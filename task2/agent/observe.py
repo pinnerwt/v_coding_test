@@ -27,41 +27,43 @@ MAX_NAME_LEN: int = 80
 _EMPTY_FINGERPRINT: str = hashlib.sha256(b"").hexdigest()
 
 
+def _detach_silently(session) -> None:
+    try:
+        session.detach()
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _ax_nodes(browser) -> tuple[list[dict], int]:
     page = browser._page
-    _cdp_sessions = getattr(browser, "_cdp_sessions", None)
-    if _cdp_sessions is None:
+    sessions = getattr(browser, "_cdp_sessions", None)
+    transient = sessions is None
+
+    if transient:
+        cdp = None
+    else:
+        cdp = sessions.get(id(page))
+        if cdp is None:
+            for stale in sessions.values():
+                _detach_silently(stale)
+            sessions.clear()
+
+    if cdp is None:
         try:
             cdp = page.context.new_cdp_session(page)
         except Exception:  # noqa: BLE001
             return [], 0
-        try:
-            result = cdp.send("Accessibility.getFullAXTree")
-        except Exception:  # noqa: BLE001
-            return [], 0
-        finally:
-            try:
-                cdp.detach()
-            except Exception:  # noqa: BLE001
-                pass
-    else:
-        page_id = id(page)
-        if page_id not in _cdp_sessions:
-            for stale in _cdp_sessions.values():
-                try:
-                    stale.detach()
-                except Exception:  # noqa: BLE001
-                    pass
-            _cdp_sessions.clear()
-            try:
-                cdp = page.context.new_cdp_session(page)
-            except Exception:  # noqa: BLE001
-                return [], 0
-            _cdp_sessions[page_id] = cdp
-        try:
-            result = _cdp_sessions[page_id].send("Accessibility.getFullAXTree")
-        except Exception:  # noqa: BLE001
-            return [], 0
+        if not transient:
+            sessions[id(page)] = cdp
+
+    try:
+        result = cdp.send("Accessibility.getFullAXTree")
+    except Exception:  # noqa: BLE001
+        return [], 0
+    finally:
+        if transient:
+            _detach_silently(cdp)
+
     out: list[dict] = []
     total = 0
     for n in result.get("nodes", []):
