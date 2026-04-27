@@ -347,6 +347,21 @@ def test_generate_scoreboard_mechanism_firing_rates_block():
 def test_generate_scoreboard_backward_compat_missing_mechanism_fields():
     from scripts.score import generate_scoreboard
 
-    data = json.loads(_SAMPLE_RESULTS.read_text())
+    data = {
+        "cases": [
+            {
+                "id": "compat-01",
+                "status": "succeeded",
+                "steps": 3,
+                "usd": 0.001,
+                "latency_ms_total": 1234,
+                "prompt_tokens": 100,
+                "completion_tokens": 50,
+                "l_tier_counts": {"L1": 3},
+                "validators": [],
+            }
+        ]
+    }
     output = generate_scoreboard(data)
     assert "succeeded" in output
+    assert "| 0 | 0 | 0 |" in output
