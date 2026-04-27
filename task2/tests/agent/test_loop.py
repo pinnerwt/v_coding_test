@@ -9,7 +9,7 @@ import pytest
 from agent.browser import Browser
 from agent.llm import ChatResponse, ToolCall, Usage
 from agent.loop import RunResult, loop
-from agent.trace import PlanEvent, Run, RunBudget, RunLLM, TraceWriter
+from agent.trace import LocateEvent, PlanEvent, Run, RunBudget, RunLLM, SupervisorEvent, TraceWriter
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -1755,9 +1755,12 @@ def test_loop_emits_locate_event_invalidate_then_write_on_drift(
         )
 
     v2_rows = _locate_rows(writer_v2)
-    actions = [r.get("cache_action") for r in v2_rows]
-    assert actions == ["invalidate", "write"], (
-        f"expected exactly one invalidate followed by one write on v2 run, got: {actions}"
+    cache_actions = [r.get("cache_action") for r in v2_rows]
+    non_null_actions = [a for a in cache_actions if a is not None]
+    assert non_null_actions == ["invalidate", "write"], (
+        f"expected exactly one invalidate followed by one write on v2 run "
+        f"(ignoring None ladder events), got non-null={non_null_actions} "
+        f"full={cache_actions}"
     )
     cache.close()
     writer_v2.close()
@@ -2084,3 +2087,363 @@ def test_loop_emit_locate_event_step_id_on_cache_hit(fixture_server, playwright_
     assert step_id.startswith(f"{run_id_2}:step-")
     cache.close()
     writer_2.close()
+
+
+# ---------------------------------------------------------------------------
+# _emit_locate_event return-value unit tests
+# ---------------------------------------------------------------------------
+
+
+def test_emit_locate_event_returns_allocated_seq():
+    from agent.loop import _emit_locate_event
+
+    run_id = "emit-locate-ret-1"
+    writer = _make_writer_with_run(run_id)
+
+    result = _emit_locate_event(
+        trace_writer=writer,
+        run_id=run_id,
+        intent="Submit button",
+        tier="L1_ax",
+        outcome="miss",
+        cache_action=None,
+        chosen=None,
+        step_id=None,
+    )
+
+    events = list(writer.iter_events(run_id))
+    assert len(events) == 1
+    assert result == events[0].seq
+
+    result_none = _emit_locate_event(
+        trace_writer=None,
+        run_id=None,
+        intent="Submit button",
+        tier="L1_ax",
+        outcome="miss",
+        cache_action=None,
+        chosen=None,
+        step_id=None,
+    )
+    assert result_none is None
+
+    writer.close()
+
+
+# ---------------------------------------------------------------------------
+# _emit_supervisor_event unit tests
+# ---------------------------------------------------------------------------
+
+
+def test_emit_supervisor_event_noop_when_trace_writer_none():
+    from agent.locate import LocatorMiss
+    from agent.loop import _emit_supervisor_event
+    from agent.supervisor import EscalationDecision
+
+    run_id = "sv-noop-1"
+    writer = _make_writer_with_run(run_id)
+
+    decision = EscalationDecision(next_tier="L2_dom", policy="next_tier", attempt=1)
+    miss = LocatorMiss(reason="zero_matches", match_count=0)
+    _emit_supervisor_event(
+        trace_writer=None,
+        run_id=None,
+        decision=decision,
+        miss=miss,
+        trigger_event_seq=1,
+        step_id=None,
+    )
+
+    assert list(writer.iter_events(run_id)) == []
+    writer.close()
+
+
+def test_emit_supervisor_event_writes_correct_fields():
+    from agent.locate import LocatorMiss
+    from agent.loop import _emit_supervisor_event
+    from agent.supervisor import EscalationDecision
+
+    run_id = "sv-test-1"
+    writer = _make_writer_with_run(run_id)
+
+    locate_event = LocateEvent(
+        run_id=run_id,
+        seq=1,
+        ts="2024-01-01T00:00:00+00:00",
+        step_id="sv-test-1:step-2",
+        intent="Submit button",
+        tier="L1_ax",
+        outcome="miss",
+        candidates=[],
+        chosen=None,
+        cache_action=None,
+        ms=0,
+    )
+    writer.append_event(locate_event)
+
+    decision = EscalationDecision(next_tier="L2_dom", policy="next_tier", attempt=1)
+    miss = LocatorMiss(reason="zero_matches", match_count=0)
+    _emit_supervisor_event(
+        trace_writer=writer,
+        run_id=run_id,
+        decision=decision,
+        miss=miss,
+        trigger_event_seq=1,
+        step_id="sv-test-1:step-2",
+    )
+
+    events = list(writer.iter_events(run_id))
+    sv_events = [e for e in events if isinstance(e, SupervisorEvent)]
+    assert len(sv_events) == 1
+    ev = sv_events[0]
+    assert ev.policy == "next_tier"
+    assert ev.classified_as == "LocatorMiss"
+    assert ev.trigger_event_seq == 1
+    assert ev.attempt == 1
+    assert ev.step_id == "sv-test-1:step-2"
+    writer.close()
+
+
+def test_emit_supervisor_event_maps_ambiguous_reason():
+    from agent.locate import LocatorMiss
+    from agent.loop import _emit_supervisor_event
+    from agent.supervisor import EscalationDecision
+
+    run_id = "sv-test-2"
+    writer = _make_writer_with_run(run_id)
+
+    locate_event = LocateEvent(
+        run_id=run_id,
+        seq=1,
+        ts="2024-01-01T00:00:00+00:00",
+        step_id=None,
+        intent="Save button",
+        tier="L1_ax",
+        outcome="ambiguous",
+        candidates=[],
+        chosen=None,
+        cache_action=None,
+        ms=0,
+    )
+    writer.append_event(locate_event)
+
+    decision = EscalationDecision(next_tier=None, policy="halt", attempt=1)
+    miss = LocatorMiss(reason="ambiguous", match_count=3)
+    _emit_supervisor_event(
+        trace_writer=writer,
+        run_id=run_id,
+        decision=decision,
+        miss=miss,
+        trigger_event_seq=1,
+        step_id=None,
+    )
+
+    events = list(writer.iter_events(run_id))
+    sv_events = [e for e in events if isinstance(e, SupervisorEvent)]
+    assert len(sv_events) == 1
+    assert sv_events[0].classified_as == "Ambiguous"
+    writer.close()
+
+
+def test_emit_supervisor_event_maps_vision_miss_reason():
+    from agent.locate import LocatorMiss
+    from agent.loop import _emit_supervisor_event
+    from agent.supervisor import EscalationDecision
+
+    run_id = "sv-test-3"
+    writer = _make_writer_with_run(run_id)
+
+    locate_event = LocateEvent(
+        run_id=run_id,
+        seq=1,
+        ts="2024-01-01T00:00:00+00:00",
+        step_id=None,
+        intent="Submit button",
+        tier="L4_vision",
+        outcome="miss",
+        candidates=[],
+        chosen=None,
+        cache_action=None,
+        ms=0,
+    )
+    writer.append_event(locate_event)
+
+    decision = EscalationDecision(next_tier=None, policy="halt", attempt=1)
+    miss = LocatorMiss(reason="vision_miss", match_count=0)
+    _emit_supervisor_event(
+        trace_writer=writer,
+        run_id=run_id,
+        decision=decision,
+        miss=miss,
+        trigger_event_seq=1,
+        step_id=None,
+    )
+
+    events = list(writer.iter_events(run_id))
+    sv_events = [e for e in events if isinstance(e, SupervisorEvent)]
+    assert len(sv_events) == 1
+    assert sv_events[0].classified_as == "LocatorMiss"
+    writer.close()
+
+
+# ---------------------------------------------------------------------------
+# _locate_via_ladder trace emission unit tests
+# ---------------------------------------------------------------------------
+
+
+def _make_mock_supervisor_next_tier(next_tier: str = "L2_dom"):
+    from agent.locate import LocatorMiss
+    from agent.supervisor import EscalationDecision, Supervisor
+
+    class _AlwaysNextTier(Supervisor):
+        def handle(self, miss: LocatorMiss, *, current_tier: str) -> EscalationDecision:
+            decision = EscalationDecision(next_tier=next_tier, policy="next_tier", attempt=1)
+            self.last_policy = decision.policy
+            return decision
+
+    return _AlwaysNextTier()
+
+
+def test_locate_via_ladder_l1_miss_l2_hit_emits_three_events(fixture_server, playwright_chromium):
+    from agent.loop import _locate_via_ladder
+
+    run_id = "ladder-test-1"
+    writer = _make_writer_with_run(run_id)
+    supervisor = _make_mock_supervisor_next_tier()
+
+    fixture_url = f"{fixture_server}/correction_l1_miss.html"
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        browser.goto(fixture_url)
+        result = _locate_via_ladder(
+            browser._page,
+            "Submit button",
+            supervisor,
+            trace_writer=writer,
+            run_id=run_id,
+            step_id="ladder-test-1:step-1",
+        )
+
+    assert result is not None
+
+    events = list(writer.iter_events(run_id))
+    locate_events = [e for e in events if isinstance(e, LocateEvent)]
+    sv_events = [e for e in events if isinstance(e, SupervisorEvent)]
+
+    assert len(locate_events) >= 2
+    l1_miss = next((e for e in locate_events if e.tier == "L1_ax" and e.outcome == "miss"), None)
+    l2_hit = next((e for e in locate_events if e.tier == "L2_dom" and e.outcome == "hit"), None)
+    assert l1_miss is not None, "expected L1_ax miss LocateEvent"
+    assert l2_hit is not None, "expected L2_dom hit LocateEvent"
+
+    assert len(sv_events) == 1
+    sv = sv_events[0]
+    assert sv.policy == "next_tier"
+    assert sv.trigger_event_seq == l1_miss.seq
+
+    seqs = [e.seq for e in events]
+    assert seqs == sorted(set(seqs)), "seqs must be strictly increasing"
+    writer.close()
+
+
+def test_locate_via_ladder_l1_miss_l2_miss_emits_events_and_raises(
+    playwright_chromium,
+):
+    from agent.locate import LocatorMiss
+    from agent.loop import _locate_via_ladder
+
+    run_id = "ladder-test-2"
+    writer = _make_writer_with_run(run_id)
+    supervisor = _make_mock_supervisor_next_tier()
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        browser._page.set_content("<html><body><h1>Empty</h1></body></html>")
+        with pytest.raises(LocatorMiss):
+            _locate_via_ladder(
+                browser._page,
+                "Nonexistent button",
+                supervisor,
+                trace_writer=writer,
+                run_id=run_id,
+                step_id=None,
+            )
+
+    events = list(writer.iter_events(run_id))
+    locate_events = [e for e in events if isinstance(e, LocateEvent)]
+    sv_events = [e for e in events if isinstance(e, SupervisorEvent)]
+
+    l1_miss = next((e for e in locate_events if e.tier == "L1_ax" and e.outcome == "miss"), None)
+    l2_miss = next((e for e in locate_events if e.tier == "L2_dom" and e.outcome == "miss"), None)
+    assert l1_miss is not None, "expected L1_ax miss LocateEvent"
+    assert l2_miss is not None, "expected L2_dom miss LocateEvent"
+    assert len(sv_events) == 1
+    sv = sv_events[0]
+    assert l1_miss.seq < sv.seq < l2_miss.seq, (
+        "expected ordering: L1_ax miss → SupervisorEvent → L2_dom miss"
+    )
+    assert sv.trigger_event_seq == l1_miss.seq
+    writer.close()
+
+
+def test_locate_via_ladder_no_trace_kwargs_no_emission(fixture_server, playwright_chromium):
+    from agent.loop import _locate_via_ladder
+
+    supervisor = _make_mock_supervisor_next_tier()
+    fixture_url = f"{fixture_server}/correction_l1_miss.html"
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        browser.goto(fixture_url)
+        result = _locate_via_ladder(browser._page, "Submit button", supervisor)
+
+    assert result is not None
+    assert result.tier == "L2_dom"
+
+
+# ---------------------------------------------------------------------------
+# Integration test: real loop on correction_l1_miss produces escalation
+# ---------------------------------------------------------------------------
+
+
+def test_real_loop_correction_l1_miss_produces_escalation(fixture_server, playwright_chromium):
+    from scripts.eval import _aggregate_diagnostics
+
+    fixture_url = f"{fixture_server}/correction_l1_miss.html"
+    run_id = "integ-l1-miss-1"
+    writer = _make_writer_with_run(run_id)
+
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+        _response_with_tool_call(_tool_call("read", {"intent": "Submit button"}, call_id="tc-2")),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"ok": True},
+                    "evidence": {"url": fixture_url, "text_snippet": "Submit"},
+                },
+                call_id="tc-3",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        loop("submit the form", browser, fake_llm, trace_writer=writer, run_id=run_id)
+
+    events, escalations, _replans, _cache = _aggregate_diagnostics(writer, run_id)
+    assert len(escalations) >= 1, (
+        f"expected at least one escalation from L1 miss on correction_l1_miss fixture, "
+        f"got escalations={escalations}"
+    )
+    l1_escalation = next((e for e in escalations if e["from_tier"] == "L1_ax"), None)
+    assert l1_escalation is not None, (
+        f"expected from_tier=L1_ax in escalations, got {[e['from_tier'] for e in escalations]}"
+    )
+    assert l1_escalation["to_tier"] == "L2_dom", (
+        f"expected to_tier=L2_dom for the L1_ax escalation, got {l1_escalation['to_tier']}"
+    )
+    l2_locate = next(
+        (e for e in events if isinstance(e, LocateEvent) and e.tier == "L2_dom"),
+        None,
+    )
+    assert l2_locate is not None, "expected at least one LocateEvent(tier='L2_dom') in the trace"
+    writer.close()

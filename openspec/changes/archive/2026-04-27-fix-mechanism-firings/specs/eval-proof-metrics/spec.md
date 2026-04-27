@@ -1,9 +1,4 @@
-# eval-proof-metrics Specification
-
-## Purpose
-TBD - created by archiving change implement-self-correction-proof. Update Purpose after archive.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: CaseResult diagnostic mechanism fields
 

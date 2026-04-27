@@ -309,6 +309,57 @@ Candidate tickets, ordered roughly by impact-per-effort. Each is TDD-shaped so i
 
 43. **`tool_error` should also classify `ActEvent(outcome="timeout")`.** `agent/trace.py:69` types `ActEvent.outcome` as `Literal["ok", "no_effect", "nav", "timeout", "error"]`, but `_classify_failure` in `scripts/eval.py` (added in ticket #31) only catches `outcome="error"`. A failed case whose only signal is a Playwright timeout (e.g. `wait_for` exhausted) currently falls through to `no_done_emitted`, which loses the more specific signal that the browser tool stalled. Decision needed: (a) widen the predicate to `outcome in {"error", "timeout"}` and treat both as `tool_error`, OR (b) introduce a new `failure_class="tool_timeout"` literal (and a new column option in the scoreboard). Tests: synthetic `ActEvent(outcome="timeout")` with status="failed" classifies as the chosen literal; the existing `ActEvent(outcome="error")` test still classifies as `tool_error`; design.md / spec rule 2.c updated to match the chosen direction.
 
+44. **Align eval-runner `LLM_MODEL` default with `api/server.py` (`qwen3-5-27b`).** `scripts/eval.py` (and the wider `scripts/benchmark` entry point) defaults `LLM_MODEL` to `"qwen3"`, while `task2/api/server.py:22` defaults to `"qwen3-5-27b"` — the model name actually served by the local Qwen instance at `http://localhost:8090`. As a result, any eval-runner smoke against the live LLM 404s at step 0, which is exactly why ticket #32's Task 7.1 (run `--case correction-l1-miss-l2-hit` against the local Qwen) had to be deferred. Make the default come from a single source (e.g. share `_DEFAULT_LLM_MODEL` from `agent/llm.py` or a new `agent/config.py`), and have both `api/server.py` and `scripts/eval.py` read it. Tests: a unit test asserts both call sites resolve the same default when `LLM_MODEL` is unset; running `python -m scripts.eval --case <fixture>` against a stubbed Qwen succeeds without setting `LLM_MODEL` explicitly. *Why useful:* unblocks live-Qwen smoke checks in future tickets and removes the recurring "infra mismatch unrelated to this change" deferral.
+
+45. **Surface tracebacks from `_run_agent`'s internal-error path.** `task2/api/server.py:93-104` catches `Exception` and writes a `final.failure.reason="internal error"` row, but the `except Exception: pass` block (`api/server.py:103-104`) swallows the underlying traceback entirely — it never reaches the uvicorn log, so a smoke-test failure surfaces only as `status=failed, reason="internal error"`, with no signal as to whether the cause was an LLM 404, a Playwright timeout, an import error, or a database lock. Observed during ticket #32's smoke run: first invocation timed out at 60s, server log contained only INFO request lines, and the diagnostic had to be reproduced by hand-instrumenting `_run_agent` in a one-off script. Add structured error logging on the outer `except Exception` (e.g. `logger.exception("agent run failed", extra={"run_id": run_id})`) so the traceback lands in stderr / uvicorn's structured log, and keep the inner `except Exception: pass` only around the `writer.close_run` retry. Tests: a synthetic `_run_agent(run_id, task_req)` where `loop()` raises `RuntimeError("boom")` produces a stderr line containing `RuntimeError: boom` and the file/line of the raise, while still writing the `final.failure.reason="internal error"` row; the inner-close swallowing is unchanged. *Why useful:* removes a recurring "smoke failed but I can't tell why" debugging round that adds 5–10 min per failed iteration.
+
+46. **Promote `Browser._page` to a public read-only accessor.** Multiple tests in `task2/tests/agent/test_loop.py` (and `tests/test_observe.py`) reach into `Browser._page` to drive `_locate_via_ladder` / fixture HTML directly. The underscore is the module's "do not touch outside class" contract, so each leak weakens the convention. Add a `Browser.page` property (or a `Browser.current_page() -> Page` method) returning `self._page` and migrate test call sites. Production code that already lives inside `Browser` keeps using `self._page` as today. Tests: existing tests pass after migration; a new test asserts `Browser.page` returns the same object as `Browser._page` for a freshly opened browser. *Why useful:* the underscore convention should mean something; today it is consistently violated by the test surface. *Trigger:* surfaced repeatedly by review subagents on PR #62 (iteration 2 and iteration 3 reviews).
+
+47. **Tighten `EscalationDecision.policy` to the same `Literal` as `SupervisorEvent.policy`.** `agent/supervisor.py:17` types `EscalationDecision.policy` as plain `str`, but `agent/trace.py:80` types `SupervisorEvent.policy` as `Literal["next_tier", "rerank", "sweep_overlay", "replan", "halt"]`. The mismatch forces a `# type: ignore[arg-type]` in `_emit_supervisor_event` (`agent/loop.py`). Tightening `EscalationDecision.policy` to the same `Literal` enforces the contract end-to-end at type-check time and removes the suppression. Touch all call sites in `Supervisor.handle` (`agent/supervisor.py`) so they construct `EscalationDecision` with literal values, and update unit tests in `tests/test_supervisor.py` to type-check against the new alias. Tests: existing `test_supervisor.py` continues to pass; a mypy / ruff run shows no `arg-type` suppression remaining in `_emit_supervisor_event`. *Why useful:* removes a real type-narrowing gap and a `# type: ignore` line. *Trigger:* surfaced by review subagents on PR #62 (iterations 2 and 3); iteration 2 deferred it as out of scope.
+
+## Undone
+
+Tickets not yet merged, ordered by urgency. `/new_task2` step 1 selects from this list — pick the highest-urgency entry available; tie-break by lowest ticket number.
+
+New tickets are appended here by `/new_task2` step 11 alongside the full text in `## TDD tickets` / `## Benchmark improvements`. When a ticket merges, the corresponding entry should be removed (currently a manual cleanup; track under a future skill update to `/done_pr`).
+
+Urgency tags:
+- **P0** — unblocks other tickets or removes recurring debugging friction.
+- **P1** — observed bug or correctness gap blocking the brief's done bar.
+- **P2** — measurable improvement to the eval / scoreboard / mechanisms.
+- **P3** — nice-to-have polish.
+
+### P0 — unblocks other work
+
+- **#44** — Align eval-runner `LLM_MODEL` default with `api/server.py`. Every Task 7.1 currently defers because the eval default (`qwen3`) 404s against the local Qwen (`qwen3-5-27b`).
+- **#45** — Surface tracebacks from `_run_agent`'s internal-error path. Removes the recurring "smoke failed but I can't tell why" debug round.
+
+### P1 — observed bugs / type-narrowing gaps
+
+- **#47** — Tighten `EscalationDecision.policy` to `Literal[...]`; removes a `# type: ignore` and enforces SupervisorEvent contract end-to-end.
+
+### P2 — measurable improvements
+
+- **#33** — Per-category pass-rate rows + done-bar traffic lights in scoreboard.
+- **#34** — Skip-reason tagging.
+- **#35** — N-run statistical bench mode (`--repeats N`).
+- **#36** — Auto-diff scoreboard against master baseline.
+- **#37** — Canary suite: must-always-pass cases, hard-blocking on regression.
+- **#38** — Per-step token / latency breakdown surfacing.
+- **#41** — Cache-hit visibility separate from invalidations.
+- **#42** — Failure-clustering histogram across the suite (depends on #31, which is done).
+- **#43** — `tool_error` should also classify `ActEvent(outcome="timeout")`.
+
+### P3 — nice-to-have
+
+- **#39** — Robustness mini-suite (prompt injection, malformed fixtures).
+- **#40** — Cost & latency budget overruns as soft failures (`near_budget` flag).
+- **#46** — Promote `Browser._page` to a public read-only accessor.
+
+### In flight
+
+- **#32** — Audit mechanism-firing rates [in PR #62; awaiting `/done_pr` archive + merge]. Will be removed from this rubric on archive.
+
 ## Honest risks / tradeoffs
 
 - **Local Qwen3.5 27B is weaker than frontier on long-horizon planning.** Mitigation: short bounded plans, constrained tool-call grammar, structured observations. Will measure and surface in README.

@@ -56,6 +56,7 @@ The system SHALL provide `agent.loop.loop(task, browser, llm_client, *, max_step
   - `cache_action="invalidate"` + `outcome="miss"` + `tier="cache"` whenever `cache.invalidate(...)` is called.
   - `cache_action="write"` + `outcome="hit"` + `tier=<resolved ladder tier>` whenever `cache.put(...)` is called after a fresh ladder resolve.
   - The loop SHALL NOT emit a `LocateEvent` when `locator_cache is None` or when the ladder resolves without any cache interaction.
+- When `trace_writer` and `run_id` are provided (regardless of `locator_cache`), the loop SHALL emit trace events for locator ladder outcomes via `_locate_via_ladder`: a `LocateEvent(tier="L1_ax", outcome="miss")` when L1 raises `LocatorMiss(reason="zero_matches")`, a `SupervisorEvent` immediately after the supervisor decision, and a `LocateEvent(tier="L2_dom", outcome="hit"/"miss")` on the L2 attempt result. This applies whenever the ladder is actually reached; when a `locator_cache` is provided and a fresh fingerprint match short-circuits the ladder, no L1/L2 ladder events are emitted for that step.
 
 #### Scenario: loop returns RunResult
 
@@ -96,6 +97,25 @@ The system SHALL provide `agent.loop.loop(task, browser, llm_client, *, max_step
 - **THEN** the fingerprint mismatch SHALL cause `cache.invalidate()` to be called
 - **AND** the trace for this run SHALL contain a `LocateEvent(cache_action="invalidate")`
 - **AND** `_aggregate_diagnostics(writer, run_id)["cache_events"]["invalidations"]` SHALL be `>= 1`
+
+#### Scenario: Escalation trace events emitted on L1 miss with trace_writer provided
+
+- **GIVEN** a `loop()` call with `trace_writer=writer`, `run_id=run_id`, and no `locator_cache`
+- **AND** a scripted LLM that issues `read(intent="Submit button")` on step 1, which causes `locate_l1` to raise `LocatorMiss(reason="zero_matches")` and `locate_l2` to succeed
+- **WHEN** the loop completes
+- **THEN** `writer.iter_events(run_id)` SHALL yield a `LocateEvent(tier="L1_ax", outcome="miss")`
+- **AND** a `SupervisorEvent(policy="next_tier", classified_as="LocatorMiss")` whose `trigger_event_seq` equals the L1 miss event's `seq`
+- **AND** a `LocateEvent(tier="L2_dom", outcome="hit")`
+
+#### Scenario: Integration — real loop on correction-l1-miss-l2-hit fixture produces non-zero escalations
+
+- **GIVEN** the `correction_l1_miss.html` fixture page (contains `<div class="btn">Submit</div>` with no ARIA role)
+- **AND** a real `loop()` call with a scripted LLM client (deterministic `ChatResponse` objects — `step 1: goto(fixture_url)`, `step 2: read(intent="Submit button")`, `step 3: done(...)`)
+- **AND** a real `TraceWriter` (in-memory) and `run_id`
+- **WHEN** `loop()` completes and `_aggregate_diagnostics(writer, run_id)` is called
+- **THEN** `escalations` SHALL contain at least one entry
+- **AND** that entry SHALL have `from_tier="L1_ax"` (L1 misses because the element has no accessible role) and `to_tier` set to `"L2_dom"` or `None` (L2 may or may not match, depending on fixture)
+- **AND** this assertion SHALL fail if `_emit_supervisor_event` is removed from `_locate_via_ladder` (regression guard)
 
 ### Requirement: locator_cache kwarg accepted by loop with None default
 
