@@ -13,7 +13,7 @@ from typing import Any
 import yaml
 
 from agent.browser import Browser
-from agent.llm import LLMClient
+from agent.llm import _DEFAULT_LLM_MODEL, LLMClient
 from agent.loop import RunResult, loop
 from agent.trace import (
     ActEvent,
@@ -317,7 +317,7 @@ def compute_exit_code(cases: list[dict]) -> int:
 
 def build_clients():
     base_url = os.environ.get("LLM_BASE_URL", "http://localhost:8090/v1")
-    model = os.environ.get("LLM_MODEL", "qwen3")
+    model = os.environ.get("LLM_MODEL", _DEFAULT_LLM_MODEL)
     api_key = os.environ.get("LLM_API_KEY", "local")
     return LLMClient(base_url=base_url, model=model, api_key=api_key), Browser()
 

@@ -52,9 +52,16 @@ The `usd` field SHALL be a `float` computed by `compute_usd(usage.prompt_tokens,
 - **THEN** `ChatResponse.usd` SHALL be computed from the injected table
 - **AND** no file read of `pricing.toml` SHALL occur
 
+### Requirement: _DEFAULT_LLM_MODEL module constant
+`agent/llm.py` SHALL define a module-level string constant `_DEFAULT_LLM_MODEL = "qwen3-5-27b"` alongside the existing `_DEFAULT_BASE_URL`. This constant is the authoritative fallback model name for the Task 2 stack; it is consumed by callers (`api/server.py`, `scripts/eval.py`) — not by `LLMClient` internally.
+
+#### Scenario: _DEFAULT_LLM_MODEL is importable from agent.llm
+- **WHEN** `from agent.llm import _DEFAULT_LLM_MODEL` is executed in a test or production module
+- **THEN** the import SHALL succeed and the value SHALL equal `"qwen3-5-27b"`
+
 ### Requirement: Configuration via environment variables and explicit overrides
 
-The system SHALL resolve `base_url`, `model`, and `api_key` in the order: explicit kwarg, then environment variable (`LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY`), then default. The default for `base_url` SHALL be `http://localhost:8090`. There SHALL be no default for `model` or `api_key`.
+The system SHALL resolve `base_url`, `model`, and `api_key` in the order: explicit kwarg, then environment variable (`LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY`), then default. The default for `base_url` SHALL be `http://localhost:8090`. There SHALL be no default for `model` or `api_key` inside `LLMClient` itself — callers that need a fallback SHALL pass `_DEFAULT_LLM_MODEL` explicitly.
 
 #### Scenario: Default base URL when env unset
 

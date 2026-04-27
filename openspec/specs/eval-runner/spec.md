@@ -199,7 +199,7 @@ The runner SHALL print per-case progress to stdout as each case completes (forma
 
 The runner SHALL exit with code 0 if all executed cases have `status` in `{succeeded, unverified, skipped}`. It SHALL exit with code 1 if any executed case has `status` in `{failed, blocked, timeout}`.
 
-The runner SHALL NOT hardcode any LLM provider URL. `LLM_BASE_URL`, `LLM_MODEL`, and `LLM_API_KEY` are read from env (same defaults as `agent/llm.py`).
+The runner SHALL NOT hardcode any LLM provider URL. `LLM_BASE_URL`, `LLM_MODEL`, and `LLM_API_KEY` are read from env. When `LLM_MODEL` is unset, `build_clients()` SHALL fall back to `agent.llm._DEFAULT_LLM_MODEL` — NOT to a locally-defined string literal. `LLM_BASE_URL` defaults to `http://localhost:8090/v1`; `LLM_API_KEY` defaults to `"local"`.
 
 #### Scenario: Runner completes and writes results file
 - **WHEN** `uv run python scripts/eval.py` is invoked from `task2/` with only fixture cases present
@@ -220,6 +220,12 @@ The runner SHALL NOT hardcode any LLM provider URL. `LLM_BASE_URL`, `LLM_MODEL`,
 #### Scenario: LLM_BASE_URL is forwarded to LLMClient, not hardcoded
 - **WHEN** `LLM_BASE_URL=http://custom:9999` is set in env
 - **THEN** the `LLMClient` constructed by the runner SHALL use `base_url="http://custom:9999"`
+
+#### Scenario: build_clients uses shared default when LLM_MODEL is unset
+- **GIVEN** `LLM_MODEL` is not set in the process environment
+- **WHEN** `build_clients()` is invoked
+- **THEN** the `LLMClient` SHALL be constructed with `model` equal to `agent.llm._DEFAULT_LLM_MODEL` (`"qwen3-5-27b"`)
+- **AND** the string `"qwen3"` SHALL NOT appear as a default fallback anywhere in `scripts/eval.py`
 
 ### Requirement: Validator vocabulary
 The eval runner SHALL support a minimal validator vocabulary evaluated against the loop's `result` dict. For this ticket, only two validator forms are required:

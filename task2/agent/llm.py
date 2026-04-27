@@ -9,6 +9,7 @@ import httpx
 from agent.pricing import compute_usd, load_price_table
 
 _DEFAULT_BASE_URL = "http://localhost:8090"
+_DEFAULT_LLM_MODEL = "qwen3-5-27b"
 _CHAT_PATH = "/v1/chat/completions"
 _MAX_ERROR_BODY = 2048
 
