@@ -2015,10 +2015,13 @@ def test_loop_emit_locate_event_step_id_on_cache_invalidate(fixture_server, play
 
     v2_rows = _locate_rows(writer_v2)
     invalidate_rows = [r for r in v2_rows if r.get("cache_action") == "invalidate"]
+    write_rows = [r for r in v2_rows if r.get("cache_action") == "write"]
     assert len(invalidate_rows) >= 1
+    assert len(write_rows) >= 1
     step_id = invalidate_rows[0]["step_id"]
     assert step_id is not None
     assert step_id.startswith(f"{run_id_v2}:step-")
+    assert write_rows[0]["step_id"] == step_id
     cache.close()
     writer_v2.close()
 
