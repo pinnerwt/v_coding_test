@@ -8,12 +8,16 @@ TBD - created by archiving change implement-plan-event-trace-writer. Update Purp
 The `loop()` function in `agent.loop` SHALL accept an optional keyword argument `trace_writer: TraceWriter | None = None`. When `trace_writer` is not `None`, `PlanEvent` rows SHALL be written through it with:
 
 - `run_id` matching the run opened in the `TraceWriter` (passed by the caller, e.g. `api/server.py`).
-- `seq` strictly greater than the last event seq for that run, assigned by the loop's local monotonic counter starting at 1 for the first event in the run.
+- `seq` obtained by calling `trace_writer.next_seq(run_id)` immediately before constructing the event, so the value is always strictly greater than the last persisted seq regardless of how many other events have been appended by any emitter.
 - `ts` set to `datetime.now(UTC).isoformat()` at the moment of emission.
 
 When `trace_writer` is `None`, plan event persistence falls back to the in-memory `events: list | None` path (existing behavior).
 
 No double-emit SHALL occur: if `trace_writer` is provided, plan events SHALL NOT also be appended to the `events` list.
+
+The `loop()` function SHALL NOT maintain a local `plan_seq` counter. All seq assignment for TraceWriter-backed plan events SHALL go through `next_seq()`.
+
+The internal helper `_emit_plan_event` SHALL NOT accept a `seq` parameter. It SHALL call `trace_writer.next_seq(run_id)` internally when `trace_writer` is provided.
 
 #### Scenario: loop with TraceWriter writes plan event with real run_id
 
@@ -45,7 +49,7 @@ No double-emit SHALL occur: if `trace_writer` is provided, plan events SHALL NOT
 - **THEN** all `kind="plan"` rows in `traces_events` for that `run_id` SHALL have strictly increasing `seq` values
 - **AND** the first plan event SHALL have `seq >= 1`
 
-Note: cross-kind ordering between plan and decision/observation events is intentionally out of scope here; decision-event persistence through `TraceWriter` is tracked under `task2/plan.md` ticket #20 and ticket #26 (`TraceWriter.next_seq(run_id)`).
+Note: cross-kind ordering between plan and decision/observation events is intentionally out of scope here; decision-event persistence through `TraceWriter` is tracked under `task2/plan.md` ticket #20.
 
 #### Scenario: replan event seq is greater than initial plan event seq
 
