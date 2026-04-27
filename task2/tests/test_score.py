@@ -242,3 +242,111 @@ def test_score_skill_invokes_score_py():
 def test_score_skill_under_30_lines():
     content = _SCORE_MD.read_text()
     assert len(content.splitlines()) < 30
+
+
+# ---------------------------------------------------------------------------
+# Task 3.1: generate_scoreboard includes mechanism columns (RED until 7.1)
+# ---------------------------------------------------------------------------
+
+
+def test_generate_scoreboard_mechanism_columns_in_header():
+    from scripts.score import generate_scoreboard
+
+    data = {
+        "run_at": "2026-04-27T00:00:00+00:00",
+        "cases": [
+            {
+                "id": "c1",
+                "status": "succeeded",
+                "steps": 2,
+                "usd": 0.001,
+                "l_tier_counts": {},
+                "validators": [],
+                "prompt_tokens": 100,
+                "completion_tokens": 10,
+                "latency_ms_total": 200,
+                "latency_ms_per_step": [200],
+                "step_breakdown": [],
+                "escalations": [
+                    {
+                        "from_tier": "L1_ax",
+                        "to_tier": "L2_dom",
+                        "intent": "x",
+                        "reason": "zero_matches",
+                    }
+                ],
+                "replans": 0,
+                "cache_events": {"hits": 0, "invalidations": 0, "misses": 0},
+            }
+        ],
+    }
+    output = generate_scoreboard(data)
+    assert "Escalations" in output
+    assert "Replans" in output
+    assert "Cache Inv." in output
+    assert "| 1 | 0 | 0 |" in output
+
+
+# ---------------------------------------------------------------------------
+# Task 3.2: generate_scoreboard mechanism firing rates block (RED until 7.2)
+# ---------------------------------------------------------------------------
+
+
+def test_generate_scoreboard_mechanism_firing_rates_block():
+    from scripts.score import generate_scoreboard
+
+    data = {
+        "run_at": "2026-04-27T00:00:00+00:00",
+        "cases": [
+            {
+                "id": "c1",
+                "status": "succeeded",
+                "steps": 1,
+                "usd": 0.001,
+                "l_tier_counts": {},
+                "validators": [],
+                "prompt_tokens": 100,
+                "completion_tokens": 10,
+                "latency_ms_total": 200,
+                "latency_ms_per_step": [200],
+                "step_breakdown": [],
+                "escalations": [],
+                "replans": 1,
+                "cache_events": {"hits": 0, "invalidations": 0, "misses": 0},
+            },
+            {
+                "id": "c2",
+                "status": "succeeded",
+                "steps": 1,
+                "usd": 0.001,
+                "l_tier_counts": {},
+                "validators": [],
+                "prompt_tokens": 100,
+                "completion_tokens": 10,
+                "latency_ms_total": 200,
+                "latency_ms_per_step": [200],
+                "step_breakdown": [],
+                "escalations": [],
+                "replans": 0,
+                "cache_events": {"hits": 0, "invalidations": 0, "misses": 0},
+            },
+        ],
+    }
+    output = generate_scoreboard(data)
+    assert "Mechanism firing rates" in output
+    assert "L1→L2 escalation" in output
+    assert "| Replan | 1/2 |" in output
+    assert "Cache invalidation" in output
+
+
+# ---------------------------------------------------------------------------
+# Task 3.3 (part): backward compat — cases without new fields still work
+# ---------------------------------------------------------------------------
+
+
+def test_generate_scoreboard_backward_compat_missing_mechanism_fields():
+    from scripts.score import generate_scoreboard
+
+    data = json.loads(_SAMPLE_RESULTS.read_text())
+    output = generate_scoreboard(data)
+    assert "succeeded" in output

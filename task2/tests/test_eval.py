@@ -638,3 +638,188 @@ def test_aggregate_diagnostics_cache_events():
     assert cache_events["hits"] == 1
     assert cache_events["invalidations"] == 1
     assert cache_events["misses"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Task 2.1: correction-l1-miss-l2-hit eval case assertion (RED until 5+6 green)
+# ---------------------------------------------------------------------------
+
+_L1_MISS_L2_HIT_CASE = {
+    "id": "correction-l1-miss-l2-hit",
+    "domain": "fixture",
+    "category": "correction",
+    "task": "Click the Submit button",
+    "expect": {"schema": {}, "validators": []},
+    "budget": {"steps": 5, "usd": 0.05, "seconds": 30},
+    "fixture": True,
+}
+
+
+def _mock_loop_emit_escalation(task, browser, llm_client, **kwargs):
+    writer = kwargs.get("trace_writer")
+    rid = kwargs.get("run_id")
+    if writer is not None and rid is not None:
+        locate_miss = LocateEvent(
+            run_id=rid,
+            seq=writer.next_seq(rid),
+            ts=_ts(),
+            step_id="s1",
+            intent="Submit button",
+            tier="L1_ax",
+            outcome="miss",
+            candidates=[],
+            chosen=None,
+            cache_action=None,
+            ms=10,
+        )
+        writer.append_event(locate_miss)
+        sup_ev = SupervisorEvent(
+            run_id=rid,
+            seq=writer.next_seq(rid),
+            ts=_ts(),
+            step_id="s1",
+            trigger_event_seq=locate_miss.seq,
+            classified_as="LocatorMiss",
+            policy="next_tier",
+            attempt=1,
+        )
+        writer.append_event(sup_ev)
+        locate_hit = LocateEvent(
+            run_id=rid,
+            seq=writer.next_seq(rid),
+            ts=_ts(),
+            step_id="s1",
+            intent="Submit button",
+            tier="L2_dom",
+            outcome="hit",
+            candidates=[],
+            chosen={"selector": ".btn"},
+            cache_action="write",
+            ms=15,
+        )
+        writer.append_event(locate_hit)
+    return RunResult(
+        status="succeeded",
+        result={},
+        evidence={"url": "http://x", "text_snippet": "ok"},
+        verifier={"ok": True, "reasons": []},
+    )
+
+
+def test_run_case_escalations_for_l1_miss_l2_hit(tmp_path):
+    with patch("scripts.eval.loop", side_effect=_mock_loop_emit_escalation):
+        result = _run_case(_L1_MISS_L2_HIT_CASE, llm_client=MagicMock(), browser=MagicMock())
+    assert len(result.escalations) == 1
+    assert result.escalations[0]["from_tier"] == "L1_ax"
+    assert result.escalations[0]["to_tier"] == "L2_dom"
+
+
+# ---------------------------------------------------------------------------
+# Task 2.2: correction-replan eval case assertion (RED until 5+6 green)
+# ---------------------------------------------------------------------------
+
+_REPLAN_CASE = {
+    "id": "correction-replan",
+    "domain": "fixture",
+    "category": "correction",
+    "task": "Read the heading on this page",
+    "expect": {"schema": {}, "validators": []},
+    "budget": {"steps": 5, "usd": 0.05, "seconds": 30},
+    "fixture": True,
+}
+
+
+def _mock_loop_emit_replan(task, browser, llm_client, **kwargs):
+    writer = kwargs.get("trace_writer")
+    rid = kwargs.get("run_id")
+    if writer is not None and rid is not None:
+        plan_replan = PlanEvent(
+            run_id=rid,
+            seq=writer.next_seq(rid),
+            ts=_ts(),
+            step_id=None,
+            reason="replan",
+            steps=["call done"],
+            llm_call_id="c1",
+        )
+        writer.append_event(plan_replan)
+    return RunResult(
+        status="succeeded",
+        result={},
+        evidence={"url": "http://x", "text_snippet": "ok"},
+        verifier={"ok": True, "reasons": []},
+    )
+
+
+def test_run_case_replans_for_replan_case(tmp_path):
+    with patch("scripts.eval.loop", side_effect=_mock_loop_emit_replan):
+        result = _run_case(_REPLAN_CASE, llm_client=MagicMock(), browser=MagicMock())
+    assert result.replans == 1
+    assert result.status == "succeeded"
+
+
+# ---------------------------------------------------------------------------
+# Task 2.3: maintenance-drift-rename v2 cache invalidation (RED until 5+6 green)
+# ---------------------------------------------------------------------------
+
+_DRIFT_RENAME_CASE = {
+    "id": "maintenance-drift-rename",
+    "domain": "fixture",
+    "category": "drift",
+    "task": "Click the Submit button",
+    "expect": {"schema": {}, "validators": []},
+    "budget": {"steps": 5, "usd": 0.05, "seconds": 30},
+    "fixture": True,
+    "variants": ["v1", "v2"],
+    "shared_cache": True,
+}
+
+_DRIFT_RENAME_CANNED_V1 = RunResult(
+    status="succeeded",
+    result={},
+    evidence={"url": "http://x", "text_snippet": "ok"},
+    verifier={"ok": True, "reasons": []},
+)
+
+
+def _mock_loop_emit_cache_invalidation(task, browser, llm_client, **kwargs):
+    writer = kwargs.get("trace_writer")
+    rid = kwargs.get("run_id")
+    if writer is not None and rid is not None:
+        invalidate_ev = LocateEvent(
+            run_id=rid,
+            seq=writer.next_seq(rid),
+            ts=_ts(),
+            step_id="s1",
+            intent="Submit button",
+            tier="L1_ax",
+            outcome="miss",
+            candidates=[],
+            chosen=None,
+            cache_action="invalidate",
+            ms=5,
+        )
+        writer.append_event(invalidate_ev)
+    return RunResult(
+        status="succeeded",
+        result={},
+        evidence={"url": "http://x", "text_snippet": "ok"},
+        verifier={"ok": True, "reasons": []},
+    )
+
+
+def test_run_suite_shared_cache_v2_invalidation(tmp_path):
+    call_count = {"n": 0}
+
+    def mock_loop(task, browser, llm_client, **kwargs):
+        call_count["n"] += 1
+        if call_count["n"] == 2:
+            return _mock_loop_emit_cache_invalidation(task, browser, llm_client, **kwargs)
+        return _DRIFT_RENAME_CANNED_V1
+
+    with patch("scripts.eval.loop", side_effect=mock_loop):
+        out = run_suite(cases=[_DRIFT_RENAME_CASE], results_dir=tmp_path)
+    data = json.loads(out.read_text())
+    v2_case = next(c for c in data["cases"] if c["id"] == "maintenance-drift-rename-v2")
+    assert v2_case["cache_events"].get("invalidations", 0) >= 1
+    assert v2_case["status"] == "succeeded"
