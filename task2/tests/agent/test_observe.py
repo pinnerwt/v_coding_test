@@ -27,7 +27,7 @@ def browser_on_mixed(fixture_server, playwright_chromium):
 
 
 def test_decorative_divs_excluded_buttons_included(browser_on_mixed):
-    obs = build_observation(browser_on_mixed, None)
+    obs = build_observation(browser_on_mixed, [])
     digest = obs["ax_tree_digest"]
     assert "[button]" in digest
     assert "generic" not in digest
@@ -42,7 +42,7 @@ def test_1000_button_page_capped(playwright_chromium):
 
     with Browser(playwright_browser=playwright_chromium) as b:
         b.goto(data_url)
-        obs = build_observation(b, None)
+        obs = build_observation(b, [])
 
     digest = obs["ax_tree_digest"]
     lines = digest.splitlines()
@@ -73,7 +73,7 @@ def test_build_observation_closed_browser_returns_valid_dict(playwright_chromium
 
 
 def test_ax_tree_digest_round_trips_through_trace(browser_on_mixed):
-    obs = build_observation(browser_on_mixed, None)
+    obs = build_observation(browser_on_mixed, [])
     ax_tree_digest = obs["ax_tree_digest"]
     ax_fingerprint = obs["ax_fingerprint"]
 
@@ -114,7 +114,7 @@ def test_interactable_roles_is_frozenset_with_canonical_set():
 
 
 def test_links_and_headings_included(browser_on_mixed):
-    obs = build_observation(browser_on_mixed, None)
+    obs = build_observation(browser_on_mixed, [])
     digest = obs["ax_tree_digest"]
     assert "[heading" in digest
     assert "[link]" in digest
@@ -126,7 +126,7 @@ def test_heading_level_in_serialization(fixture_server, playwright_chromium):
     data_url = f"data:text/html;base64,{encoded}"
     with Browser(playwright_browser=playwright_chromium) as b:
         b.goto(data_url)
-        obs = build_observation(b, None)
+        obs = build_observation(b, [])
     assert '[heading:2] "My Heading"' in obs["ax_tree_digest"]
 
 
@@ -137,7 +137,7 @@ def test_long_name_truncated_to_max_name_len(fixture_server, playwright_chromium
     data_url = f"data:text/html;base64,{encoded}"
     with Browser(playwright_browser=playwright_chromium) as b:
         b.goto(data_url)
-        obs = build_observation(b, None)
+        obs = build_observation(b, [])
     digest = obs["ax_tree_digest"]
     line = next(ln for ln in digest.splitlines() if ln.startswith("[button]"))
     quoted_name = line[len('[button] "') : -1]
@@ -146,8 +146,8 @@ def test_long_name_truncated_to_max_name_len(fixture_server, playwright_chromium
 
 
 def test_fingerprint_is_deterministic(browser_on_mixed):
-    obs1 = build_observation(browser_on_mixed, None)
-    obs2 = build_observation(browser_on_mixed, None)
+    obs1 = build_observation(browser_on_mixed, [])
+    obs2 = build_observation(browser_on_mixed, [])
     assert obs1["ax_fingerprint"] == obs2["ax_fingerprint"]
 
 
@@ -157,7 +157,7 @@ def test_fingerprint_changes_when_dom_changes(fixture_server, playwright_chromiu
     data_url = f"data:text/html;base64,{encoded}"
     with Browser(playwright_browser=playwright_chromium) as b:
         b.goto(data_url)
-        fp1 = build_observation(b, None)["ax_fingerprint"]
+        fp1 = build_observation(b, [])["ax_fingerprint"]
         b._page.evaluate(
             "() => {"
             " const btn = document.createElement('button');"
@@ -165,7 +165,7 @@ def test_fingerprint_changes_when_dom_changes(fixture_server, playwright_chromiu
             " document.body.appendChild(btn);"
             " }"
         )
-        fp2 = build_observation(b, None)["ax_fingerprint"]
+        fp2 = build_observation(b, [])["ax_fingerprint"]
     assert fp1 != fp2
 
 
@@ -203,7 +203,7 @@ def test_cdp_session_reused_across_n_observations(playwright_chromium):
             "new_cdp_session",
             wraps=browser._page.context.new_cdp_session,
         ) as spy:
-            observations = [build_observation(browser, None) for _ in range(10)]
+            observations = [build_observation(browser, []) for _ in range(10)]
 
     assert spy.call_count == 1
     assert all(obs["ax_tree_digest"] != "" for obs in observations)
@@ -217,7 +217,7 @@ def test_new_page_invalidates_cached_session(playwright_chromium):
             "new_cdp_session",
             wraps=browser._context.new_cdp_session,
         ) as spy:
-            build_observation(browser, None)
+            build_observation(browser, [])
             old_page = browser._page
 
             first_session = browser._cdp_sessions[id(old_page)]
@@ -226,7 +226,7 @@ def test_new_page_invalidates_cached_session(playwright_chromium):
             browser._page = browser._context.new_page()
             new_page = browser._page
             browser._page.goto(_BUTTON_DATA_URL)
-            build_observation(browser, None)
+            build_observation(browser, [])
 
             assert first_session.detach.call_count == 1
             assert len(browser._cdp_sessions) == 1
@@ -254,21 +254,21 @@ def test_cdp_send_failure_evicts_cached_session():
     )
     fake_browser = types.SimpleNamespace(_page=fake_page, _cdp_sessions={})
 
-    obs = build_observation(fake_browser, None)
+    obs = build_observation(fake_browser, [])
     assert obs["ax_tree_digest"] == ""
     assert obs["ax_fingerprint"] == _EMPTY_FINGERPRINT
 
     assert cdp.detach.call_count == 1
     assert fake_browser._cdp_sessions == {}
 
-    build_observation(fake_browser, None)
+    build_observation(fake_browser, [])
     assert fake_context.new_cdp_session.call_count == 2
 
 
 def test_browser_exit_detaches_without_raising(playwright_chromium):
     with Browser(playwright_browser=playwright_chromium) as browser:
         browser.goto(_BUTTON_DATA_URL)
-        build_observation(browser, None)
+        build_observation(browser, [])
         assert len(browser._cdp_sessions) == 1
 
     assert browser._cdp_sessions == {}
