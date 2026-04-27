@@ -78,3 +78,5 @@ Now, let's create a meta skill that call /full_task2 , then /review_task2 with s
 /full_task2 (with lots of iterations)
 
 Let's check the benchmark results. Propose different ways to improve the benchmark in task2/plan.md
+
+Update the skills from what you have learned. Please also update /done_pr to analyze why benchmark failed and add tickets to task2/plan.md
