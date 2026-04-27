@@ -261,14 +261,15 @@ def loop(
     latency_ms_per_step: list[int] = []
     step_breakdown: list[dict] = []
     step_num = 0
-    last_action: dict | None = None
+    last_actions: list[dict] = []
     active_plan: plan_module.Plan | None = None
 
     for _ in range(max_steps):
         step_num += 1
         t0 = time.monotonic()
 
-        observation = observe.build_observation(browser, last_action)
+        observation = observe.build_observation(browser, last_actions)
+        last_actions = []
 
         if step_num == 1:
             active_plan, plan_resp = plan_module.plan(task, observation, llm_client)
@@ -391,18 +392,22 @@ def loop(
             tool_result = _dispatch(tool_call.name, args, browser, supervisor)
 
             if tool_result.startswith("Error:"):
-                last_action = {
-                    "tool": tool_call.name,
-                    "intent": str(args),
-                    "outcome": "error",
-                    "error": tool_result,
-                }
+                last_actions.append(
+                    {
+                        "tool": tool_call.name,
+                        "intent": str(args),
+                        "outcome": "error",
+                        "error": tool_result,
+                    }
+                )
             else:
-                last_action = {
-                    "tool": tool_call.name,
-                    "intent": str(args),
-                    "outcome": "ok",
-                }
+                last_actions.append(
+                    {
+                        "tool": tool_call.name,
+                        "intent": str(args),
+                        "outcome": "ok",
+                    }
+                )
             messages.append(
                 {
                     "role": "tool",
