@@ -474,14 +474,24 @@ def test_category_summary_skipped_live():
     assert "Live: 0/0 ran [target 60%] ⏭️" in output
 
 
-def test_category_summary_before_per_case_table():
+def test_category_summary_before_per_case_table_header():
     from scripts.score import generate_scoreboard
 
     data = json.loads(_CATEGORIES_FIXTURE.read_text())
     output = generate_scoreboard(data)
     drift_pos = output.index("Drift suite:")
-    first_row_pos = output.index("| drift-submit-form-v1")
-    assert drift_pos < first_row_pos
+    header_pos = output.index("| Case")
+    assert drift_pos < header_pos
+
+
+def test_fixture_summary_before_first_fixture_row():
+    from scripts.score import generate_scoreboard
+
+    data = json.loads(_CATEGORIES_FIXTURE.read_text())
+    output = generate_scoreboard(data)
+    fixture_pos = output.index("Fixture:")
+    first_fixture_row_pos = output.index("| fixture-login-v1")
+    assert fixture_pos < first_fixture_row_pos
 
 
 def test_category_summary_omits_unmatched_cases():
