@@ -31,6 +31,7 @@ class Browser:
         self._browser = playwright_browser
         self._context = None
         self._page = None
+        self._cdp_sessions: dict = {}
 
     def __enter__(self) -> Browser:
         try:
@@ -52,6 +53,12 @@ class Browser:
         self._playwright = None
         if playwright is not None:
             self._browser = None
+        for session in self._cdp_sessions.values():
+            try:
+                session.detach()
+            except Exception:  # noqa: BLE001
+                pass
+        self._cdp_sessions.clear()
         try:
             if context is not None:
                 context.close()
