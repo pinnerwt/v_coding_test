@@ -11,22 +11,27 @@ Automate the full development cycle for the next Task 2 TDD ticket: derive ticke
 
 ### 1. Identify the next ticket
 
-Read `task2/plan.md` and locate the **`## TDD tickets`** section (numbered list near the bottom, starting "1. `llm.py`").
+Read `task2/plan.md` and locate the **`## Undone`** rubric (between `## Benchmark improvements (candidates)` and `## Honest risks / tradeoffs`). It groups remaining tickets by urgency — **P0** (unblocks other tickets / removes recurring debug friction), **P1** (observed bugs blocking the brief's done bar), **P2** (measurable improvements), **P3** (nice-to-have).
 
-Then check what is already done:
+**Selection rule:** pick the highest-urgency entry available; tie-break by lowest ticket number within the same bucket. Do **not** pick from the `### In flight` subsection — those have an open PR awaiting merge. Lowest-numbered selection is **only** the fallback when the rubric is missing/empty.
+
+Why urgency-first: P0 tickets unblock work that a numerical-order pass would silently defer. Concrete example observed in PR #62 (ticket #32, 2026-04-27): the implementation deferred Task 7.1 (real-Qwen smoke check) because the eval-runner default `LLM_MODEL=qwen3` 404s against the local Qwen serving `qwen3-5-27b`. That deferral was filed as ticket #44 (P0) — picking it next is much higher leverage than the next-numbered P2 candidate (#33 scoreboard-traffic-lights), since #44 also unblocks the smoke check on every future ticket.
+
+Cross-check the rubric against the filesystem to catch stale entries:
 ```bash
 ls openspec/changes/archive/ 2>/dev/null
 ls openspec/changes/ 2>/dev/null
 ```
 
-Match archived/active change names against the TDD ticket list to determine the **lowest-numbered ticket** that is not yet done. Archived directories carry a date prefix (e.g. `2026-04-25-implement-llm-client`); strip that when matching against ticket slugs. If unsure, use the **AskUserQuestion** tool to confirm with the user before proceeding.
+Archived directories carry a date prefix (e.g. `2026-04-25-implement-llm-client`); strip that when matching against ticket slugs. If a rubric entry's ticket number maps to an archived change, the rubric is stale — drop the entry as part of Step 11 of *this* run rather than blocking. If a P0 entry references an in-flight PR (`### In flight` subsection), skip it and pick the next-highest-urgency entry not in flight. If unsure, use the **AskUserQuestion** tool to confirm with the user before proceeding.
 
-Derive a kebab-case change name from the ticket title. Convention: `implement-<short-slug>`, e.g.:
+Derive a kebab-case change name from the ticket title. Convention: `implement-<short-slug>` for new behavior, `fix-<short-slug>` for audit/bug tickets that primarily change existing behavior. Examples:
 - Ticket 3 "`locate.py` L1" → `implement-locate-l1`
 - Ticket 7 "Locator cache" → `implement-locator-cache`
 - Ticket 11 "`loop.py` silent-failure guard" → `implement-loop-silent-failure-guard`
+- Ticket 32 "Audit ticket: investigate why mechanism-firing rates are 0/8" → `fix-mechanism-firings`
 
-State the chosen ticket number, title, and derived change name in one line before continuing.
+State the chosen ticket number, title, **urgency tag** (P0/P1/P2/P3), and derived change name in one line before continuing.
 
 ### 2. Create a development branch
 
@@ -231,12 +236,19 @@ What does **not** belong in `plan.md`:
 - Speculative ideas without a test surface.
 - Anything already covered by an existing TDD ticket — extend that ticket's text instead of adding a duplicate.
 
-Procedure:
+Procedure (every follow-up gets recorded **twice** — full text in the appropriate numbered section, plus a one-line entry in the `## Undone` rubric so Step 1 of the next run can find it by urgency):
 
-1. Open `task2/plan.md` and find the `## TDD tickets` numbered list near the bottom. Note the highest existing ticket number.
-2. For each follow-up, append a new entry continuing the numbering. Match the style of existing tickets: a bold lead (module path or short title), a one-sentence description of the gap, and then concrete acceptance criteria / tests phrased the same way as nearby entries (e.g. ticket 23 `CDP session reuse in observe.build_observation` for shape).
-3. Each ticket must be self-contained — a fresh `/new_task2` run with no conversation context should be able to pick it up. Reference file paths and existing symbols rather than "the thing we discussed."
-4. If a follow-up overlaps an existing ticket (e.g. you found another sub-case of ticket N), edit that ticket's text rather than adding a new line; do not create silent duplicates.
+1. Open `task2/plan.md`. Find the `## TDD tickets` / `## Benchmark improvements (candidates)` numbered list near the bottom and note the highest existing ticket number. Also locate the `## Undone` rubric (between `## Benchmark improvements (candidates)` and `## Honest risks / tradeoffs`).
+2. For each follow-up, **assign an urgency tag** before writing the entry. Use the same rubric Step 1 reads:
+   - **P0** — unblocks other tickets or removes recurring debug friction (e.g. ticket #44 unblocks every Task 7.1's live-Qwen smoke check; ticket #45 removes "smoke failed but I can't tell why" rounds).
+   - **P1** — observed bug or correctness gap blocking the brief's done bar (drift suite 100%, fixture eval ≥80%, live ≥60%).
+   - **P2** — measurable improvement to eval / scoreboard / mechanisms.
+   - **P3** — nice-to-have polish.
+   When in doubt, default to P2. Be honest about P0 — overuse devalues the tag, and the next run will pick it first.
+3. Append a new full-text entry to `## TDD tickets` or `## Benchmark improvements (candidates)` (whichever section's style fits better) continuing the numbering. Match the style of existing tickets: a bold lead (module path or short title), a one-sentence description of the gap, and then concrete acceptance criteria / tests phrased the same way as nearby entries (e.g. ticket 23 `CDP session reuse in observe.build_observation` for shape).
+4. Add a one-line entry to the `## Undone` rubric under the right urgency subsection: `- **#<N>** — <short title>. <one-line "why it matters" if not obvious from the title>.` Do NOT duplicate the full ticket text in the rubric — the rubric is an index, the numbered section is the spec.
+5. Each ticket must be self-contained — a fresh `/new_task2` run with no conversation context should be able to pick it up from the rubric line alone (it'll read the full text via the ticket number). Reference file paths and existing symbols rather than "the thing we discussed."
+6. If a follow-up overlaps an existing ticket (e.g. you found another sub-case of ticket N), edit that ticket's text rather than adding a new line; do not create silent duplicates. If the existing ticket's urgency should change in light of the new evidence, update its rubric line at the same time.
 
 Commit the plan update on its own, on the same branch, then push so the open PR picks it up:
 
