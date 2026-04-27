@@ -317,6 +317,8 @@ Candidate tickets, ordered roughly by impact-per-effort. Each is TDD-shaped so i
 
 47. **Tighten `EscalationDecision.policy` to the same `Literal` as `SupervisorEvent.policy`.** `agent/supervisor.py:17` types `EscalationDecision.policy` as plain `str`, but `agent/trace.py:80` types `SupervisorEvent.policy` as `Literal["next_tier", "rerank", "sweep_overlay", "replan", "halt"]`. The mismatch forces a `# type: ignore[arg-type]` in `_emit_supervisor_event` (`agent/loop.py`). Tightening `EscalationDecision.policy` to the same `Literal` enforces the contract end-to-end at type-check time and removes the suppression. Touch all call sites in `Supervisor.handle` (`agent/supervisor.py`) so they construct `EscalationDecision` with literal values, and update unit tests in `tests/test_supervisor.py` to type-check against the new alias. Tests: existing `test_supervisor.py` continues to pass; a mypy / ruff run shows no `arg-type` suppression remaining in `_emit_supervisor_event`. *Why useful:* removes a real type-narrowing gap and a `# type: ignore` line. *Trigger:* surfaced by review subagents on PR #62 (iterations 2 and 3); iteration 2 deferred it as out of scope.
 
+48. **Factor `LLM_MODEL` env-resolution into a shared helper in `agent/llm.py`.** `task2/api/server.py` resolves the `LLM_MODEL` env var via `os.environ.get("LLM_MODEL", _DEFAULT_LLM_MODEL)` in two places — `_build_run` (run record) and `_run_agent` (LLMClient construction). Same expression, two call sites, same fallback constant. Introduce a `resolve_llm_model() -> str` helper in `agent/llm.py` that performs the env lookup with `_DEFAULT_LLM_MODEL` as fallback, and have both `server.py` call sites read from it. `scripts/eval.py::build_clients()` should also adopt the helper for consistency. Tests: with `LLM_MODEL` unset, `resolve_llm_model() == _DEFAULT_LLM_MODEL`; with `LLM_MODEL="other"`, helper returns `"other"`; both `server.py` call sites and `build_clients()` invoke the helper (assert via `monkeypatch.setattr` spy). *Why useful:* removes a duplicated lookup that already drifted once (this PR fixed the eval.py side; the server.py duplication waits for a future re-drift). *Trigger:* surfaced by review subagent on PR #64 (iteration 1); deferred as out of scope for the alignment fix.
+
 ## Undone
 
 Tickets not yet merged, ordered by urgency. `/new_task2` step 1 selects from this list — pick the highest-urgency entry available; tie-break by lowest ticket number.
@@ -355,6 +357,7 @@ Urgency tags:
 - **#39** — Robustness mini-suite (prompt injection, malformed fixtures).
 - **#40** — Cost & latency budget overruns as soft failures (`near_budget` flag).
 - **#46** — Promote `Browser._page` to a public read-only accessor.
+- **#48** — Factor `LLM_MODEL` env-resolution into a shared helper in `agent/llm.py`; removes the two-call-site duplication in `api/server.py` left after #44.
 
 ### In flight
 
