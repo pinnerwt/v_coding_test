@@ -165,27 +165,21 @@ def _open_trace_run(writer: TraceWriter, run_id: str, case: dict) -> None:
 def _classify_failure(
     events: list[AnyEvent], validators: list[dict], status: str
 ) -> tuple[str | None, str | None]:
-    if status not in {"failed"}:
+    if status != "failed":
         return None, None
 
     for ev in events:
         if isinstance(ev, SupervisorEvent) and ev.policy == "halt":
             return "supervisor_halt", ev.classified_as
 
-    has_next_tier = any(
-        isinstance(ev, SupervisorEvent) and ev.policy == "next_tier" for ev in events
-    )
-    if has_next_tier:
-        all_resolved = all(
-            any(
+    for i, ev in enumerate(events):
+        if isinstance(ev, SupervisorEvent) and ev.policy == "next_tier":
+            resolved = any(
                 isinstance(nxt, LocateEvent) and nxt.step_id == ev.step_id and nxt.outcome == "hit"
                 for nxt in events[i + 1 :]
             )
-            for i, ev in enumerate(events)
-            if isinstance(ev, SupervisorEvent) and ev.policy == "next_tier"
-        )
-        if not all_resolved:
-            return "locator_miss", "locator exhausted all tiers without a hit"
+            if not resolved:
+                return "locator_miss", "locator exhausted all tiers without a hit"
 
     for ev in events:
         if isinstance(ev, ActEvent) and ev.outcome == "error":
