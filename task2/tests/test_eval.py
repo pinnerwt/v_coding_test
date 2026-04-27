@@ -532,7 +532,7 @@ def test_aggregate_diagnostics_escalation_from_supervisor_event():
     )
     writer.append_event(locate_hit)
 
-    escalations, replans, cache_events = _aggregate_diagnostics(writer, run_id)
+    _, escalations, replans, cache_events = _aggregate_diagnostics(writer, run_id)
     assert len(escalations) == 1
     assert escalations[0]["from_tier"] == "L1_ax"
     assert escalations[0]["to_tier"] == "L2_dom"
@@ -569,7 +569,7 @@ def test_aggregate_diagnostics_counts_replan():
     )
     writer.append_event(plan_replan)
 
-    _, replans, _ = _aggregate_diagnostics(writer, run_id)
+    _, _, replans, _ = _aggregate_diagnostics(writer, run_id)
     assert replans == 1
 
 
@@ -622,7 +622,7 @@ def test_aggregate_diagnostics_cache_events():
     )
     writer.append_event(cache_miss)
 
-    _, _, cache_events = _aggregate_diagnostics(writer, run_id)
+    _, _, _, cache_events = _aggregate_diagnostics(writer, run_id)
     assert cache_events["hits"] == 1
     assert cache_events["invalidations"] == 1
     assert cache_events["misses"] == 1
@@ -632,7 +632,7 @@ def test_aggregate_diagnostics_empty_trace_returns_zero_values():
     run_id = _make_run_id()
     writer = _writer_with_run(run_id)
 
-    escalations, replans, cache_events = _aggregate_diagnostics(writer, run_id)
+    _, escalations, replans, cache_events = _aggregate_diagnostics(writer, run_id)
     assert escalations == []
     assert replans == 0
     assert cache_events == {"hits": 0, "invalidations": 0, "misses": 0}
@@ -935,7 +935,7 @@ def test_aggregate_diagnostics_escalation_to_tier_scoped_to_step_id():
     )
     writer.append_event(locate_hit_s2)
 
-    escalations, _, _ = _aggregate_diagnostics(writer, run_id)
+    _, escalations, _, _ = _aggregate_diagnostics(writer, run_id)
     assert len(escalations) == 1
     assert escalations[0]["from_tier"] == "L1_ax"
     assert escalations[0]["to_tier"] is None
@@ -1079,7 +1079,7 @@ def test_maintenance_drift_rename_real_loop_cache_invalidation(playwright_chromi
                 run_id=run_id_v2,
                 locator_cache=cache,
             )
-        _, _, cache_events = _aggregate_diagnostics(writer_v2, run_id_v2)
+        _, _, _, cache_events = _aggregate_diagnostics(writer_v2, run_id_v2)
 
     assert cache_events["invalidations"] >= 1, (
         f"Expected at least 1 cache invalidation on v2, got: {cache_events}"
@@ -1134,7 +1134,6 @@ def test_classify_failure_passing_status_returns_none():
 
 def test_classify_failure_supervisor_halt():
     from agent.trace import SupervisorEvent
-
     from scripts.eval import _classify_failure
 
     rid = _make_run_id()
@@ -1152,7 +1151,6 @@ def test_classify_failure_supervisor_halt():
 
 def test_classify_failure_locator_miss():
     from agent.trace import LocateEvent, SupervisorEvent
-
     from scripts.eval import _classify_failure
 
     rid = _make_run_id()
@@ -1182,7 +1180,6 @@ def test_classify_failure_locator_miss():
 
 def test_classify_failure_tool_error():
     from agent.trace import ActEvent
-
     from scripts.eval import _classify_failure
 
     rid = _make_run_id()
@@ -1201,7 +1198,6 @@ def test_classify_failure_tool_error():
 
 def test_classify_failure_validator_fail():
     from agent.trace import DoneEvent
-
     from scripts.eval import _classify_failure
 
     rid = _make_run_id()
@@ -1219,7 +1215,6 @@ def test_classify_failure_validator_fail():
 
 def test_classify_failure_schema_error():
     from agent.trace import DoneEvent
-
     from scripts.eval import _classify_failure
 
     rid = _make_run_id()
@@ -1243,7 +1238,6 @@ def test_classify_failure_no_done_emitted():
 
 def test_classify_failure_other():
     from agent.trace import DoneEvent
-
     from scripts.eval import _classify_failure
 
     rid = _make_run_id()
@@ -1260,7 +1254,6 @@ def test_classify_failure_other():
 
 def test_classify_failure_supervisor_halt_beats_tool_error():
     from agent.trace import ActEvent, SupervisorEvent
-
     from scripts.eval import _classify_failure
 
     rid = _make_run_id()
