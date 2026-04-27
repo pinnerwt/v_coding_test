@@ -16,20 +16,20 @@
 
 ## 3. Red — Failing tests for Skipped subsection in score.py
 
-- [ ] 3.1 In `task2/tests/test_score.py`, add test `test_skipped_subsection_appears` that calls `generate_scoreboard()` with a results dict containing one skipped case with `skip_reason="live_disabled"` and asserts the output contains `**Skipped** (1 cases)` and `| live_disabled | 1 |` — confirm FAILS.
-- [ ] 3.2 Add test `test_skipped_subsection_omitted_when_no_skips` that calls `generate_scoreboard()` with no skipped cases and asserts `**Skipped**` does NOT appear — confirm FAILS (or passes trivially; keep if it drives real behaviour).
-- [ ] 3.3 Add test `test_skipped_subsection_old_results_no_skip_reason` that calls `generate_scoreboard()` with a case that has `status="skipped"` but no `skip_reason` key and asserts no exception and no `**Skipped**` row for `None` — confirm FAILS.
-- [ ] 3.4 Run `uv run pytest task2/tests/test_score.py -k "skipped"` and confirm failures.
+- [x] 3.1 In `task2/tests/test_score.py`, add test `test_skipped_subsection_appears` that calls `generate_scoreboard()` with a results dict containing one skipped case with `skip_reason="live_disabled"` and asserts the output contains `**Skipped** (1 cases)` and `| live_disabled | 1 |` — confirm FAILS.
+- [x] 3.2 Add test `test_skipped_subsection_omitted_when_no_skips` that calls `generate_scoreboard()` with no skipped cases and asserts `**Skipped**` does NOT appear — confirm FAILS (or passes trivially; keep if it drives real behaviour).
+- [x] 3.3 Add test `test_skipped_subsection_old_results_no_skip_reason` that calls `generate_scoreboard()` with a case that has `status="skipped"` but no `skip_reason` key and asserts no exception and no `**Skipped**` row for `None` — confirm FAILS.
+- [x] 3.4 Run `uv run pytest task2/tests/test_score.py -k "skipped"` and confirm failures.
 
 ## 4. Green — Skipped subsection in generate_scoreboard()
 
-- [ ] 4.1 In `task2/scripts/score.py`, after the per-case table loop and before the aggregate summary line, collect skip reason counts: `{reason: count}` by iterating `cases` and reading `case.get("skip_reason")`, ignoring `None`.
-- [ ] 4.2 If any skipped cases have a non-`None` `skip_reason`, emit `**Skipped** (<total> cases)`, a blank line, `| Skip reason | Count |`, `|---|---|`, then one row per reason in canonical order (live_disabled, infra_unavailable, fixture_missing, feature_not_implemented), then a blank line.
-- [ ] 4.3 Run `uv run pytest task2/tests/test_score.py -k "skipped"` and confirm all three tests pass.
+- [x] 4.1 In `task2/scripts/score.py`, after the per-case table loop and before the aggregate summary line, collect skip reason counts: `{reason: count}` by iterating `cases` and reading `case.get("skip_reason")`, ignoring `None`.
+- [x] 4.2 If any skipped cases have a non-`None` `skip_reason`, emit `**Skipped** (<total> cases)`, a blank line, `| Skip reason | Count |`, `|---|---|`, then one row per reason in canonical order (live_disabled, infra_unavailable, fixture_missing, feature_not_implemented), then a blank line.
+- [x] 4.3 Run `uv run pytest task2/tests/test_score.py -k "skipped"` and confirm all three tests pass.
 
 ## 5. Ruff and full test suite
 
-- [ ] 5.1 Run `uv run ruff check .` from `task2/` and fix any lint errors.
-- [ ] 5.2 Run `uv run ruff format .` from `task2/` and verify no diffs remain.
-- [ ] 5.3 Run `uv run pytest task2/tests/` from the repo root (or `uv run pytest` from `task2/`) and confirm the full test suite is green, including the pre-existing golden snapshot test (update `sample_results_scoreboard.md` if the scoreboard output changed due to the new subsection).
-- [ ] 5.4 If the golden snapshot changed, regenerate it: `uv run python scripts/score.py tests/fixtures/results/sample_results.json > tests/fixtures/results/sample_results_scoreboard.md` from `task2/`.
+- [x] 5.1 Run `uv run ruff check .` from `task2/` and fix any lint errors.
+- [x] 5.2 Run `uv run ruff format .` from `task2/` and verify no diffs remain.
+- [x] 5.3 Run `uv run pytest task2/tests/` from the repo root (or `uv run pytest` from `task2/`) and confirm the full test suite is green, including the pre-existing golden snapshot test (update `sample_results_scoreboard.md` if the scoreboard output changed due to the new subsection).
+- [x] 5.4 If the golden snapshot changed, regenerate it: `uv run python scripts/score.py tests/fixtures/results/sample_results.json > tests/fixtures/results/sample_results_scoreboard.md` from `task2/`.
