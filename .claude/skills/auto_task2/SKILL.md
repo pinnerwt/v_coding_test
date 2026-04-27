@@ -91,11 +91,11 @@ chore(skills): lessons from <change-name>
 Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
 ```
 
-Then push the branch and open + merge the PR:
+Then push the branch and open the PR:
 
 ```bash
 git push -u origin chore/skills-lessons-<change-name>
-gh pr create --base master --title "chore(skills): lessons from <change-name>" \
+SKILLS_PR_URL=$(gh pr create --base master --title "chore(skills): lessons from <change-name>" \
   --body "$(cat <<'EOF'
 ## Summary
 Distilled from auto_task2 iteration <N> (PR #<X>).
@@ -108,10 +108,26 @@ Distilled from auto_task2 iteration <N> (PR #<X>).
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
-)"
-gh pr merge --squash --delete-branch                  # auto-merge; gh switches local back to master
-git pull --ff-only                                    # pull the squash commit
+)")
+echo "skills PR: $SKILLS_PR_URL"
 ```
+
+**Then immediately merge it (mandatory — do not leave the skill PR open between iterations):**
+
+```bash
+gh pr merge "$SKILLS_PR_URL" --squash --delete-branch  # explicit URL avoids ambiguity if other PRs are open
+git pull --ff-only                                     # pull the squash commit onto master
+```
+
+**Verify the merge landed before continuing.** Pass the URL captured above (an open PR with CI in flight will silently leave the merge pending without `--auto`):
+
+```bash
+gh pr view "$SKILLS_PR_URL" --json state,mergedAt,mergeCommit -q .
+```
+
+`state` MUST be `MERGED` and `mergeCommit.oid` MUST be non-null. If it is still `OPEN` (e.g. branch protection requires a passing check), re-run with `--auto`:
+`gh pr merge "$SKILLS_PR_URL" --squash --delete-branch --auto`
+and poll `gh pr view` until `state == MERGED` before starting the next iteration. Why: the next iteration's pre-flight requires clean master AND the local checkout on master; an unmerged skill PR leaves the working branch undeleted on the remote and can collide with the next ticket's branch name. Confirmed behavior in PR #67 on 2026-04-27 — merge succeeded immediately because `chore/skills-*` has no required checks; the verification step still ran in <1s and made the success unambiguous.
 
 The next iteration's `/full_task2` will see the updated skills automatically.
 
