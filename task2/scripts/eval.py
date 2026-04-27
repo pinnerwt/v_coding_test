@@ -237,18 +237,31 @@ def run_suite(
     llm_client: Any = None,
     browser: Any = None,
 ) -> Path:
+    from agent.locator_cache import LocatorCache
+
     results_dir = Path(results_dir)
     results_dir.mkdir(parents=True, exist_ok=True)
     now = datetime.now(UTC)
-    cases = _expand_variants(cases)
     case_results: list[CaseResult] = []
-    for case in cases:
-        if not live and not case.get("fixture", False):
-            r = _skipped_result(case)
+
+    for parent_case in cases:
+        variants = parent_case.get("variants")
+        use_shared_cache = parent_case.get("shared_cache", False) and variants
+        shared_cache = LocatorCache(path=":memory:") if use_shared_cache else None
+
+        if variants:
+            sub_cases = [{**parent_case, "id": f"{parent_case['id']}-{v}"} for v in variants]
         else:
-            r = _run_case(case, llm_client, browser)
-        case_results.append(r)
-        print(f"[{_label(r.status)}] {r.id} ({r.steps} steps, ${r.usd:.4f})", flush=True)
+            sub_cases = [parent_case]
+
+        for case in sub_cases:
+            if not live and not case.get("fixture", False):
+                r = _skipped_result(case)
+            else:
+                r = _run_case(case, llm_client, browser, cache=shared_cache)
+            case_results.append(r)
+            print(f"[{_label(r.status)}] {r.id} ({r.steps} steps, ${r.usd:.4f})", flush=True)
+
     payload = {
         "run_at": now.isoformat(),
         "cases": [asdict(r) for r in case_results],
