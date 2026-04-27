@@ -9,21 +9,30 @@ Wraps up an OpenSpec-driven PR end-to-end: archive → commit → push → merge
 
 ## Steps
 
+0. **Pre-flight: working tree.** Before invoking any sub-skill, run `git status` and decide:
+   - **Clean** → proceed.
+   - **Dirty with files in this PR's scope** (e.g. an in-progress `.claude/commands/<name>.md` skill update from the same lessons-learned thread on this branch — especially when there is already a sibling `chore(skills):` commit on the branch) → commit it on the branch as a separate `chore(<scope>):` commit *before* archive, with the standard `Co-Authored-By` trailer. Do not bundle it into the archive commit.
+   - **Dirty with unrelated files** → stop and ask the user. Never silently `git stash` or `git restore`.
+
 1. **Archive the change.** Invoke the `opsx:archive` skill (equivalently `openspec-archive-change`). If the user did not pass a change name as `args`, follow the archive skill's normal prompting flow to pick one. Pass `args` straight through if provided.
+
+   **Critical ordering:** if the change has delta specs under `openspec/changes/<name>/specs/`, the `opsx:sync` step MUST run *before* `mv`-ing the directory to `archive/`. The archive skill's prompt assesses sync state and offers to invoke `/opsx:sync`; accept it (or invoke `/opsx:sync <name>` yourself) **before** the move. Once the directory has moved, the deltas are no longer at the path the sync skill looks at, and the main specs will silently miss the update. This is especially important when a delta introduces a *new* capability (a directory under `specs/` that does not yet exist under `openspec/specs/`) — sync is the only step that creates the new main spec.
 
 1a. **Record task2 benchmark (if task2 was touched).**
    - Detect: `git diff --name-only origin/master...HEAD -- task2/` — if empty, skip this step entirely.
-   - Otherwise, from the repo root run:
+   - **Pre-check Qwen reachability** before starting the benchmark (the run takes minutes and silently degrades with a dead endpoint):
+     `curl -sf http://localhost:8090/v1/models -m 3 -o /dev/null && echo Qwen reachable || echo Qwen NOT reachable`
+     If unreachable, stop and ask the user.
+   - From the repo root run:
      `cd task2 && LLM_BASE_URL=http://localhost:8090 LLM_MODEL=qwen3.5-27b uv run python -m scripts.benchmark --branch "$(git rev-parse --abbrev-ref HEAD)"`
-     (the local Qwen at `localhost:8090` must be reachable; if it isn't, stop and ask the user.)
    - Then regenerate the trend SVGs:
      `cd task2 && uv run python -m scripts.trends`
      (reads every `task2/benchmark/*/results.json` and overwrites `task2/benchmark/_trends/{pass_rate,latency,cost}.svg`. README image refs are static and don't need updating.)
    - Stage `task2/benchmark/<sanitized-branch>/` and `task2/benchmark/_trends/` and commit with a HEREDOC message:
      `chore(task2): record benchmark for <branch>`
      including the standard `Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>` trailer.
-   - If `git status` shows no changes after the run (results identical to what's already on the branch), skip the commit — do not create an empty one.
-   - The CI workflow `task2-benchmark` checks that this file exists and that its `run_at` is newer than the merge-base with master, so this step is what makes the PR mergeable.
+   - **`[FAIL]` cases in the benchmark output do not block the merge.** The CI workflow `task2-benchmark` only checks that the results file exists and that its `run_at` is newer than the merge-base with master. The benchmark is a tracking artifact, not a gate. If a regression is suspected, surface it to the user but do not stop unless they ask. (The trend SVGs make multi-run regressions visually obvious; a single `[FAIL]` on drift cases is normal under the current Qwen 27B and not actionable here.)
+   - **No-op case:** the only time `git status` is clean after this step is a re-run of `/done_pr` on an already-finalized branch (rare). In that case skip the commit. A first run on a new branch always produces at least the new `task2/benchmark/<sanitized-branch>/results.json` and an updated trend SVG, so a clean `git status` after a *first* run is a signal that the benchmark script silently failed — investigate before continuing.
 
 2. **Commit the spec/archive updates.** After archive completes:
    - Run `git status` and `git diff --stat` to confirm only OpenSpec files moved/changed (typically `openspec/changes/<name>/` → `openspec/changes/archive/<name>/`, and possibly `openspec/specs/...`).
@@ -39,8 +48,9 @@ Wraps up an OpenSpec-driven PR end-to-end: archive → commit → push → merge
    - If state is not `OPEN`, report it and stop (don't try to merge a closed/already-merged PR).
    - If mergeable is `CONFLICTING`, stop and ask the user.
    - Otherwise merge with `gh pr merge --squash --delete-branch` (default: squash + delete branch). If the user passed a different strategy via `args` (e.g. `merge`, `rebase`), honor it.
+   - **Verifying the merge landed:** there is no `merged` JSON field on `gh pr view` (it will fail with `Unknown JSON field: "merged"`). Use `gh pr view --json state,mergedAt,mergeCommit -q .` instead — `state` flips to `MERGED`, `mergedAt` becomes a timestamp, and `mergeCommit.oid` is the squash sha.
 
-5. **Sync master.** Run `git checkout master && git pull`. Report the new HEAD briefly.
+5. **Sync master.** `gh pr merge --delete-branch` already switches the local checkout back to `master` and prunes the remote branch, so a bare `git checkout master` is usually a no-op (and `git pull` without a fast-forward guard will silently pull a merge commit if your local master has diverged). Prefer `git pull --ff-only` here. If `--ff-only` refuses, stop and investigate — your local master has work that isn't on the remote and a blind pull would hide that. Report the new HEAD briefly.
 
 ## Notes
 
