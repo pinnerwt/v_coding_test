@@ -40,7 +40,7 @@ A secondary concern is verifying that ticket #28's `locator_cache` forwarding (`
 
 **Chosen**: Add a call to `_emit_supervisor_event(...)` inside `_locate_with_supervisor`, right after `decision = supervisor.handle(miss, current_tier="L1_ax")`. The `trigger_event_seq` is set to the seq of the L1 miss `LocateEvent` emitted by `_locate_via_ladder` in the call that just returned.
 
-**Rationale**: `_locate_with_supervisor` is the single call site where `supervisor.handle()` is invoked. Placing emission here keeps the logic co-located with the decision point. The seq of the preceding `LocateEvent` is deterministically `trace_writer.next_seq(run_id) - 1` since no other event can interleave (single-threaded).
+**Rationale**: `_locate_with_supervisor` is the single call site where `supervisor.handle()` is invoked. Placing emission here keeps the logic co-located with the decision point. `_emit_locate_event` returns the seq it allocated, so the L1 miss event's seq is captured directly from that return value and passed as `trigger_event_seq` — no reliance on `next_seq` arithmetic.
 
 **Alternative rejected**: Emitting the `SupervisorEvent` inside `_locate_via_ladder` — rejected because `_locate_via_ladder` doesn't hold a `Supervisor` reference and would require more parameter threading.
 

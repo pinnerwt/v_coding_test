@@ -220,14 +220,15 @@ def _locate_via_ladder(
             step_id=step_id,
         )
         decision = supervisor.handle(miss, current_tier="L1_ax")
-        _emit_supervisor_event(
-            trace_writer=trace_writer,
-            run_id=run_id,
-            decision=decision,
-            miss=miss,
-            trigger_event_seq=l1_miss_seq or 0,
-            step_id=step_id,
-        )
+        if l1_miss_seq is not None:
+            _emit_supervisor_event(
+                trace_writer=trace_writer,
+                run_id=run_id,
+                decision=decision,
+                miss=miss,
+                trigger_event_seq=l1_miss_seq,
+                step_id=step_id,
+            )
         if decision.next_tier != "L2_dom":
             raise
         try:

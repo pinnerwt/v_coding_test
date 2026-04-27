@@ -12,7 +12,7 @@
 ## 3. Extend `_locate_via_ladder` to emit LocateEvents and call `_emit_supervisor_event`
 
 - [x] 3.1 Add `trace_writer: TraceWriter | None = None`, `run_id: str | None = None`, `step_id: str | None = None` keyword arguments to `_locate_via_ladder` in `agent/loop.py`.
-- [x] 3.2 Inside `_locate_via_ladder`, after `locate_l1` raises `LocatorMiss(reason="zero_matches")`: call `_emit_locate_event(trace_writer=trace_writer, run_id=run_id, intent=intent, tier="L1_ax", outcome="miss", cache_action=None, chosen=None, step_id=step_id)` and capture `l1_seq = (trace_writer.next_seq(run_id) - 1)` immediately (or snapshot seq before emission using `next_seq - 1` after the emit).
+- [x] 3.2 Inside `_locate_via_ladder`, after `locate_l1` raises `LocatorMiss(reason="zero_matches")`: call `_emit_locate_event(trace_writer=trace_writer, run_id=run_id, intent=intent, tier="L1_ax", outcome="miss", cache_action=None, chosen=None, step_id=step_id)` and capture its return value as `l1_seq` (the helper returns the allocated seq, or `None` when trace kwargs are absent).
 - [x] 3.3 After computing `decision = supervisor.handle(miss, current_tier="L1_ax")`, call `_emit_supervisor_event(trace_writer=trace_writer, run_id=run_id, decision=decision, miss=miss, trigger_event_seq=l1_seq, step_id=step_id)`.
 - [x] 3.4 If `decision.next_tier == "L2_dom"` and `locate_l2` succeeds: emit `LocateEvent(tier="L2_dom", outcome="hit", cache_action=None, chosen={"role": result.role, "selector": result.selector}, ...)`.
 - [x] 3.5 If `decision.next_tier == "L2_dom"` and `locate_l2` raises `LocatorMiss`: emit `LocateEvent(tier="L2_dom", outcome="miss", cache_action=None, chosen=None, ...)` before re-raising.

@@ -64,7 +64,7 @@ def _locate_via_ladder(
 
 When `trace_writer` and `run_id` are provided, the function SHALL:
 
-1. After `locate_l1` raises `LocatorMiss(reason="zero_matches")`, emit a `LocateEvent(tier="L1_ax", outcome="miss", cache_action=None, intent=intent, chosen=None, candidates=[], ms=0, step_id=step_id)` using `_emit_locate_event`. Record this event's seq as `l1_miss_seq = trace_writer.next_seq(run_id) - 1` immediately after emission (i.e., the seq just allocated).
+1. After `locate_l1` raises `LocatorMiss(reason="zero_matches")`, emit a `LocateEvent(tier="L1_ax", outcome="miss", cache_action=None, intent=intent, chosen=None, candidates=[], ms=0, step_id=step_id)` using `_emit_locate_event`, and capture its allocated seq from the helper's return value as `l1_miss_seq`.
 2. Call `supervisor.handle(miss, current_tier="L1_ax")` to obtain an `EscalationDecision`.
 3. Call `_emit_supervisor_event(trace_writer=trace_writer, run_id=run_id, decision=decision, miss=miss, trigger_event_seq=l1_miss_seq, step_id=step_id)`.
 4. If `decision.next_tier == "L2_dom"`: attempt `locate_l2`. If L2 succeeds, emit `LocateEvent(tier="L2_dom", outcome="hit", cache_action=None, intent=intent, chosen={"role": result.role, "selector": result.selector}, candidates=[], ms=0, step_id=step_id)`. If L2 raises `LocatorMiss`, emit `LocateEvent(tier="L2_dom", outcome="miss", cache_action=None, intent=intent, chosen=None, candidates=[], ms=0, step_id=step_id)` before re-raising.

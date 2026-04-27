@@ -2335,6 +2335,11 @@ def test_locate_via_ladder_l1_miss_l2_miss_emits_events_and_raises(
     assert l1_miss is not None, "expected L1_ax miss LocateEvent"
     assert l2_miss is not None, "expected L2_dom miss LocateEvent"
     assert len(sv_events) == 1
+    sv = sv_events[0]
+    assert l1_miss.seq < sv.seq < l2_miss.seq, (
+        "expected ordering: L1_ax miss → SupervisorEvent → L2_dom miss"
+    )
+    assert sv.trigger_event_seq == l1_miss.seq
     writer.close()
 
 
