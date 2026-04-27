@@ -54,28 +54,22 @@ def test_1000_button_page_capped(playwright_chromium):
     assert sentinel_count == 1000 - MAX_NODES
 
 
-def test_last_action_none_first_step(browser_on_mixed):
-    obs = build_observation(browser_on_mixed, None)
-    assert "last_action" in obs
-    assert obs["last_action"] is None
-
-
 def test_last_action_threaded_second_step(browser_on_mixed):
     action = {"tool": "goto", "intent": "navigate", "outcome": "ok"}
-    obs = build_observation(browser_on_mixed, action)
-    assert obs["last_action"] == action
+    obs = build_observation(browser_on_mixed, [action])
+    assert obs["last_actions"] == [action]
 
 
 def test_build_observation_closed_browser_returns_valid_dict(playwright_chromium):
     """build_observation with page=None returns zero-observation without raising."""
     with Browser(playwright_browser=playwright_chromium) as b:
         pass
-    obs = build_observation(b, None)
+    obs = build_observation(b, [])
     assert obs["url"] == ""
     assert obs["title"] == ""
     assert obs["ax_tree_digest"] == ""
     assert len(obs["ax_fingerprint"]) == 64
-    assert obs["last_action"] is None
+    assert obs["last_actions"] == []
 
 
 def test_ax_tree_digest_round_trips_through_trace(browser_on_mixed):
@@ -188,13 +182,13 @@ def test_build_observation_falls_back_when_new_cdp_session_raises():
     )
     fake_browser = types.SimpleNamespace(_page=fake_page, _cdp_sessions={})
 
-    obs = build_observation(fake_browser, None)
+    obs = build_observation(fake_browser, [])
 
     assert obs["url"] == "http://example.com/"
     assert obs["title"] == "Example"
     assert obs["ax_tree_digest"] == ""
     assert obs["ax_fingerprint"] == _EMPTY_FINGERPRINT
-    assert obs["last_action"] is None
+    assert obs["last_actions"] == []
 
 
 _BUTTON_HTML = "<!DOCTYPE html><html><body><button>Click</button></body></html>"

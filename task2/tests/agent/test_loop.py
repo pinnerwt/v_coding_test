@@ -781,7 +781,7 @@ def test_first_step_last_action_null(fixture_server, playwright_chromium):
     assert capturing_llm.captured_messages is not None
     obs_msg = capturing_llm.captured_messages[1]
     obs_json = _extract_obs_json(obs_msg["content"])
-    assert obs_json["last_action"] is None
+    assert obs_json["last_actions"] == []
 
 
 class _TwoStepCapturingClient:
@@ -829,8 +829,8 @@ def test_second_step_last_action_populated(fixture_server, playwright_chromium):
         if m["role"] == "user" and "Current state:" in m.get("content", "")
     )
     obs_json = _extract_obs_json(obs_msg["content"])
-    assert obs_json["last_action"] is not None
-    assert obs_json["last_action"]["tool"] == "goto"
+    assert obs_json["last_actions"]
+    assert obs_json["last_actions"][0]["tool"] == "goto"
 
 
 # ---------------------------------------------------------------------------

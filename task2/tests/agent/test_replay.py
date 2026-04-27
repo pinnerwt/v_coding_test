@@ -452,7 +452,7 @@ def test_replay_run_detects_extra_chat_calls(tmp_path):
         "title": "",
         "ax_tree_digest": "",
         "ax_fingerprint": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        "last_action": None,
+        "last_actions": [],
     }
     first_prompt = [
         {"role": "system", "content": _build_system_prompt("task")},
@@ -640,7 +640,7 @@ def test_replay_run_handles_multiple_tool_calls_per_response(tmp_path):
         "title": "",
         "ax_tree_digest": "",
         "ax_fingerprint": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        "last_action": None,
+        "last_actions": [],
     }
     first_prompt = [
         {"role": "system", "content": _build_system_prompt(task)},
@@ -819,7 +819,7 @@ def test_replay_run_uses_recorded_observation_ax_tree(tmp_path):
         "title": "",
         "ax_tree_digest": "",
         "ax_fingerprint": empty_fp,
-        "last_action": None,
+        "last_actions": [],
     }
     state_msg = {"role": "user", "content": f"Current state: {json.dumps(obs)}"}
     system_msg = {"role": "system", "content": _build_system_prompt(task)}
@@ -1044,7 +1044,7 @@ def test_replay_run_normalizes_dict_form_tool_arguments(tmp_path):
         "title": "",
         "ax_tree_digest": "",
         "ax_fingerprint": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        "last_action": None,
+        "last_actions": [],
     }
     first_prompt = [
         {"role": "system", "content": _build_system_prompt(task)},
