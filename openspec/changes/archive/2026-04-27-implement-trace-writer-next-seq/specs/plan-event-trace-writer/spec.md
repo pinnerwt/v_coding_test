@@ -1,8 +1,5 @@
-# plan-event-trace-writer Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change implement-plan-event-trace-writer. Update Purpose after archive.
-## Requirements
 ### Requirement: loop() accepts optional TraceWriter for plan event persistence
 
 The `loop()` function in `agent.loop` SHALL accept an optional keyword argument `trace_writer: TraceWriter | None = None`. When `trace_writer` is not `None`, `PlanEvent` rows SHALL be written through it with:
@@ -91,7 +88,7 @@ The `loop()` function SHALL raise `ValueError` when called with a non-`None` `tr
 
 ### Requirement: _emit_plan_event reason parameter is Literal typed
 
-The internal function `_emit_plan_event` in `agent.loop` SHALL have its `reason` parameter typed as `Literal["initial", "replan"]`. The existing `# type: ignore[arg-type]` comment on the calls into `PlanEvent(reason=...)` SHALL be removed. `uv run ruff check .` SHALL exit 0 after this change.
+The internal function `_emit_plan_event` in `agent.loop` SHALL have its `reason` parameter typed as `Literal["initial", "replan"]`. No `# type: ignore[arg-type]` comment SHALL be present. `uv run ruff check .` SHALL exit 0 after this change.
 
 #### Scenario: ruff check passes with no type: ignore comment
 

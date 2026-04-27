@@ -1492,3 +1492,44 @@ def test_loop_module_does_not_require_playwright(monkeypatch):
             monkeypatch.delitem(sys.modules, key, raising=False)
 
     importlib.import_module("agent.loop")
+
+
+def test_interleaved_emitters_no_seq_error(fixture_server, playwright_chromium):
+    """loop() emits PlanEvent at seq=1; caller then appends ObservationEvent at
+    next_seq(); both rows persist with strictly-increasing seq and no SeqError."""
+    from agent.trace import ObservationEvent
+
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+    run_id = "test-interleaved-1"
+    writer = _make_writer_with_run(run_id)
+    fake_llm = _FakeLLMClient([_done_response(fixture_url)])
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        loop("task", browser, fake_llm, trace_writer=writer, run_id=run_id)
+
+    next_s = writer.next_seq(run_id)
+    obs = ObservationEvent(
+        run_id=run_id,
+        seq=next_s,
+        ts="2024-01-01T00:00:00Z",
+        step_id=None,
+        url="https://example.com",
+        title="Example",
+        ax_tree_digest="[button Submit]",
+        ax_fingerprint="fp123",
+        screenshot_ref="/tmp/shot.png",
+        viewport={"w": 1280, "h": 800},
+    )
+    writer.append_event(obs)
+
+    rows = _all_rows(writer)
+    plan_rows = [r for r in rows if r["kind"] == "plan"]
+    obs_rows = [r for r in rows if r["kind"] == "observation"]
+    assert plan_rows, "expected at least one plan row"
+    assert obs_rows, "expected at least one observation row"
+    plan_seq = plan_rows[0]["seq"]
+    obs_seq = obs_rows[0]["seq"]
+    assert plan_seq >= 1
+    assert obs_seq >= 1
+    assert plan_seq < obs_seq, f"plan_seq={plan_seq} not < obs_seq={obs_seq}"
+    writer.close()
