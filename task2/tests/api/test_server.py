@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 
 import pytest
@@ -386,6 +387,89 @@ def test_run_agent_closes_llm_client_on_loop_exception(temp_db, monkeypatch):
 
     _run_agent(run_id, TaskRequest(task="do a thing"))
     assert len(close_calls) == 1
+
+
+def test_run_agent_logs_traceback(temp_db, monkeypatch, caplog):
+    run_id = "run-log-traceback-001"
+    writer = TraceWriter(temp_db)
+    writer.open_run(_make_run(run_id))
+    writer.close()
+
+    def _raise(*_a, **_kw):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("api.server.loop", _raise)
+    monkeypatch.setattr("api.server.Browser", _FakeBrowser)
+
+    with caplog.at_level(logging.ERROR, logger="api.server"):
+        _run_agent(run_id, TaskRequest(task="do a thing"))
+
+    error_records = [
+        r for r in caplog.records if r.levelno == logging.ERROR and r.name == "api.server"
+    ]
+    assert error_records, "expected an ERROR record on api.server logger"
+    rec = error_records[0]
+    assert rec.exc_text is not None, "exc_text should be populated"
+    assert "RuntimeError" in rec.exc_text
+    assert "boom" in rec.exc_text
+    assert "test_server.py" in rec.exc_text
+    assert getattr(rec, "run_id", None) == run_id
+
+    conn = sqlite3.connect(temp_db)
+    row = conn.execute(
+        "SELECT status, payload FROM traces_runs WHERE run_id = ?", (run_id,)
+    ).fetchone()
+    conn.close()
+    assert row is not None
+    status, payload = row
+    assert status == "failed"
+    final_data = json.loads(payload)
+    assert final_data["final"]["failure"]["reason"] == "internal error"
+
+
+def test_run_agent_close_run_failure_silently_swallowed(temp_db, monkeypatch, caplog):
+    run_id = "run-close-fail-001"
+    writer = TraceWriter(temp_db)
+    writer.open_run(_make_run(run_id))
+    writer.close()
+
+    def _raise_loop(*_a, **_kw):
+        raise RuntimeError("outer boom")
+
+    def _raise_close_run(*_a, **_kw):
+        raise RuntimeError("close_run boom")
+
+    monkeypatch.setattr("api.server.loop", _raise_loop)
+    monkeypatch.setattr("api.server.Browser", _FakeBrowser)
+    monkeypatch.setattr(TraceWriter, "close_run", _raise_close_run)
+
+    with caplog.at_level(logging.ERROR, logger="api.server"):
+        _run_agent(run_id, TaskRequest(task="do a thing"))
+
+    error_records = [
+        r for r in caplog.records if r.levelno == logging.ERROR and r.name == "api.server"
+    ]
+    assert len(error_records) == 1, (
+        "only the outer exception should be logged, not the close_run failure"
+    )
+
+
+def test_run_agent_no_error_log_on_success(temp_db, monkeypatch, caplog):
+    run_id = "run-success-no-log-001"
+    writer = TraceWriter(temp_db)
+    writer.open_run(_make_run(run_id))
+    writer.close()
+
+    monkeypatch.setattr("api.server.loop", lambda *_a, **_kw: _MOCK_RESULT)
+    monkeypatch.setattr("api.server.Browser", _FakeBrowser)
+
+    with caplog.at_level(logging.ERROR, logger="api.server"):
+        _run_agent(run_id, TaskRequest(task="do a thing"))
+
+    error_records = [
+        r for r in caplog.records if r.levelno == logging.ERROR and r.name == "api.server"
+    ]
+    assert error_records == [], "no ERROR record expected on successful run"
 
 
 def test_run_agent_passes_trace_writer_and_run_id_to_loop(tmp_path, monkeypatch):

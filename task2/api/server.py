@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sqlite3
 from collections.abc import Generator
@@ -17,6 +18,8 @@ from agent.llm import _DEFAULT_LLM_MODEL, LLMClient
 from agent.loop import RunResult, loop
 from agent.trace import Run, RunBudget, RunLLM, TraceWriter
 from api.db import get_db_path
+
+logger = logging.getLogger(__name__)
 
 _AGENT_VERSION = "0.1.0"
 
@@ -90,6 +93,7 @@ def _run_agent(run_id: str, task_req: TaskRequest) -> None:
             totals=_ZERO_TOTALS,
         )
     except Exception:
+        logger.exception("agent run failed", extra={"run_id": run_id})
         ended_at = datetime.now(UTC).isoformat()
         try:
             writer.close_run(

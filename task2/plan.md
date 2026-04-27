@@ -333,8 +333,7 @@ Urgency tags:
 
 ### P0 — unblocks other work
 
-- **#44** — Align eval-runner `LLM_MODEL` default with `api/server.py`. Every Task 7.1 currently defers because the eval default (`qwen3`) 404s against the local Qwen (`qwen3-5-27b`).
-- **#45** — Surface tracebacks from `_run_agent`'s internal-error path. Removes the recurring "smoke failed but I can't tell why" debug round.
+- **#45** — Surface tracebacks from `_run_agent`'s internal-error path [in PR #66; awaiting `/done_pr` archive + merge]. Will be removed from this rubric on archive.
 
 ### P1 — observed bugs / type-narrowing gaps
 
