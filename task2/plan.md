@@ -341,7 +341,6 @@ Urgency tags:
 
 ### P2 — measurable improvements
 
-- **#33** — Per-category pass-rate rows + done-bar traffic lights in scoreboard.
 - **#34** — Skip-reason tagging.
 - **#35** — N-run statistical bench mode (`--repeats N`).
 - **#36** — Auto-diff scoreboard against master baseline.
