@@ -63,6 +63,24 @@ Wraps up an OpenSpec-driven PR end-to-end: archive → commit → push → merge
    - **No new tickets case:** if every failure maps to an existing #31+ entry, skip the commit and print one line to the user: `done_pr: benchmark failures all map to existing tickets — no new follow-ups filed.` This proves you ran the analysis instead of silently skipping it.
    - This step does NOT block the merge in step 4, even if the analysis surfaces something concerning. The merge proceeds; the new tickets are picked up by future `/new_task2` runs.
 
+1c. **Scrub the just-archived ticket from `task2/plan.md`'s Undone rubric (if task2 was touched).**
+
+   Skip entirely if step 1a was skipped (no task2 changes) or if the change does not map to a numbered ticket. Otherwise:
+
+   - Identify the ticket number this change implements. Source of truth, in priority order:
+     1. The orchestrator already knows it (e.g. `/full_task2` / `/auto_task2` announce the ticket number when picking it). Trust that.
+     2. Failing that, `grep -nE "ticket #?[0-9]+|#[0-9]+" openspec/changes/archive/<dated-dir>/proposal.md` and pick the first ticket-style reference.
+   - Open `task2/plan.md` and find the `## Undone` section. Inside it, the entry shape is `- **#<N>** — <one-line summary>` under one of the `### P0/P1/P2/P3` urgency subheaders or `### In flight`.
+   - Delete the single line whose ticket number matches. Leave the urgency subheader in place even if the section becomes empty (a future `/new_task2` may file a new entry under it). Do **not** touch the long-form ticket text in `## TDD tickets` or `## Benchmark improvements (candidates)` — those are the canonical record and stay forever.
+   - Stage `task2/plan.md` on its own and commit:
+     ```
+     docs(task2): drop archived ticket #<N> from Undone rubric
+     ```
+     with the standard `Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>` trailer.
+   - **No-op case:** if the entry was already missing (e.g. an earlier iteration scrubbed it, or the ticket was never in the Undone rubric to begin with — common for skill-only PRs that have no ticket), skip the commit and print one line: `done_pr: ticket #<N> already absent from Undone rubric` (or `done_pr: no ticket number to scrub` if step 1c found none).
+
+   Why: the Undone rubric was previously cleaned up only by `/new_task2` step 11 of the *next* iteration, leaving a one-iteration lag where the rubric showed already-archived tickets. The picking iteration would correctly skip them (per `/new_task2` step 1's archive cross-check) but each stale entry was a small re-derivation of state. Scrubbing on archive bounds the responsibility to the skill that *causes* the staleness — no cross-iteration coordination required. Confirmed pattern: in PR #69 on 2026-04-27 (`fix-escalation-decision-policy-literal`), the rubric still listed both #45 (archived in iter 2) and #47 (archived in this iter); iter 4's selection had to mentally skip both.
+
 2. **Commit the spec/archive updates.** After archive completes:
    - Run `git status` and `git diff --stat` to confirm only OpenSpec files moved/changed (typically `openspec/changes/<name>/` → `openspec/changes/archive/<name>/`, and possibly `openspec/specs/...`).
    - Stage exactly those paths (do not `git add -A`).
