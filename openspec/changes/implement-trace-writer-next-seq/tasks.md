@@ -1,16 +1,16 @@
 ## 1. Failing Tests — TraceWriter.next_seq (Red)
 
-- [ ] 1.1 In `task2/tests/agent/test_trace.py`, add `test_next_seq_on_fresh_run_returns_1`: open a run with no events; assert `writer.next_seq(run_id)` returns `1`.
-- [ ] 1.2 Add `test_next_seq_after_one_event_returns_2`: append one event at seq=1; assert `next_seq(run_id)` returns `2`.
-- [ ] 1.3 Add `test_next_seq_after_three_events_returns_4`: append three events at seq=1,2,3; assert `next_seq(run_id)` returns `4`.
-- [ ] 1.4 Add `test_next_seq_unknown_run_id_raises`: call `next_seq("does-not-exist")` on a writer with no runs; assert `LookupError` is raised.
-- [ ] 1.5 Add `test_next_seq_closed_run_raises`: open and close a run via `close_run`; assert `next_seq(run_id)` raises `LookupError`.
-- [ ] 1.6 Run `uv run pytest task2/tests/agent/test_trace.py -k "next_seq"` and confirm all new tests fail (red).
+- [x] 1.1 In `task2/tests/agent/test_trace.py`, add `test_next_seq_on_fresh_run_returns_1`: open a run with no events; assert `writer.next_seq(run_id)` returns `1`.
+- [x] 1.2 Add `test_next_seq_after_one_event_returns_2`: append one event at seq=1; assert `next_seq(run_id)` returns `2`.
+- [x] 1.3 Add `test_next_seq_after_three_events_returns_4`: append three events at seq=1,2,3; assert `next_seq(run_id)` returns `4`.
+- [x] 1.4 Add `test_next_seq_unknown_run_id_raises`: call `next_seq("does-not-exist")` on a writer with no runs; assert `LookupError` is raised.
+- [x] 1.5 Add `test_next_seq_closed_run_raises`: open and close a run via `close_run`; assert `next_seq(run_id)` raises `LookupError`.
+- [x] 1.6 Run `uv run pytest task2/tests/agent/test_trace.py -k "next_seq"` and confirm all new tests fail (red).
 
 ## 2. Failing Test — Interleaved Emitters (Red)
 
-- [ ] 2.1 In `task2/tests/agent/test_loop.py`, add `test_interleaved_emitters_no_seq_error`: call `loop()` with a `:memory:` `TraceWriter` and mocks that cause the loop to emit one initial `PlanEvent` and then terminate (done tool); after `loop()` returns, append a manually-constructed `ObservationEvent` using `seq=writer.next_seq(run_id)`; assert both rows exist in `traces_events` with strictly increasing seq and no `SeqError` was raised.
-- [ ] 2.2 Run `uv run pytest task2/tests/agent/test_loop.py -k "interleaved"` and confirm the test fails (red — `next_seq` does not exist yet).
+- [x] 2.1 In `task2/tests/agent/test_loop.py`, add `test_interleaved_emitters_no_seq_error`: call `loop()` with a `:memory:` `TraceWriter` and mocks that cause the loop to emit one initial `PlanEvent` and then terminate (done tool); after `loop()` returns, append a manually-constructed `ObservationEvent` using `seq=writer.next_seq(run_id)`; assert both rows exist in `traces_events` with strictly increasing seq and no `SeqError` was raised.
+- [x] 2.2 Run `uv run pytest task2/tests/agent/test_loop.py -k "interleaved"` and confirm the test fails (red — `next_seq` does not exist yet).
 
 ## 3. Implementation — TraceWriter.next_seq (Green)
 

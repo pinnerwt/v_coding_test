@@ -779,3 +779,56 @@ def test_trace_writer_methods_on_closed_raise():
         writer.append_event(_observation_event())
     with pytest.raises(sqlite3.ProgrammingError):
         writer.close_run("x", status="failed", ended_at=TS, final={}, totals={})
+
+
+def test_next_seq_on_fresh_run_returns_1():
+    run = _run_full()
+    with TraceWriter(":memory:") as writer:
+        writer.open_run(run)
+        assert writer.next_seq(run.run_id) == 1
+
+
+def test_next_seq_after_one_event_returns_2():
+    run = _run_full()
+    with TraceWriter(":memory:") as writer:
+        writer.open_run(run)
+        writer.append_event(_observation_event(run_id=run.run_id, seq=1))
+        assert writer.next_seq(run.run_id) == 2
+
+
+def test_next_seq_after_three_events_returns_4():
+    run = _run_full()
+    with TraceWriter(":memory:") as writer:
+        writer.open_run(run)
+        writer.append_event(_observation_event(run_id=run.run_id, seq=1))
+        writer.append_event(_observation_event(run_id=run.run_id, seq=2))
+        writer.append_event(_observation_event(run_id=run.run_id, seq=3))
+        assert writer.next_seq(run.run_id) == 4
+
+
+def test_next_seq_unknown_run_id_raises():
+    with TraceWriter(":memory:") as writer:
+        with pytest.raises(LookupError):
+            writer.next_seq("does-not-exist")
+
+
+def test_next_seq_closed_run_raises():
+    run = _run_full()
+    with TraceWriter(":memory:") as writer:
+        writer.open_run(run)
+        writer.close_run(
+            run.run_id,
+            status="succeeded",
+            ended_at="2024-01-01T00:01:00Z",
+            final={"result": {"answer": "cats"}, "evidence": {}, "failure": None},
+            totals={
+                "steps": 1,
+                "llm_calls": 0,
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "usd": 0.0,
+                "browser_ms": 0,
+            },
+        )
+        with pytest.raises(LookupError):
+            writer.next_seq(run.run_id)
