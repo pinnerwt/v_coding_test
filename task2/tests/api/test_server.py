@@ -263,7 +263,7 @@ class _FakeBrowser:
 def _capture_base_url(temp_db, monkeypatch, run_id: str) -> list[str]:
     captured: list[str] = []
 
-    def fake_loop(task, browser, llm_client):
+    def fake_loop(task, browser, llm_client, **_kw):
         captured.append(llm_client._base_url)
         return _MOCK_RESULT
 
@@ -327,7 +327,7 @@ def test_llm_model_defaults_to_qwen3_5_27b_on_client(tmp_path, monkeypatch):
 
     captured: list[str | None] = []
 
-    def fake_loop(task, browser, llm_client):
+    def fake_loop(task, browser, llm_client, **_kw):
         captured.append(llm_client._model_default)
         return _MOCK_RESULT
 

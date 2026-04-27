@@ -4,13 +4,14 @@ import json
 import time
 import uuid
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Literal
 
 import agent.observe as observe
 import agent.plan as plan_module
 from agent.locate import LocatorMiss, locate_l1, locate_l2, parse_intent
 from agent.supervisor import Supervisor
-from agent.trace import PlanEvent
+from agent.trace import PlanEvent, TraceWriter
 
 if TYPE_CHECKING:
     from playwright.sync_api import Page
@@ -223,7 +224,28 @@ def _dispatch(tool_name: str, args: dict, browser: Browser, supervisor: Supervis
     return f"Error: unknown tool {tool_name!r}"
 
 
-def _emit_plan_event(events: list | None, reason: str, steps: list[str], call_id: str) -> None:
+def _emit_plan_event(
+    events: list | None,
+    reason: Literal["initial", "replan"],
+    steps: list[str],
+    call_id: str,
+    trace_writer: TraceWriter | None = None,
+    run_id: str | None = None,
+    seq: int = 0,
+) -> None:
+    if trace_writer is not None and run_id is not None:
+        trace_writer.append_event(
+            PlanEvent(
+                run_id=run_id,
+                seq=seq,
+                ts=datetime.now(UTC).isoformat(),
+                step_id=None,
+                reason=reason,
+                steps=steps,
+                llm_call_id=call_id,
+            )
+        )
+        return
     if events is None:
         return
     events.append(
@@ -232,7 +254,7 @@ def _emit_plan_event(events: list | None, reason: str, steps: list[str], call_id
             seq=0,
             ts="",
             step_id=None,
-            reason=reason,  # type: ignore[arg-type]
+            reason=reason,
             steps=steps,
             llm_call_id=call_id,
         )
@@ -251,6 +273,8 @@ def loop(
     *,
     max_steps: int = 20,
     events: list | None = None,
+    run_id: str | None = None,
+    trace_writer: TraceWriter | None = None,
 ) -> RunResult:
     messages: list[dict] = [{"role": "system", "content": _build_system_prompt(task)}]
     supervisor = Supervisor()
@@ -263,6 +287,7 @@ def loop(
     step_num = 0
     last_actions: list[dict] = []
     active_plan: plan_module.Plan | None = None
+    _seq: int = 0
 
     for _ in range(max_steps):
         step_num += 1
@@ -276,7 +301,16 @@ def loop(
             cum_prompt_tokens += plan_resp.usage.prompt_tokens
             cum_completion_tokens += plan_resp.usage.completion_tokens
             cum_usd += plan_resp.usd
-            _emit_plan_event(events, "initial", active_plan.steps, str(uuid.uuid4()))
+            _seq += 1
+            _emit_plan_event(
+                events,
+                "initial",
+                active_plan.steps,
+                str(uuid.uuid4()),
+                trace_writer=trace_writer,
+                run_id=run_id,
+                seq=_seq,
+            )
 
         assert active_plan is not None
         plan_prefix = _plan_progress_block(active_plan.steps)
@@ -419,7 +453,16 @@ def loop(
                     cum_usd += replan_resp.usd
                     supervisor.replan_used = True
                     active_plan = new_plan
-                    _emit_plan_event(events, "replan", new_plan.steps, str(uuid.uuid4()))
+                    _seq += 1
+                    _emit_plan_event(
+                        events,
+                        "replan",
+                        new_plan.steps,
+                        str(uuid.uuid4()),
+                        trace_writer=trace_writer,
+                        run_id=run_id,
+                        seq=_seq,
+                    )
                     break
                 else:
                     _record_step(

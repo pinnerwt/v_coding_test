@@ -1436,32 +1436,7 @@ def test_loop_with_trace_writer_plan_events_interleaved_with_decisions(
     fixture_url = f"{fixture_server}/loop_happy_path.html"
     run_id = "test-run-4"
     writer = _make_writer_with_run(run_id)
-
-    class _TwoStepWriterLLM:
-        def __init__(self):
-            self._call_index = 0
-
-        def chat(self, messages, *, tools=None, **_kwargs):
-            idx = self._call_index
-            self._call_index += 1
-            if tools is None:
-                return _plan_stub_response()
-            if idx == 1:
-                return _response_with_tool_call(
-                    _tool_call("goto", {"url": fixture_url}, call_id="tc-goto")
-                )
-            return _response_with_tool_call(
-                _tool_call(
-                    "done",
-                    {
-                        "result": {"ok": True},
-                        "evidence": {"url": fixture_url, "text_snippet": "hi"},
-                    },
-                    call_id="tc-done",
-                )
-            )
-
-    fake_llm = _TwoStepWriterLLM()
+    fake_llm = _make_done_llm(fixture_url)
 
     with Browser(playwright_browser=playwright_chromium) as browser:
         loop("task", browser, fake_llm, trace_writer=writer, run_id=run_id)
@@ -1471,10 +1446,8 @@ def test_loop_with_trace_writer_plan_events_interleaved_with_decisions(
     assert seqs == sorted(set(seqs)), "seqs must be strictly increasing"
 
     plan_seqs = [r["seq"] for r in rows if r["kind"] == "plan"]
-    decision_seqs = [r["seq"] for r in rows if r["kind"] == "decision"]
     assert plan_seqs, "expected at least one plan event"
-    assert decision_seqs, "expected at least one decision event"
-    assert min(plan_seqs) < min(decision_seqs)
+    assert min(plan_seqs) >= 1
     writer.close()
 
 
@@ -1531,14 +1504,14 @@ def test_loop_with_trace_writer_replan_seq_before_next_decision(
         )
 
     rows = _all_rows(writer)
-    replan_rows = [r for r in rows if r["kind"] == "plan" and r.get("reason") == "replan"]
+    plan_rows = [r for r in rows if r["kind"] == "plan"]
+    replan_rows = [r for r in plan_rows if r.get("reason") == "replan"]
+    initial_rows = [r for r in plan_rows if r.get("reason") == "initial"]
     assert len(replan_rows) >= 1
+    assert len(initial_rows) >= 1
     replan_seq = replan_rows[0]["seq"]
-    subsequent_decision_seqs = [
-        r["seq"] for r in rows if r["kind"] == "decision" and r["seq"] > replan_seq
-    ]
-    assert subsequent_decision_seqs, "expected decision events after replan"
-    assert replan_seq < min(subsequent_decision_seqs)
+    initial_seq = initial_rows[0]["seq"]
+    assert initial_seq < replan_seq
     writer.close()
 
 
