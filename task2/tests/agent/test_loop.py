@@ -1303,6 +1303,53 @@ def test_observation_uses_last_actions_key_not_last_action(fixture_server, playw
     assert "last_action" not in obs_json
 
 
+def test_error_outcome_preserved_in_last_actions(fixture_server, playwright_chromium):
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+
+    class _GotoThenBadGotoThenDone:
+        def __init__(self):
+            self._call_index = 0
+            self.all_captures: list[list[dict]] = []
+
+        def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
+            if tools is None:
+                return _plan_stub_response()
+            self.all_captures.append(list(messages))
+            self._call_index += 1
+            if self._call_index == 1:
+                return _response_with_two_tool_calls(
+                    _tool_call("goto", {"url": fixture_url}, call_id="tc-good"),
+                    _tool_call("goto", {"url": ""}, call_id="tc-bad"),
+                )
+            return _response_with_tool_call(
+                _tool_call(
+                    "done",
+                    {
+                        "result": {"ok": True},
+                        "evidence": {"url": fixture_url, "text_snippet": "Hello, loop"},
+                    },
+                    call_id="tc-done",
+                )
+            )
+
+    llm = _GotoThenBadGotoThenDone()
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        loop("task", browser, llm, max_steps=3)
+
+    assert len(llm.all_captures) >= 2
+    step2_messages = llm.all_captures[1]
+    obs_msg = next(
+        m
+        for m in reversed(step2_messages)
+        if m["role"] == "user" and "Current state:" in m.get("content", "")
+    )
+    obs = _extract_obs_json(obs_msg["content"])
+    assert len(obs["last_actions"]) == 2
+    assert obs["last_actions"][0]["outcome"] == "ok"
+    assert obs["last_actions"][1]["outcome"] == "error"
+    assert "error" in obs["last_actions"][1]
+
+
 def test_loop_module_does_not_require_playwright(monkeypatch):
     # agent.replay imports agent.loop and must stay playwright-free; mask
     # playwright in sys.modules and re-import to enforce that contract.
