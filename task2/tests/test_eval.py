@@ -1352,6 +1352,23 @@ def test_classify_failure_supervisor_halt_beats_tool_error():
     assert fc == "supervisor_halt"
 
 
+def test_classify_failure_validator_fail_beats_schema_error():
+    from agent.trace import DoneEvent
+    from scripts.eval import _classify_failure
+
+    rid = _make_run_id()
+    done_ev = DoneEvent(
+        **_make_base_fields(rid, 1),
+        result={},
+        evidence={"url": "u", "text_snippet": "t"},
+        verifier={"ok": False, "reasons": ["missing field: title"]},
+    )
+    validators = [{"name": "title.nonempty", "ok": False}]
+    fc, detail = _classify_failure([done_ev], validators, "failed")
+    assert fc == "validator_fail"
+    assert "title.nonempty" in detail
+
+
 def test_run_case_failure_class_tool_error_when_loop_raises():
     case = {
         "id": "boom",

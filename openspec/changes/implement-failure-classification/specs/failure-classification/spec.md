@@ -9,7 +9,7 @@ The system SHALL provide a module-level function `_classify_failure(events: list
    a. `"supervisor_halt"` — when a `SupervisorEvent(policy="halt")` is present in `events`.
    b. `"locator_miss"` — when a `SupervisorEvent(policy="next_tier")` is present in `events` AND the subsequent `LocateEvent` in the same `step_id` block has `outcome != "hit"` (all tiers exhausted without resolution).
    c. `"tool_error"` — when an `ActEvent(outcome="error")` is present in `events`.
-   d. `"validator_fail"` — when at least one dict in `validators` has `ok=False` AND the validator name does not equal `"exception"` (exception-path validators are classified under a different class).
+   d. `"validator_fail"` — when at least one dict in `validators` has `ok=False` AND the validator name does not equal `"exception"`. Exception-path validators (`name="exception"`) are skipped here; the case is classified by subsequent rules in this list (typically `tool_error` from `_run_case`'s except path setting `failure_class` directly, or `other` if the trace happens to be otherwise empty).
    e. `"schema_error"` — when a `DoneEvent` is present in `events` AND `event.verifier.get("ok") is False`.
    f. `"no_done_emitted"` — when no `DoneEvent` is present in `events`.
    g. `"other"` — catch-all for any remaining `failed` status.
