@@ -1552,51 +1552,158 @@ def test_loop_accepts_locator_cache_kwarg(fixture_server, playwright_chromium):
 
 
 def test_loop_forwards_cache_to_locate(fixture_server, playwright_chromium):
-    """When loop() receives a LocatorCache, locate() must be called with cache=<that instance>."""
-    from unittest.mock import MagicMock, patch
+    """When loop() receives a LocatorCache, the read-path locate flow must write to it."""
+    from agent.locator_cache import LocatorCache, _origin_from_url
 
-    from agent.locate import LocateResult
-    from agent.locator_cache import LocatorCache
-
-    fixture_url = f"{fixture_server}/loop_happy_path.html"
+    fixture_url = f"{fixture_server}/drift/submit-form/v1/index.html"
+    intent = "Submit button"
 
     responses = [
         _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
-        _response_with_tool_call(_tool_call("read", {"intent": "Submit button"}, call_id="tc-2")),
+        _response_with_tool_call(_tool_call("read", {"intent": intent}, call_id="tc-2")),
         _response_with_tool_call(
             _tool_call(
                 "done",
                 {
                     "result": {"ok": True},
-                    "evidence": {"url": fixture_url, "text_snippet": "Hello, loop"},
+                    "evidence": {"url": fixture_url, "text_snippet": "Submit"},
                 },
                 call_id="tc-3",
             )
         ),
     ]
     fake_llm = _FakeLLMClient(responses)
-    mock_cache = MagicMock(spec=LocatorCache)
+    cache = LocatorCache(path=":memory:")
 
-    captured_kwargs: list[dict] = []
-    _stub_result = LocateResult(
-        tier="L1_ax",
-        role="button",
-        name="Submit",
-        selector='role=button[name="Submit" i]',
-        ax_fingerprint="fp",
-        confidence=1.0,
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop("click Submit", browser, fake_llm, locator_cache=cache)
+
+    assert result.status == "succeeded"
+    origin = _origin_from_url(fixture_url)
+    entry = cache.get(origin=origin, intent=intent)
+    assert entry is not None, (
+        f"cache had no entry for (origin={origin!r}, intent={intent!r}) after the run"
     )
+    assert entry.role == "button"
+    cache.close()
 
-    def _capture_locate(page, intent, **kwargs):
-        captured_kwargs.append(kwargs)
-        return _stub_result
 
-    with (
-        patch("agent.loop.locate", side_effect=_capture_locate),
-        Browser(playwright_browser=playwright_chromium) as browser,
-    ):
-        loop("click Submit", browser, fake_llm, locator_cache=mock_cache)
+# ---------------------------------------------------------------------------
+# LocateEvent emission on the read-dispatch cache path (RED until emission lands)
+# ---------------------------------------------------------------------------
 
-    assert any(kw.get("cache") is mock_cache for kw in captured_kwargs), (
-        f"locate() was never called with cache=<mock_cache>; captured kwargs: {captured_kwargs}"
+
+def _locate_rows(writer: TraceWriter) -> list[dict]:
+    return [r for r in _all_rows(writer) if r.get("kind") == "locate"]
+
+
+def test_loop_emits_locate_event_write_on_first_resolve(fixture_server, playwright_chromium):
+    from agent.locator_cache import LocatorCache
+
+    fixture_url = f"{fixture_server}/drift/submit-form/v1/index.html"
+    intent = "Submit button"
+    run_id = "test-emit-write"
+    writer = _make_writer_with_run(run_id)
+    cache = LocatorCache(path=":memory:")
+
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+        _response_with_tool_call(_tool_call("read", {"intent": intent}, call_id="tc-2")),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"ok": True},
+                    "evidence": {"url": fixture_url, "text_snippet": "Submit"},
+                },
+                call_id="tc-3",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        loop(
+            "click Submit",
+            browser,
+            fake_llm,
+            trace_writer=writer,
+            run_id=run_id,
+            locator_cache=cache,
+        )
+
+    rows = _locate_rows(writer)
+    write_rows = [r for r in rows if r.get("cache_action") == "write"]
+    assert len(write_rows) == 1, (
+        f"expected exactly one cache_action=write LocateEvent, got rows: {rows}"
     )
+    assert write_rows[0]["intent"] == intent
+    cache.close()
+    writer.close()
+
+
+def test_loop_emits_locate_event_invalidate_then_write_on_drift(
+    fixture_server, playwright_chromium
+):
+    from agent.locator_cache import LocatorCache
+
+    intent = "Submit button"
+    cache = LocatorCache(path=":memory:")
+
+    v1_url = f"{fixture_server}/drift/submit-form/v1/index.html"
+    v2_url = f"{fixture_server}/drift/submit-form/v2/index.html"
+
+    def _scripted_llm(target_url: str) -> _FakeLLMClient:
+        return _FakeLLMClient(
+            [
+                _response_with_tool_call(_tool_call("goto", {"url": target_url}, call_id="tc-1")),
+                _response_with_tool_call(_tool_call("read", {"intent": intent}, call_id="tc-2")),
+                _response_with_tool_call(
+                    _tool_call(
+                        "done",
+                        {
+                            "result": {"ok": True},
+                            "evidence": {"url": target_url, "text_snippet": "Submit"},
+                        },
+                        call_id="tc-3",
+                    )
+                ),
+            ]
+        )
+
+    run_id_v1 = "test-emit-v1"
+    writer_v1 = _make_writer_with_run(run_id_v1)
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        loop(
+            "click Submit",
+            browser,
+            _scripted_llm(v1_url),
+            trace_writer=writer_v1,
+            run_id=run_id_v1,
+            locator_cache=cache,
+        )
+    writer_v1.close()
+
+    run_id_v2 = "test-emit-v2"
+    writer_v2 = _make_writer_with_run(run_id_v2)
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        loop(
+            "click Submit",
+            browser,
+            _scripted_llm(v2_url),
+            trace_writer=writer_v2,
+            run_id=run_id_v2,
+            locator_cache=cache,
+        )
+
+    v2_rows = _locate_rows(writer_v2)
+    actions = [r.get("cache_action") for r in v2_rows]
+    assert "invalidate" in actions, (
+        f"expected cache_action=invalidate on v2 run, got actions: {actions}"
+    )
+    assert "write" in actions, f"expected cache_action=write on v2 run, got actions: {actions}"
+    invalidate_idx = actions.index("invalidate")
+    write_idx = actions.index("write")
+    assert invalidate_idx < write_idx, f"expected invalidate before write, got order: {actions}"
+    cache.close()
+    writer_v2.close()
