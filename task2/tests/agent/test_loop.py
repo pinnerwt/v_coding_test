@@ -1756,13 +1756,9 @@ def test_loop_emits_locate_event_invalidate_then_write_on_drift(
 
     v2_rows = _locate_rows(writer_v2)
     actions = [r.get("cache_action") for r in v2_rows]
-    assert "invalidate" in actions, (
-        f"expected cache_action=invalidate on v2 run, got actions: {actions}"
+    assert actions == ["invalidate", "write"], (
+        f"expected exactly one invalidate followed by one write on v2 run, got: {actions}"
     )
-    assert "write" in actions, f"expected cache_action=write on v2 run, got actions: {actions}"
-    invalidate_idx = actions.index("invalidate")
-    write_idx = actions.index("write")
-    assert invalidate_idx < write_idx, f"expected invalidate before write, got order: {actions}"
     cache.close()
     writer_v2.close()
 
@@ -1834,23 +1830,14 @@ def test_loop_emits_locate_event_read_on_cache_hit(fixture_server, playwright_ch
 
     # The fingerprint from the same fixture must be stable across two page loads.
     # If this assertion fails, that is a real AX non-determinism bug — do not weaken it.
-    read_rows = [
-        r
-        for r in rows_2
-        if r.get("cache_action") == "read"
-        and r.get("outcome") == "hit"
-        and r.get("tier") == "cache"
-    ]
-    assert read_rows, (
-        f"expected at least one LocateEvent with cache_action='read', outcome='hit', "
-        f"tier='cache' on run 2, got actions: {actions_2}, all rows: {rows_2}"
+    assert actions_2 == ["read"], (
+        f"expected exactly one cache_action='read' row on run 2 with no writes/invalidates, "
+        f"got actions: {actions_2}, all rows: {rows_2}"
     )
-    assert read_rows[0].get("intent") == intent, (
-        f"read-hit row must carry intent={intent!r}, got: {read_rows[0]}"
-    )
-    assert not any(r.get("cache_action") == "invalidate" for r in rows_2), (
-        f"fingerprint match must NOT emit invalidate, got actions: {actions_2}"
-    )
+    read_row = rows_2[0]
+    assert read_row.get("outcome") == "hit"
+    assert read_row.get("tier") == "cache"
+    assert read_row.get("intent") == intent
 
     cache.close()
     writer_2.close()
