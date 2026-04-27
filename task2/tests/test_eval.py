@@ -14,6 +14,9 @@ from agent.loop import RunResult
 from agent.trace import (
     LocateEvent,
     PlanEvent,
+    Run,
+    RunBudget,
+    RunLLM,
     SupervisorEvent,
     TraceWriter,
 )
@@ -907,3 +910,150 @@ def test_aggregate_diagnostics_escalation_to_tier_scoped_to_step_id():
     assert len(escalations) == 1
     assert escalations[0]["from_tier"] == "L1_ax"
     assert escalations[0]["to_tier"] is None
+
+
+# ---------------------------------------------------------------------------
+# locator_cache forwarding tests
+# ---------------------------------------------------------------------------
+
+
+def test_run_case_forwards_cache_to_loop():
+    """_run_case must pass its cache argument as locator_cache= to loop()."""
+    from agent.locator_cache import LocatorCache
+
+    captured: list[dict] = []
+
+    def _side_effect(task, browser, llm_client, **kwargs):
+        captured.append(kwargs)
+        return _CANNED_RESULT
+
+    mock_cache = MagicMock(spec=LocatorCache)
+
+    with patch("scripts.eval.loop", side_effect=_side_effect):
+        _run_case(_FIXTURE_CASE, llm_client=MagicMock(), browser=MagicMock(), cache=mock_cache)
+
+    assert len(captured) == 1
+    assert captured[0].get("locator_cache") is mock_cache, (
+        f"loop() was not called with locator_cache=<mock_cache>; got kwargs: {captured[0]}"
+    )
+
+
+def test_maintenance_drift_rename_real_loop_cache_invalidation(playwright_chromium, fixture_server):
+    """Real loop run with shared LocatorCache: v2 page causes cache invalidation >= 1."""
+    from agent.browser import Browser
+    from agent.llm import ChatResponse, ToolCall, Usage
+    from agent.locator_cache import LocatorCache
+    from agent.loop import loop as real_loop
+
+    _usage = Usage(prompt_tokens=1, completion_tokens=1, total_tokens=2)
+
+    def _tc(name: str, args: dict, call_id: str) -> ToolCall:
+        return ToolCall(id=call_id, name=name, arguments=json.dumps(args))
+
+    def _resp(tc: ToolCall) -> ChatResponse:
+        return ChatResponse(
+            content=None,
+            tool_calls=[tc],
+            finish_reason="tool_calls",
+            model="fake",
+            usage=_usage,
+            raw={},
+        )
+
+    def _text_resp(content: str) -> ChatResponse:
+        return ChatResponse(
+            content=content,
+            tool_calls=[],
+            finish_reason="stop",
+            model="fake",
+            usage=Usage(prompt_tokens=0, completion_tokens=0, total_tokens=0),
+            raw={},
+            usd=0.0,
+        )
+
+    plan_stub = '{"steps": ["read submit button"], "expected_end_state": "done"}'
+
+    def _make_llm(version_url: str):
+        class _ScopedLLM:
+            def __init__(self):
+                self._call_index = 0
+
+            def chat(self, messages, *, tools=None, **_):
+                if tools is None:
+                    return _text_resp(plan_stub)
+                idx = self._call_index
+                self._call_index += 1
+                if idx == 0:
+                    return _resp(_tc("read", {"intent": "Submit button"}, "tc-read"))
+                return _resp(
+                    _tc(
+                        "done",
+                        {
+                            "result": {"ok": True},
+                            "evidence": {"url": version_url, "text_snippet": "Submit"},
+                        },
+                        "tc-done",
+                    )
+                )
+
+        return _ScopedLLM()
+
+    cache = LocatorCache(path=":memory:")
+
+    v1_url = f"{fixture_server}/drift/rename/v1/index.html"
+    v2_url = f"{fixture_server}/drift/rename/v2/index.html"
+
+    def _open_run(writer, run_id, task_str):
+        run = Run(
+            run_id=run_id,
+            task=task_str,
+            expect_schema=None,
+            budget=RunBudget(steps=5, usd=0.1, seconds=30),
+            llm=RunLLM(base_url="http://x", model="m", temperature=0.0, seed=None),
+            agent_version="test",
+            started_at=_ts(),
+            ended_at=None,
+            status=None,
+            final=None,
+            totals=None,
+        )
+        writer.open_run(run)
+
+    import uuid
+
+    run_id_v1 = str(uuid.uuid4())
+    with TraceWriter(path=":memory:") as writer_v1:
+        _open_run(writer_v1, run_id_v1, "click Submit")
+        with Browser(playwright_browser=playwright_chromium) as browser:
+            browser.goto(v1_url)
+            result_v1 = real_loop(
+                "click Submit",
+                browser,
+                _make_llm(v1_url),
+                max_steps=5,
+                trace_writer=writer_v1,
+                run_id=run_id_v1,
+                locator_cache=cache,
+            )
+
+    run_id_v2 = str(uuid.uuid4())
+    with TraceWriter(path=":memory:") as writer_v2:
+        _open_run(writer_v2, run_id_v2, "click Submit")
+        with Browser(playwright_browser=playwright_chromium) as browser:
+            browser.goto(v2_url)
+            result_v2 = real_loop(
+                "click Submit",
+                browser,
+                _make_llm(v2_url),
+                max_steps=5,
+                trace_writer=writer_v2,
+                run_id=run_id_v2,
+                locator_cache=cache,
+            )
+        _, _, cache_events = _aggregate_diagnostics(writer_v2, run_id_v2)
+
+    assert cache_events["invalidations"] >= 1, (
+        f"Expected at least 1 cache invalidation on v2, got: {cache_events}"
+    )
+    assert result_v1.status in {"succeeded", "unverified"}, f"v1 status: {result_v1.status}"
+    assert result_v2.status in {"succeeded", "unverified"}, f"v2 status: {result_v2.status}"

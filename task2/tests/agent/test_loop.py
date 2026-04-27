@@ -1533,3 +1533,311 @@ def test_interleaved_emitters_no_seq_error(fixture_server, playwright_chromium):
     assert obs_seq >= 1
     assert plan_seq < obs_seq, f"plan_seq={plan_seq} not < obs_seq={obs_seq}"
     writer.close()
+
+
+# ---------------------------------------------------------------------------
+# locator_cache kwarg tests
+# ---------------------------------------------------------------------------
+
+
+def test_loop_accepts_locator_cache_kwarg(fixture_server, playwright_chromium):
+    """loop() must accept locator_cache=None without raising TypeError.
+
+    Also asserts that no LocateEvent rows are emitted when locator_cache=None —
+    the cache emission path must be fully gated on the cache being provided.
+    """
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+    fake_llm = _FakeLLMClient([_done_response(fixture_url)])
+    run_id = "test-kwarg-none"
+    writer = _make_writer_with_run(run_id)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop(
+            "read the heading",
+            browser,
+            fake_llm,
+            trace_writer=writer,
+            run_id=run_id,
+            locator_cache=None,
+        )
+
+    assert isinstance(result, RunResult)
+    assert _locate_rows(writer) == [], (
+        "no LocateEvent rows should be emitted when locator_cache=None"
+    )
+    writer.close()
+
+
+def test_loop_locator_cache_none_skips_emission_on_read_dispatch(
+    fixture_server, playwright_chromium
+):
+    fixture_url = f"{fixture_server}/drift/submit-form/v1/index.html"
+    intent = "Submit button"
+    run_id = "test-kwarg-none-with-read"
+    writer = _make_writer_with_run(run_id)
+
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+        _response_with_tool_call(_tool_call("read", {"intent": intent}, call_id="tc-2")),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"ok": True},
+                    "evidence": {"url": fixture_url, "text_snippet": "Submit"},
+                },
+                call_id="tc-3",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop(
+            "click Submit",
+            browser,
+            fake_llm,
+            trace_writer=writer,
+            run_id=run_id,
+            locator_cache=None,
+        )
+
+    assert result.status == "succeeded"
+    assert _locate_rows(writer) == [], (
+        "no LocateEvent rows should be emitted when locator_cache=None even on read dispatch"
+    )
+    writer.close()
+
+
+def test_loop_forwards_cache_to_locate(fixture_server, playwright_chromium):
+    """When loop() receives a LocatorCache, the read-path locate flow must write to it."""
+    from agent.locator_cache import LocatorCache, _origin_from_url
+
+    fixture_url = f"{fixture_server}/drift/submit-form/v1/index.html"
+    intent = "Submit button"
+
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+        _response_with_tool_call(_tool_call("read", {"intent": intent}, call_id="tc-2")),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"ok": True},
+                    "evidence": {"url": fixture_url, "text_snippet": "Submit"},
+                },
+                call_id="tc-3",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+    cache = LocatorCache(path=":memory:")
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop("click Submit", browser, fake_llm, locator_cache=cache)
+
+    assert result.status == "succeeded"
+    origin = _origin_from_url(fixture_url)
+    entry = cache.get(origin=origin, intent=intent)
+    assert entry is not None, (
+        f"cache had no entry for (origin={origin!r}, intent={intent!r}) after the run"
+    )
+    assert entry.role == "button"
+    cache.close()
+
+
+# ---------------------------------------------------------------------------
+# LocateEvent emission on the read-dispatch cache path
+# ---------------------------------------------------------------------------
+
+
+def _locate_rows(writer: TraceWriter) -> list[dict]:
+    return [r for r in _all_rows(writer) if r.get("kind") == "locate"]
+
+
+def test_loop_emits_locate_event_write_on_first_resolve(fixture_server, playwright_chromium):
+    from agent.locator_cache import LocatorCache
+
+    fixture_url = f"{fixture_server}/drift/submit-form/v1/index.html"
+    intent = "Submit button"
+    run_id = "test-emit-write"
+    writer = _make_writer_with_run(run_id)
+    cache = LocatorCache(path=":memory:")
+
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+        _response_with_tool_call(_tool_call("read", {"intent": intent}, call_id="tc-2")),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"ok": True},
+                    "evidence": {"url": fixture_url, "text_snippet": "Submit"},
+                },
+                call_id="tc-3",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        loop(
+            "click Submit",
+            browser,
+            fake_llm,
+            trace_writer=writer,
+            run_id=run_id,
+            locator_cache=cache,
+        )
+
+    rows = _locate_rows(writer)
+    write_rows = [r for r in rows if r.get("cache_action") == "write"]
+    assert len(write_rows) == 1, (
+        f"expected exactly one cache_action=write LocateEvent, got rows: {rows}"
+    )
+    assert write_rows[0]["intent"] == intent
+    cache.close()
+    writer.close()
+
+
+def test_loop_emits_locate_event_invalidate_then_write_on_drift(
+    fixture_server, playwright_chromium
+):
+    from agent.locator_cache import LocatorCache
+
+    intent = "Submit button"
+    cache = LocatorCache(path=":memory:")
+
+    v1_url = f"{fixture_server}/drift/submit-form/v1/index.html"
+    v2_url = f"{fixture_server}/drift/submit-form/v2/index.html"
+
+    def _scripted_llm(target_url: str) -> _FakeLLMClient:
+        return _FakeLLMClient(
+            [
+                _response_with_tool_call(_tool_call("goto", {"url": target_url}, call_id="tc-1")),
+                _response_with_tool_call(_tool_call("read", {"intent": intent}, call_id="tc-2")),
+                _response_with_tool_call(
+                    _tool_call(
+                        "done",
+                        {
+                            "result": {"ok": True},
+                            "evidence": {"url": target_url, "text_snippet": "Submit"},
+                        },
+                        call_id="tc-3",
+                    )
+                ),
+            ]
+        )
+
+    run_id_v1 = "test-emit-v1"
+    writer_v1 = _make_writer_with_run(run_id_v1)
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        loop(
+            "click Submit",
+            browser,
+            _scripted_llm(v1_url),
+            trace_writer=writer_v1,
+            run_id=run_id_v1,
+            locator_cache=cache,
+        )
+    writer_v1.close()
+
+    run_id_v2 = "test-emit-v2"
+    writer_v2 = _make_writer_with_run(run_id_v2)
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        loop(
+            "click Submit",
+            browser,
+            _scripted_llm(v2_url),
+            trace_writer=writer_v2,
+            run_id=run_id_v2,
+            locator_cache=cache,
+        )
+
+    v2_rows = _locate_rows(writer_v2)
+    actions = [r.get("cache_action") for r in v2_rows]
+    assert actions == ["invalidate", "write"], (
+        f"expected exactly one invalidate followed by one write on v2 run, got: {actions}"
+    )
+    cache.close()
+    writer_v2.close()
+
+
+def test_loop_emits_locate_event_read_on_cache_hit(fixture_server, playwright_chromium):
+    """Second run on the same page must emit cache_action='read' + outcome='hit' + tier='cache'.
+
+    Run 1 warms the cache (emits 'write').
+    Run 2 probes the cache, finds a fingerprint match, and must emit 'read'/'hit'/'cache'
+    without re-running the ladder.  No 'invalidate' row is expected on run 2.
+    """
+    from agent.locator_cache import LocatorCache
+
+    intent = "Submit button"
+    cache = LocatorCache(path=":memory:")
+    fixture_url = f"{fixture_server}/drift/submit-form/v1/index.html"
+
+    def _scripted_llm() -> _FakeLLMClient:
+        return _FakeLLMClient(
+            [
+                _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+                _response_with_tool_call(_tool_call("read", {"intent": intent}, call_id="tc-2")),
+                _response_with_tool_call(
+                    _tool_call(
+                        "done",
+                        {
+                            "result": {"ok": True},
+                            "evidence": {"url": fixture_url, "text_snippet": "Submit"},
+                        },
+                        call_id="tc-3",
+                    )
+                ),
+            ]
+        )
+
+    # Run 1: warm the cache — must emit cache_action="write"
+    run_id_1 = "test-cache-hit-run1"
+    writer_1 = _make_writer_with_run(run_id_1)
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        loop(
+            "click Submit",
+            browser,
+            _scripted_llm(),
+            trace_writer=writer_1,
+            run_id=run_id_1,
+            locator_cache=cache,
+        )
+    rows_1 = _locate_rows(writer_1)
+    assert any(r.get("cache_action") == "write" for r in rows_1), (
+        f"run 1 must emit a write event to warm the cache, got rows: {rows_1}"
+    )
+    writer_1.close()
+
+    # Run 2: probe the same page — must find a fingerprint match and emit cache_action="read"
+    run_id_2 = "test-cache-hit-run2"
+    writer_2 = _make_writer_with_run(run_id_2)
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        loop(
+            "click Submit",
+            browser,
+            _scripted_llm(),
+            trace_writer=writer_2,
+            run_id=run_id_2,
+            locator_cache=cache,
+        )
+
+    rows_2 = _locate_rows(writer_2)
+    actions_2 = [r.get("cache_action") for r in rows_2]
+
+    # The fingerprint from the same fixture must be stable across two page loads.
+    # If this assertion fails, that is a real AX non-determinism bug — do not weaken it.
+    assert actions_2 == ["read"], (
+        f"expected exactly one cache_action='read' row on run 2 with no writes/invalidates, "
+        f"got actions: {actions_2}, all rows: {rows_2}"
+    )
+    read_row = rows_2[0]
+    assert read_row.get("outcome") == "hit"
+    assert read_row.get("tier") == "cache"
+    assert read_row.get("intent") == intent
+
+    cache.close()
+    writer_2.close()

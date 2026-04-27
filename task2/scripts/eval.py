@@ -177,6 +177,7 @@ def _run_case(case: dict[str, Any], llm_client: Any, browser: Any, cache: Any = 
                 max_steps=case["budget"]["steps"],
                 trace_writer=writer,
                 run_id=run_id,
+                locator_cache=cache,
             )
         except Exception as exc:
             return CaseResult(

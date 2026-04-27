@@ -9,15 +9,24 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import agent.observe as observe
 import agent.plan as plan_module
-from agent.locate import LocatorMiss, locate_l1, locate_l2, parse_intent
+from agent.locate import (
+    LocateResult,
+    LocatorMiss,
+    _canonical_ax_fingerprint,
+    locate_l1,
+    locate_l2,
+    parse_intent,
+)
+from agent.locator_cache import CacheEntry, _origin_from_url
 from agent.supervisor import Supervisor
-from agent.trace import PlanEvent, TraceWriter
+from agent.trace import LocateEvent, PlanEvent, TraceWriter
 
 if TYPE_CHECKING:
     from playwright.sync_api import Page
 
     from agent.browser import Browser
     from agent.llm import LLMClient
+    from agent.locator_cache import LocatorCache
 
 RunStatus = Literal["succeeded", "unverified", "failed", "timeout"]
 ToolName = Literal["goto", "read", "done", "fail"]
@@ -185,7 +194,7 @@ def _body_text(page: Page) -> str:
     return page.evaluate(_BODY_TEXT_JS)[:_BODY_TEXT_LIMIT]
 
 
-def _locate_with_supervisor(page: Page, intent: str, supervisor: Supervisor):
+def _locate_via_ladder(page: Page, intent: str, supervisor: Supervisor) -> LocateResult:
     role, name = parse_intent(intent)
     try:
         return locate_l1(page, role=role, name=name)
@@ -198,7 +207,146 @@ def _locate_with_supervisor(page: Page, intent: str, supervisor: Supervisor):
         return locate_l2(page, role=role, name=name)
 
 
-def _dispatch(tool_name: str, args: dict, browser: Browser, supervisor: Supervisor) -> str:
+def _emit_locate_event(
+    *,
+    trace_writer: TraceWriter | None,
+    run_id: str | None,
+    intent: str,
+    tier: Literal["cache", "L1_ax", "L2_dom", "L3_rerank", "L4_vision"],
+    outcome: Literal["hit", "miss", "ambiguous", "error"],
+    cache_action: Literal["read", "write", "invalidate"] | None,
+    chosen: dict[str, Any] | None,
+) -> None:
+    if trace_writer is None or run_id is None:
+        return
+    seq = trace_writer.next_seq(run_id)
+    event = LocateEvent(
+        run_id=run_id,
+        seq=seq,
+        ts=datetime.now(UTC).isoformat(),
+        step_id=None,
+        intent=intent,
+        tier=tier,
+        outcome=outcome,
+        candidates=[],
+        chosen=chosen,
+        cache_action=cache_action,
+        ms=0,
+    )
+    trace_writer.append_event(event)
+
+
+def _locate_with_supervisor(
+    page: Page,
+    intent: str,
+    supervisor: Supervisor,
+    *,
+    cache: LocatorCache | None = None,
+    trace_writer: TraceWriter | None = None,
+    run_id: str | None = None,
+) -> LocateResult:
+    if cache is None:
+        return _locate_via_ladder(page, intent, supervisor)
+
+    origin = _origin_from_url(page.url)
+    entry = cache.get(origin=origin, intent=intent)
+    if entry is not None:
+        if entry.tier == "L4_vision":
+            cache.invalidate(origin=origin, intent=intent)
+            _emit_locate_event(
+                trace_writer=trace_writer,
+                run_id=run_id,
+                intent=intent,
+                tier="cache",
+                outcome="miss",
+                cache_action="invalidate",
+                chosen=None,
+            )
+        else:
+            live_fp = _canonical_ax_fingerprint(page, role=entry.role, selector=entry.selector)
+            if live_fp is None or live_fp != entry.ax_fingerprint:
+                cache.invalidate(origin=origin, intent=intent)
+                _emit_locate_event(
+                    trace_writer=trace_writer,
+                    run_id=run_id,
+                    intent=intent,
+                    tier="cache",
+                    outcome="miss",
+                    cache_action="invalidate",
+                    chosen=None,
+                )
+            else:
+                _emit_locate_event(
+                    trace_writer=trace_writer,
+                    run_id=run_id,
+                    intent=intent,
+                    tier="cache",
+                    outcome="hit",
+                    cache_action="read",
+                    chosen={
+                        "role": entry.role,
+                        "selector": entry.selector,
+                        "ax_fingerprint": entry.ax_fingerprint,
+                    },
+                )
+                return LocateResult(
+                    tier="cache",
+                    role=entry.role,
+                    name=entry.name,
+                    selector=entry.selector,
+                    ax_fingerprint=entry.ax_fingerprint,
+                    confidence=entry.confidence,
+                    coords=entry.coords,
+                )
+
+    result = _locate_via_ladder(page, intent, supervisor)
+
+    if result.tier == "L4_vision":
+        stored_fingerprint = result.ax_fingerprint
+    else:
+        canonical = _canonical_ax_fingerprint(page, role=result.role, selector=result.selector)
+        stored_fingerprint = canonical if canonical is not None else result.ax_fingerprint
+    written_at = datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
+    cache.put(
+        CacheEntry(
+            origin=origin,
+            intent=intent,
+            role=result.role,
+            name=result.name,
+            selector=result.selector,
+            ax_fingerprint=stored_fingerprint,
+            confidence=result.confidence,
+            tier=result.tier,
+            coords=result.coords,
+            written_at_utc=written_at,
+        )
+    )
+    _emit_locate_event(
+        trace_writer=trace_writer,
+        run_id=run_id,
+        intent=intent,
+        tier=result.tier,
+        outcome="hit",
+        cache_action="write",
+        chosen={
+            "role": result.role,
+            "selector": result.selector,
+            "ax_fingerprint": stored_fingerprint,
+        },
+    )
+    return result
+
+
+def _dispatch(
+    tool_name: str,
+    args: dict,
+    browser: Browser,
+    supervisor: Supervisor,
+    *,
+    locator_cache: LocatorCache | None = None,
+    trace_writer: TraceWriter | None = None,
+    run_id: str | None = None,
+) -> str:
     if tool_name == "goto":
         url = args.get("url")
         if not isinstance(url, str) or not url:
@@ -210,7 +358,14 @@ def _dispatch(tool_name: str, args: dict, browser: Browser, supervisor: Supervis
         page = browser._page
         if intent:
             try:
-                locate_result = _locate_with_supervisor(page, intent, supervisor)
+                locate_result = _locate_with_supervisor(
+                    page,
+                    intent,
+                    supervisor,
+                    cache=locator_cache,
+                    trace_writer=trace_writer,
+                    run_id=run_id,
+                )
             except LocatorMiss as miss:
                 return f"Error: could not locate element for intent {intent!r} ({miss})"
             from agent.browser import ElementNotFound
@@ -264,6 +419,7 @@ def loop(
     events: list | None = None,
     run_id: str | None = None,
     trace_writer: TraceWriter | None = None,
+    locator_cache: LocatorCache | None = None,
 ) -> RunResult:
     if trace_writer is not None and run_id is None:
         raise ValueError("run_id is required when trace_writer is provided")
@@ -411,7 +567,15 @@ def loop(
                     step_breakdown=step_breakdown,
                 )
 
-            tool_result = _dispatch(tool_call.name, args, browser, supervisor)
+            tool_result = _dispatch(
+                tool_call.name,
+                args,
+                browser,
+                supervisor,
+                locator_cache=locator_cache,
+                trace_writer=trace_writer,
+                run_id=run_id,
+            )
 
             is_error = tool_result.startswith("Error:")
             action: dict = {
