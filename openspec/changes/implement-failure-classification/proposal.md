@@ -4,7 +4,7 @@
 
 ## What Changes
 
-- Add `failure_class: Literal["budget_exceeded", "tool_error", "locator_miss", "supervisor_halt", "validator_fail", "schema_error", "no_done_emitted", "other"] | None` to `CaseResult` (None for passing/skipped cases).
+- Add `failure_class: Literal["tool_error", "locator_miss", "supervisor_halt", "validator_fail", "schema_error", "no_done_emitted", "other"] | None` to `CaseResult` (None for passing/skipped cases).
 - Add `failure_detail: str | None` to `CaseResult` (short human-readable string explaining the class, None for passing/skipped cases).
 - Add `_classify_failure(events, validators, status)` private function in `scripts/eval.py` that inspects the trace event list and validator results to derive the above fields.
 - Call `_classify_failure` from `_run_case` after `_aggregate_diagnostics` and populate the new fields.

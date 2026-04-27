@@ -12,7 +12,7 @@
 - `escalations: list[dict] = field(default_factory=list)` — one entry per escalation event in the trace; each entry has keys `intent`, `from_tier`, `to_tier`, `reason`.
 - `replans: int = 0` — count of replan events in the trace.
 - `cache_events: dict = field(default_factory=dict)` — aggregate cache hit/invalidation/miss counts; keys `hits`, `invalidations`, `misses` (all int, all default 0).
-- `failure_class: str | None = None` — one of `"budget_exceeded"`, `"tool_error"`, `"locator_miss"`, `"supervisor_halt"`, `"validator_fail"`, `"schema_error"`, `"no_done_emitted"`, `"other"`, or `None` when the case did not fail.
+- `failure_class: str | None = None` — one of `"tool_error"`, `"locator_miss"`, `"supervisor_halt"`, `"validator_fail"`, `"schema_error"`, `"no_done_emitted"`, `"other"`, or `None` when the case did not fail.
 - `failure_detail: str | None = None` — short human-readable string explaining the classification signal, or `None` when `failure_class` is `None` or when no specific event drove the class.
 
 Existing fields (`id`, `status`, `steps`, `usd`, `l_tier_counts`, `validators`) are unchanged.

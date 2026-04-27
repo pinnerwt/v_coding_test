@@ -6,14 +6,13 @@ The system SHALL provide a module-level function `_classify_failure(events: list
 
 1. Returns `(None, None)` immediately when `status` is not `"failed"`.
 2. Inspects `events` and `validators` in the following priority order to determine `failure_class`:
-   a. `"budget_exceeded"` — when `status == "timeout"` OR when the number of `ActEvent` rows equals the case budget step count (caller passes budget steps as part of the event list heuristic; a simpler proxy: any `SupervisorEvent(classified_as="Timeout")` is present).
-   b. `"supervisor_halt"` — when a `SupervisorEvent(policy="halt")` is present in `events`.
-   c. `"locator_miss"` — when a `SupervisorEvent(policy="next_tier")` is present in `events` AND the subsequent `LocateEvent` in the same `step_id` block has `outcome != "hit"` (all tiers exhausted without resolution).
-   d. `"tool_error"` — when an `ActEvent(outcome="error")` is present in `events`.
-   e. `"validator_fail"` — when at least one dict in `validators` has `ok=False` AND the validator name does not equal `"exception"` (exception-path validators are classified under a different class).
-   f. `"schema_error"` — when a `DoneEvent` is present in `events` AND `event.verifier.get("ok") is False`.
-   g. `"no_done_emitted"` — when no `DoneEvent` is present in `events`.
-   h. `"other"` — catch-all for any remaining `failed` status.
+   a. `"supervisor_halt"` — when a `SupervisorEvent(policy="halt")` is present in `events`.
+   b. `"locator_miss"` — when a `SupervisorEvent(policy="next_tier")` is present in `events` AND the subsequent `LocateEvent` in the same `step_id` block has `outcome != "hit"` (all tiers exhausted without resolution).
+   c. `"tool_error"` — when an `ActEvent(outcome="error")` is present in `events`.
+   d. `"validator_fail"` — when at least one dict in `validators` has `ok=False` AND the validator name does not equal `"exception"` (exception-path validators are classified under a different class).
+   e. `"schema_error"` — when a `DoneEvent` is present in `events` AND `event.verifier.get("ok") is False`.
+   f. `"no_done_emitted"` — when no `DoneEvent` is present in `events`.
+   g. `"other"` — catch-all for any remaining `failed` status.
 3. Returns `(failure_class, failure_detail)` where `failure_detail` is a short human-readable string constructed from the event/validator that triggered the class (e.g. `"SupervisorEvent.classified_as=Blocked"`, `"validator title.nonempty failed"`, `"ActEvent outcome=error"`). `failure_detail` is `None` only for the `"other"` and `"no_done_emitted"` classes where no specific event drives the detail.
 
 The function is pure — it does not access `TraceWriter`, the file system, or any I/O. It is tested exclusively via synthetic event lists.

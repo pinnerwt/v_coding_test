@@ -25,14 +25,13 @@
 
 Multiple signals can fire at once (e.g. a case can exceed budget AND have a failed validator). We need a deterministic winner. Proposed priority (highest to lowest):
 
-1. `budget_exceeded` — `status in {"timeout"}` or step count equals case budget. Caught before anything else because budget exhaustion masks every other signal.
-2. `supervisor_halt` — a `SupervisorEvent(policy="halt")` is present. Supervisor explicitly gave up; this is richer than a generic tool error.
-3. `locator_miss` — a `SupervisorEvent(policy="next_tier")` with no successful subsequent tier (i.e. `to_tier=None` in escalations). Means the locator pipeline exhausted all tiers without resolving.
-4. `tool_error` — an `ActEvent(outcome="error")` is present. Generic browser-level error.
-5. `validator_fail` — at least one validator returned `ok=False` AND `status in {"failed", "unverified"}`. Separate from the above because the agent reached `done` but the output was wrong.
-6. `schema_error` — a `DoneEvent` is present but `verifier.ok=False`. The agent called `done` but the schema/evidence check failed.
-7. `no_done_emitted` — no `DoneEvent` in the trace at all and `status == "failed"`. Agent ran out of strategy without calling `done`.
-8. `other` — catch-all for any `failed` status that doesn't match the above.
+1. `supervisor_halt` — a `SupervisorEvent(policy="halt")` is present. Supervisor explicitly gave up; this is richer than a generic tool error.
+2. `locator_miss` — a `SupervisorEvent(policy="next_tier")` with no successful subsequent tier (i.e. `to_tier=None` in escalations). Means the locator pipeline exhausted all tiers without resolving.
+3. `tool_error` — an `ActEvent(outcome="error")` is present. Generic browser-level error.
+4. `validator_fail` — at least one validator returned `ok=False` AND `status in {"failed", "unverified"}`. Separate from the above because the agent reached `done` but the output was wrong.
+5. `schema_error` — a `DoneEvent` is present but `verifier.ok=False`. The agent called `done` but the schema/evidence check failed.
+6. `no_done_emitted` — no `DoneEvent` in the trace at all and `status == "failed"`. Agent ran out of strategy without calling `done`.
+7. `other` — catch-all for any `failed` status that doesn't match the above.
 
 For non-`failed` statuses the function returns `None` immediately (no classification needed for `succeeded`, `unverified`, `skipped`, `blocked`, `timeout` — those are self-describing).
 

@@ -1115,7 +1115,24 @@ _NO_VALIDATOR_CASE = {
 
 
 def test_run_case_failure_class_no_done_emitted_when_loop_returns_failed():
-    with patch("scripts.eval.loop", return_value=_FAILED_RUN_RESULT):
+    def _failing_loop_with_event(task, browser, llm_client, **kwargs):
+        writer = kwargs.get("trace_writer")
+        rid = kwargs.get("run_id")
+        if writer is not None and rid is not None:
+            writer.append_event(
+                PlanEvent(
+                    run_id=rid,
+                    seq=writer.next_seq(rid),
+                    ts=_ts(),
+                    step_id=None,
+                    reason="initial",
+                    steps=["step 1"],
+                    llm_call_id="c1",
+                )
+            )
+        return _FAILED_RUN_RESULT
+
+    with patch("scripts.eval.loop", side_effect=_failing_loop_with_event):
         result = _run_case(_NO_VALIDATOR_CASE, llm_client=None, browser=None)
     assert result.status == "failed"
     assert result.failure_class == "no_done_emitted"
@@ -1265,7 +1282,14 @@ def test_classify_failure_schema_error():
 def test_classify_failure_no_done_emitted():
     from scripts.eval import _classify_failure
 
-    fc, _detail = _classify_failure([], [], "failed")
+    rid = _make_run_id()
+    ev = PlanEvent(
+        **_make_base_fields(rid, 1),
+        reason="initial",
+        steps=["step 1"],
+        llm_call_id="c1",
+    )
+    fc, _detail = _classify_failure([ev], [], "failed")
     assert fc == "no_done_emitted"
 
 
@@ -1282,6 +1306,25 @@ def test_classify_failure_other():
     )
     validators = [{"name": "title.nonempty", "ok": True}]
     fc, _detail = _classify_failure([ev], validators, "failed")
+    assert fc == "other"
+
+
+def test_classify_failure_skips_exception_named_validators_for_validator_fail():
+    from agent.trace import DoneEvent
+    from scripts.eval import _classify_failure
+
+    rid = _make_run_id()
+    ev = DoneEvent(
+        **_make_base_fields(rid, 1),
+        result={},
+        evidence={"url": "u", "text_snippet": "t"},
+        verifier={"ok": True},
+    )
+    validators = [
+        {"name": "exception", "ok": False, "error": "RuntimeError(...)"},
+    ]
+    fc, fd = _classify_failure([ev], validators, "failed")
+    assert fc != "validator_fail"
     assert fc == "other"
 
 
@@ -1307,3 +1350,23 @@ def test_classify_failure_supervisor_halt_beats_tool_error():
     )
     fc, _detail = _classify_failure([sup_ev, act_ev], [], "failed")
     assert fc == "supervisor_halt"
+
+
+def test_run_case_failure_class_tool_error_when_loop_raises():
+    case = {
+        "id": "boom",
+        "task": "do something",
+        "budget": {"steps": 1, "usd": 1.0, "seconds": 30},
+        "expect": {},
+    }
+
+    def _raising_loop(*args, **kwargs):
+        raise RuntimeError("kaboom")
+
+    with patch("scripts.eval.loop", _raising_loop):
+        result = _run_case(case, llm_client=object(), browser=object())
+
+    assert result.status == "failed"
+    assert result.failure_class == "tool_error"
+    assert result.failure_detail is not None
+    assert "kaboom" in result.failure_detail
