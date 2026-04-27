@@ -386,3 +386,33 @@ def test_run_agent_closes_llm_client_on_loop_exception(temp_db, monkeypatch):
 
     _run_agent(run_id, TaskRequest(task="do a thing"))
     assert len(close_calls) == 1
+
+
+def test_run_agent_passes_trace_writer_and_run_id_to_loop(tmp_path, monkeypatch):
+    captured: dict = {}
+
+    def fake_loop(task, browser, llm_client, **kw):
+        captured["trace_writer"] = kw.get("trace_writer")
+        captured["run_id"] = kw.get("run_id")
+        return _MOCK_RESULT
+
+    monkeypatch.setattr("api.server.loop", fake_loop)
+    monkeypatch.setattr("api.server.Browser", _FakeBrowser)
+    monkeypatch.setenv("LLM_BASE_URL", "http://localhost:9999")
+    monkeypatch.setenv("LLM_MODEL", "test-model")
+
+    db_path = str(tmp_path / "test.db")
+    monkeypatch.setenv("DB_PATH", db_path)
+
+    run_id = "test-run-assert"
+    req = TaskRequest(task="probe")
+    run = _build_run(run_id, req)
+    w = TraceWriter(db_path)
+    w.open_run(run)
+    w.close()
+
+    _run_agent(run_id, req)
+
+    assert captured["run_id"] == run_id
+    assert captured["trace_writer"] is not None
+    assert isinstance(captured["trace_writer"], TraceWriter)

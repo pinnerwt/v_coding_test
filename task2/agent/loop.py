@@ -265,6 +265,8 @@ def loop(
     run_id: str | None = None,
     trace_writer: TraceWriter | None = None,
 ) -> RunResult:
+    if trace_writer is not None and run_id is None:
+        raise ValueError("run_id is required when trace_writer is provided")
     messages: list[dict] = [{"role": "system", "content": _build_system_prompt(task)}]
     supervisor = Supervisor()
 

@@ -1405,7 +1405,7 @@ def test_loop_with_trace_writer_plan_event_has_iso_ts(fixture_server, playwright
     writer.close()
 
 
-def test_loop_with_trace_writer_plan_events_interleaved_with_decisions(
+def test_loop_with_trace_writer_plan_event_seq_strictly_increasing(
     fixture_server, playwright_chromium
 ):
     fixture_url = f"{fixture_server}/loop_happy_path.html"
@@ -1426,9 +1426,7 @@ def test_loop_with_trace_writer_plan_events_interleaved_with_decisions(
     writer.close()
 
 
-def test_loop_with_trace_writer_replan_seq_before_next_decision(
-    fixture_server, playwright_chromium
-):
+def test_loop_with_trace_writer_replan_seq_after_initial_seq(fixture_server, playwright_chromium):
     fixture_url = f"{fixture_server}/index.html"
     run_id = "test-run-5"
     writer = _make_writer_with_run(run_id)
@@ -1467,6 +1465,17 @@ def test_loop_with_trace_writer_no_double_emit(fixture_server, playwright_chromi
     assert plan_objects_in_events == []
     plan_rows = _plan_rows(writer)
     assert len(plan_rows) >= 1
+    writer.close()
+
+
+def test_loop_with_trace_writer_without_run_id_raises(fixture_server, playwright_chromium):
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+    writer = _make_writer_with_run("test-run-no-runid")
+    fake_llm = _FakeLLMClient([_done_response(fixture_url)])
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        with pytest.raises(ValueError, match="run_id"):
+            loop("task", browser, fake_llm, trace_writer=writer)
     writer.close()
 
 

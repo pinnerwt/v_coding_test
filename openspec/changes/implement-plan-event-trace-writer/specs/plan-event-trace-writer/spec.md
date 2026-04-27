@@ -34,21 +34,23 @@ No double-emit SHALL occur: if `trace_writer` is provided, plan events SHALL NOT
 - **WHEN** the loop completes
 - **THEN** the `kind="plan"` row's `ts` field SHALL be a non-empty string parseable as an ISO 8601 datetime (not an empty string)
 
-#### Scenario: plan events have strictly increasing seq relative to other events
+#### Scenario: plan events have strictly increasing seq
 
 - **GIVEN** a `TraceWriter` opened in `:memory:` with a given `run_id`
 - **AND** `loop()` is called with `trace_writer=writer`
-- **WHEN** the loop produces both a plan event and surrounding events
-- **THEN** all event rows in `traces_events` for that `run_id` SHALL have strictly increasing `seq` values
-- **AND** the `kind="plan"` row for the initial plan SHALL have a lower `seq` than any `kind="decision"` row in the same run
+- **WHEN** the loop emits one or more plan events
+- **THEN** all `kind="plan"` rows in `traces_events` for that `run_id` SHALL have strictly increasing `seq` values
+- **AND** the first plan event SHALL have `seq >= 1`
 
-#### Scenario: replan event lands before next decision event
+Note: cross-kind ordering between plan and decision/observation events is intentionally out of scope here; decision-event persistence through `TraceWriter` is tracked under `task2/plan.md` ticket #20 and ticket #26 (`TraceWriter.next_seq(run_id)`).
+
+#### Scenario: replan event seq is greater than initial plan event seq
 
 - **GIVEN** a `TraceWriter` opened in `:memory:` with a given `run_id`
 - **AND** `loop()` triggers a replan via supervisor halt
 - **WHEN** the loop completes
 - **THEN** the `traces_events` table SHALL contain a row with `kind="plan"` and `reason="replan"`
-- **AND** its `seq` SHALL be strictly less than the `seq` of any decision event that follows the replan
+- **AND** its `seq` SHALL be strictly greater than the `seq` of the initial plan event
 
 #### Scenario: no double-emit when trace_writer is provided
 
@@ -69,6 +71,16 @@ The `loop()` function SHALL accept an optional keyword argument `run_id: str | N
 - **AND** a `TraceWriter` is passed as `trace_writer`
 - **WHEN** the loop emits a plan event
 - **THEN** the plan event's `run_id` field SHALL equal `"my-specific-run"`
+
+### Requirement: loop() rejects trace_writer without run_id
+
+The `loop()` function SHALL raise `ValueError` when called with a non-`None` `trace_writer` and a `None` `run_id`. This prevents a silent fallback to the in-memory `events` path that would lose plan-event persistence in production callers.
+
+#### Scenario: trace_writer without run_id raises ValueError
+
+- **GIVEN** a `TraceWriter` opened in `:memory:`
+- **WHEN** `loop()` is called with `trace_writer=writer` and no `run_id`
+- **THEN** the call SHALL raise `ValueError` with a message mentioning `run_id`
 
 ### Requirement: _emit_plan_event reason parameter is Literal typed
 
