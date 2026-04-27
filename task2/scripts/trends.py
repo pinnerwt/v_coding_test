@@ -104,14 +104,16 @@ _PAD_L = 60
 _PAD_R = 20
 _PAD_T = 30
 _PAD_B = 60
+_BG_RECT = '<rect width="100%" height="100%" fill="#fff"/>'
 
 
 def _empty_svg(title: str) -> str:
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {_W} {_H}" '
         f'width="{_W}" height="{_H}">'
+        f'<rect width="100%" height="100%" fill="#fff"/>'
         f'<text x="{_W / 2}" y="{_H / 2}" text-anchor="middle" font-family="sans-serif" '
-        f'font-size="14" fill="#666">{title}: no data</text>'
+        f'font-size="14" fill="#000">{title}: no data</text>'
         "</svg>"
     )
 
@@ -144,6 +146,7 @@ def _bar_chart_svg(
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {_W} {_H}" '
         f'width="{_W}" height="{_H}" font-family="sans-serif">'
     )
+    parts.append(_BG_RECT)
     parts.append(f'<text x="{_PAD_L}" y="18" font-size="13" font-weight="600">{title}</text>')
 
     # axes
@@ -160,7 +163,7 @@ def _bar_chart_svg(
         parts.append(f'<line x1="{_PAD_L - 3}" y1="{y}" x2="{_PAD_L}" y2="{y}" stroke="#999"/>')
         parts.append(
             f'<text x="{_PAD_L - 6}" y="{y + 4}" font-size="10" '
-            f'text-anchor="end" fill="#444">{label}</text>'
+            f'text-anchor="end" fill="#000">{label}</text>'
         )
         if frac > 0:
             parts.append(
@@ -169,7 +172,7 @@ def _bar_chart_svg(
             )
 
     parts.append(
-        f'<text x="14" y="{_PAD_T + plot_h / 2}" font-size="11" fill="#444" '
+        f'<text x="14" y="{_PAD_T + plot_h / 2}" font-size="11" fill="#000" '
         f'transform="rotate(-90 14 {_PAD_T + plot_h / 2})" text-anchor="middle">{y_label}</text>'
     )
 
@@ -184,7 +187,7 @@ def _bar_chart_svg(
         # value above bar
         parts.append(
             f'<text x="{x + bar_w / 2:.2f}" y="{y - 4:.2f}" font-size="10" '
-            f'text-anchor="middle" fill="#222">{value_format(val)}</text>'
+            f'text-anchor="middle" fill="#000">{value_format(val)}</text>'
         )
         # branch label (truncated, rotated)
         label = _xml_escape(run.branch)
@@ -192,7 +195,7 @@ def _bar_chart_svg(
             label = label[:21] + "…"
         cx = x + bar_w / 2
         parts.append(
-            f'<text x="{cx:.2f}" y="{axis_y + 12}" font-size="10" fill="#333" '
+            f'<text x="{cx:.2f}" y="{axis_y + 12}" font-size="10" fill="#000" '
             f'text-anchor="end" transform="rotate(-35 {cx:.2f} {axis_y + 12})">{label}</text>'
         )
 
@@ -242,6 +245,7 @@ def _grouped_bar_chart_svg(
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {_W} {_H}" '
         f'width="{_W}" height="{_H}" font-family="sans-serif">'
     )
+    parts.append(_BG_RECT)
     parts.append(f'<text x="{_PAD_L}" y="18" font-size="13" font-weight="600">{title}</text>')
 
     axis_y = _PAD_T + plot_h
@@ -255,7 +259,7 @@ def _grouped_bar_chart_svg(
         label = value_format(frac * y_max)
         parts.append(
             f'<text x="{_PAD_L - 6}" y="{y + 4}" font-size="10" '
-            f'text-anchor="end" fill="#444">{label}</text>'
+            f'text-anchor="end" fill="#000">{label}</text>'
         )
         if frac > 0:
             parts.append(
@@ -264,7 +268,7 @@ def _grouped_bar_chart_svg(
             )
 
     parts.append(
-        f'<text x="14" y="{_PAD_T + plot_h / 2}" font-size="11" fill="#444" '
+        f'<text x="14" y="{_PAD_T + plot_h / 2}" font-size="11" fill="#000" '
         f'transform="rotate(-90 14 {_PAD_T + plot_h / 2})" text-anchor="middle">{y_label}</text>'
     )
 
@@ -281,7 +285,7 @@ def _grouped_bar_chart_svg(
             )
             parts.append(
                 f'<text x="{x + bar_w / 2:.2f}" y="{y - 4:.2f}" font-size="9" '
-                f'text-anchor="middle" fill="#222">{value_format(v)}</text>'
+                f'text-anchor="middle" fill="#000">{value_format(v)}</text>'
             )
         # branch label below the group
         label = _xml_escape(run.branch)
@@ -289,7 +293,7 @@ def _grouped_bar_chart_svg(
             label = label[:21] + "…"
         cx = group_x + group_w / 2
         parts.append(
-            f'<text x="{cx:.2f}" y="{axis_y + 12}" font-size="10" fill="#333" '
+            f'<text x="{cx:.2f}" y="{axis_y + 12}" font-size="10" fill="#000" '
             f'text-anchor="end" transform="rotate(-35 {cx:.2f} {axis_y + 12})">{label}</text>'
         )
 
@@ -299,7 +303,7 @@ def _grouped_bar_chart_svg(
     for j, (label, _, color) in enumerate(series):
         ox = lx + j * 70
         parts.append(f'<rect x="{ox}" y="{ly - 8}" width="10" height="10" fill="{color}"/>')
-        parts.append(f'<text x="{ox + 14}" y="{ly}" font-size="10" fill="#333">{label}</text>')
+        parts.append(f'<text x="{ox + 14}" y="{ly}" font-size="10" fill="#000">{label}</text>')
 
     parts.append("</svg>")
     return "".join(parts)
@@ -329,6 +333,7 @@ def _line_chart_svg(
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {_W} {_H}" '
         f'width="{_W}" height="{_H}" font-family="sans-serif">'
     )
+    parts.append(_BG_RECT)
     parts.append(f'<text x="{_PAD_L}" y="18" font-size="13" font-weight="600">{title}</text>')
 
     axis_y = _PAD_T + plot_h
@@ -342,7 +347,7 @@ def _line_chart_svg(
         label = value_format(frac * y_max)
         parts.append(
             f'<text x="{_PAD_L - 6}" y="{y + 4}" font-size="10" '
-            f'text-anchor="end" fill="#444">{label}</text>'
+            f'text-anchor="end" fill="#000">{label}</text>'
         )
         if frac > 0:
             parts.append(
@@ -351,7 +356,7 @@ def _line_chart_svg(
             )
 
     parts.append(
-        f'<text x="14" y="{_PAD_T + plot_h / 2}" font-size="11" fill="#444" '
+        f'<text x="14" y="{_PAD_T + plot_h / 2}" font-size="11" fill="#000" '
         f'transform="rotate(-90 14 {_PAD_T + plot_h / 2})" text-anchor="middle">{y_label}</text>'
     )
 
@@ -386,7 +391,7 @@ def _line_chart_svg(
             f'<line x1="{ox}" y1="{ly - 3}" x2="{ox + 16}" y2="{ly - 3}" '
             f'stroke="{color}" stroke-width="2"{dash_attr}/>'
         )
-        parts.append(f'<text x="{ox + 20}" y="{ly}" font-size="10" fill="#333">{label}</text>')
+        parts.append(f'<text x="{ox + 20}" y="{ly}" font-size="10" fill="#000">{label}</text>')
 
     # x labels
     for i, run in enumerate(runs):
@@ -395,7 +400,7 @@ def _line_chart_svg(
             label = label[:21] + "…"
         cx = x_at(i)
         parts.append(
-            f'<text x="{cx:.2f}" y="{axis_y + 12}" font-size="10" fill="#333" '
+            f'<text x="{cx:.2f}" y="{axis_y + 12}" font-size="10" fill="#000" '
             f'text-anchor="end" transform="rotate(-35 {cx:.2f} {axis_y + 12})">{label}</text>'
         )
 

@@ -113,6 +113,46 @@ def test_render_handles_empty_runs():
         assert "no data" in svg.lower()
 
 
+def test_render_charts_have_white_background_and_black_text():
+    from datetime import UTC, datetime
+
+    from scripts.trends import (
+        Run,
+        render_cost_svg,
+        render_latency_svg,
+        render_pass_rate_svg,
+    )
+
+    run = Run(
+        branch="b1",
+        run_at=datetime(2026, 4, 26, 1, tzinfo=UTC),
+        pass_rate=0.5,
+        total_usd=0.05,
+        p50_ms=400,
+        p95_ms=800,
+        total_tokens=0,
+        total_cases=2,
+        passed_count=1,
+        failed_count=1,
+        usd_passed=0.04,
+        usd_failed=0.01,
+        p50_passed_ms=400,
+        p50_failed_ms=100,
+        p95_passed_ms=800,
+        p95_failed_ms=200,
+    )
+    for fn in (render_pass_rate_svg, render_latency_svg, render_cost_svg):
+        svg = fn([run])
+        # opaque white background present
+        assert 'fill="#fff"' in svg or 'fill="#ffffff"' in svg
+        # at least one black-text element (axis ticks / value labels / branch labels)
+        assert 'fill="#000"' in svg or 'fill="black"' in svg
+        # no light-grey text fills left on chart text/labels
+        assert 'fill="#444"' not in svg
+        assert 'fill="#333"' not in svg
+        assert 'fill="#222"' not in svg
+
+
 def test_write_trends_creates_three_svgs(tmp_path):
     from scripts.trends import collect_runs, write_trends
 
