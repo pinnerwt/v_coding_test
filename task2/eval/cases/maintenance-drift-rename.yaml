@@ -1,0 +1,17 @@
+id: maintenance-drift-rename
+domain: fixture
+category: drift
+task: "Click the Submit button and return submitted as status"
+expect:
+  schema:
+    status: str
+  validators: []
+budget:
+  steps: 5
+  usd: 0.05
+  seconds: 30
+fixture: true
+variants:
+  - v1
+  - v2
+shared_cache: true

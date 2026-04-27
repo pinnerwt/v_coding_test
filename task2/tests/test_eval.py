@@ -2,14 +2,29 @@ from __future__ import annotations
 
 import json
 import re
+import uuid
 from dataclasses import asdict
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
 
 from agent.loop import RunResult
-from scripts.eval import CaseResult, _run_case, load_cases, run_suite, run_validators
+from agent.trace import (
+    LocateEvent,
+    PlanEvent,
+    SupervisorEvent,
+    TraceWriter,
+)
+from scripts.eval import (
+    CaseResult,
+    _aggregate_diagnostics,
+    _run_case,
+    load_cases,
+    run_suite,
+    run_validators,
+)
 
 _FIXTURE_CASE = {
     "id": "fixture-heading",
@@ -430,3 +445,465 @@ def test_case_result_serialises_with_quantitative_fields():
     data = json.loads(serialized)
     assert data["prompt_tokens"] == 100
     assert data["latency_ms_per_step"] == [200, 300]
+
+
+def test_case_result_default_diagnostic_fields():
+    cr = CaseResult(id="x", status="succeeded", steps=0, usd=0.0, l_tier_counts={}, validators=[])
+    assert cr.escalations == []
+    assert cr.replans == 0
+    assert cr.cache_events == {}
+
+
+def _make_run_id() -> str:
+    return str(uuid.uuid4())
+
+
+def _ts() -> str:
+    return datetime.now(UTC).isoformat()
+
+
+def _writer_with_run(run_id: str) -> TraceWriter:
+    from agent.trace import Run, RunBudget, RunLLM
+
+    writer = TraceWriter(path=":memory:")
+    run = Run(
+        run_id=run_id,
+        task="test",
+        expect_schema=None,
+        budget=RunBudget(steps=5, usd=0.1, seconds=30),
+        llm=RunLLM(base_url="http://x", model="m", temperature=0.0, seed=None),
+        agent_version="test",
+        started_at=_ts(),
+        ended_at=None,
+        status=None,
+        final=None,
+        totals=None,
+    )
+    writer.open_run(run)
+    return writer
+
+
+def test_aggregate_diagnostics_escalation_from_supervisor_event():
+    run_id = _make_run_id()
+    writer = _writer_with_run(run_id)
+
+    locate_miss = LocateEvent(
+        run_id=run_id,
+        seq=writer.next_seq(run_id),
+        ts=_ts(),
+        step_id="s1",
+        intent="Submit button",
+        tier="L1_ax",
+        outcome="miss",
+        candidates=[],
+        chosen=None,
+        cache_action=None,
+        ms=10,
+    )
+    writer.append_event(locate_miss)
+
+    supervisor_ev = SupervisorEvent(
+        run_id=run_id,
+        seq=writer.next_seq(run_id),
+        ts=_ts(),
+        step_id="s1",
+        trigger_event_seq=locate_miss.seq,
+        classified_as="LocatorMiss",
+        policy="next_tier",
+        attempt=1,
+    )
+    writer.append_event(supervisor_ev)
+
+    locate_hit = LocateEvent(
+        run_id=run_id,
+        seq=writer.next_seq(run_id),
+        ts=_ts(),
+        step_id="s1",
+        intent="Submit button",
+        tier="L2_dom",
+        outcome="hit",
+        candidates=[],
+        chosen={"selector": ".btn"},
+        cache_action="write",
+        ms=15,
+    )
+    writer.append_event(locate_hit)
+
+    escalations, replans, cache_events = _aggregate_diagnostics(writer, run_id)
+    assert len(escalations) == 1
+    assert escalations[0]["from_tier"] == "L1_ax"
+    assert escalations[0]["to_tier"] == "L2_dom"
+
+
+# ---------------------------------------------------------------------------
+# Task 1.3: _aggregate_diagnostics counts PlanEvent(reason="replan") (RED until 4.2)
+# ---------------------------------------------------------------------------
+
+
+def test_aggregate_diagnostics_counts_replan():
+    run_id = _make_run_id()
+    writer = _writer_with_run(run_id)
+
+    plan_initial = PlanEvent(
+        run_id=run_id,
+        seq=writer.next_seq(run_id),
+        ts=_ts(),
+        step_id=None,
+        reason="initial",
+        steps=["step 1"],
+        llm_call_id="c1",
+    )
+    writer.append_event(plan_initial)
+
+    plan_replan = PlanEvent(
+        run_id=run_id,
+        seq=writer.next_seq(run_id),
+        ts=_ts(),
+        step_id=None,
+        reason="replan",
+        steps=["step 2"],
+        llm_call_id="c2",
+    )
+    writer.append_event(plan_replan)
+
+    _, replans, _ = _aggregate_diagnostics(writer, run_id)
+    assert replans == 1
+
+
+def test_aggregate_diagnostics_cache_events():
+    run_id = _make_run_id()
+    writer = _writer_with_run(run_id)
+
+    cache_hit = LocateEvent(
+        run_id=run_id,
+        seq=writer.next_seq(run_id),
+        ts=_ts(),
+        step_id="s1",
+        intent="Submit",
+        tier="L1_ax",
+        outcome="hit",
+        candidates=[],
+        chosen={"selector": ".btn"},
+        cache_action="read",
+        ms=5,
+    )
+    writer.append_event(cache_hit)
+
+    cache_invalidate = LocateEvent(
+        run_id=run_id,
+        seq=writer.next_seq(run_id),
+        ts=_ts(),
+        step_id="s1",
+        intent="Submit",
+        tier="L1_ax",
+        outcome="miss",
+        candidates=[],
+        chosen=None,
+        cache_action="invalidate",
+        ms=5,
+    )
+    writer.append_event(cache_invalidate)
+
+    cache_miss = LocateEvent(
+        run_id=run_id,
+        seq=writer.next_seq(run_id),
+        ts=_ts(),
+        step_id="s1",
+        intent="Submit",
+        tier="L1_ax",
+        outcome="miss",
+        candidates=[],
+        chosen=None,
+        cache_action=None,
+        ms=5,
+    )
+    writer.append_event(cache_miss)
+
+    _, _, cache_events = _aggregate_diagnostics(writer, run_id)
+    assert cache_events["hits"] == 1
+    assert cache_events["invalidations"] == 1
+    assert cache_events["misses"] == 1
+
+
+_CANNED_SUCCESS = RunResult(
+    status="succeeded",
+    result={},
+    evidence={"url": "http://x", "text_snippet": "ok"},
+    verifier={"ok": True, "reasons": []},
+)
+
+
+def _emit_events(kwargs: dict, build_events) -> RunResult:
+    writer = kwargs.get("trace_writer")
+    rid = kwargs.get("run_id")
+    if writer is not None and rid is not None:
+        for ev in build_events(writer, rid):
+            writer.append_event(ev)
+    return _CANNED_SUCCESS
+
+
+_L1_MISS_L2_HIT_CASE = {
+    "id": "correction-l1-miss-l2-hit",
+    "domain": "fixture",
+    "category": "correction",
+    "task": "Click the Submit button",
+    "expect": {"schema": {}, "validators": []},
+    "budget": {"steps": 5, "usd": 0.05, "seconds": 30},
+    "fixture": True,
+}
+
+
+def _mock_loop_emit_escalation(task, browser, llm_client, **kwargs):
+    def build(writer, rid):
+        locate_miss = LocateEvent(
+            run_id=rid,
+            seq=writer.next_seq(rid),
+            ts=_ts(),
+            step_id="s1",
+            intent="Submit button",
+            tier="L1_ax",
+            outcome="miss",
+            candidates=[],
+            chosen=None,
+            cache_action=None,
+            ms=10,
+        )
+        sup_ev = SupervisorEvent(
+            run_id=rid,
+            seq=locate_miss.seq + 1,
+            ts=_ts(),
+            step_id="s1",
+            trigger_event_seq=locate_miss.seq,
+            classified_as="LocatorMiss",
+            policy="next_tier",
+            attempt=1,
+        )
+        locate_hit = LocateEvent(
+            run_id=rid,
+            seq=sup_ev.seq + 1,
+            ts=_ts(),
+            step_id="s1",
+            intent="Submit button",
+            tier="L2_dom",
+            outcome="hit",
+            candidates=[],
+            chosen={"selector": ".btn"},
+            cache_action="write",
+            ms=15,
+        )
+        return [locate_miss, sup_ev, locate_hit]
+
+    return _emit_events(kwargs, build)
+
+
+def test_run_case_escalations_for_l1_miss_l2_hit(tmp_path):
+    with patch("scripts.eval.loop", side_effect=_mock_loop_emit_escalation):
+        result = _run_case(_L1_MISS_L2_HIT_CASE, llm_client=MagicMock(), browser=MagicMock())
+    assert len(result.escalations) == 1
+    assert result.escalations[0]["from_tier"] == "L1_ax"
+    assert result.escalations[0]["to_tier"] == "L2_dom"
+
+
+_REPLAN_CASE = {
+    "id": "correction-replan",
+    "domain": "fixture",
+    "category": "correction",
+    "task": "Read the heading on this page",
+    "expect": {"schema": {}, "validators": []},
+    "budget": {"steps": 5, "usd": 0.05, "seconds": 30},
+    "fixture": True,
+}
+
+
+def _mock_loop_emit_replan(task, browser, llm_client, **kwargs):
+    def build(writer, rid):
+        return [
+            PlanEvent(
+                run_id=rid,
+                seq=writer.next_seq(rid),
+                ts=_ts(),
+                step_id=None,
+                reason="replan",
+                steps=["call done"],
+                llm_call_id="c1",
+            )
+        ]
+
+    return _emit_events(kwargs, build)
+
+
+def test_run_case_replans_for_replan_case(tmp_path):
+    with patch("scripts.eval.loop", side_effect=_mock_loop_emit_replan):
+        result = _run_case(_REPLAN_CASE, llm_client=MagicMock(), browser=MagicMock())
+    assert result.replans == 1
+    assert result.status == "succeeded"
+
+
+_DRIFT_RENAME_CASE = {
+    "id": "maintenance-drift-rename",
+    "domain": "fixture",
+    "category": "drift",
+    "task": "Click the Submit button",
+    "expect": {"schema": {}, "validators": []},
+    "budget": {"steps": 5, "usd": 0.05, "seconds": 30},
+    "fixture": True,
+    "variants": ["v1", "v2"],
+    "shared_cache": True,
+}
+
+
+def _mock_loop_emit_cache_invalidation(task, browser, llm_client, **kwargs):
+    def build(writer, rid):
+        return [
+            LocateEvent(
+                run_id=rid,
+                seq=writer.next_seq(rid),
+                ts=_ts(),
+                step_id="s1",
+                intent="Submit button",
+                tier="L1_ax",
+                outcome="miss",
+                candidates=[],
+                chosen=None,
+                cache_action="invalidate",
+                ms=5,
+            )
+        ]
+
+    return _emit_events(kwargs, build)
+
+
+def test_run_suite_shared_cache_v2_invalidation(tmp_path):
+    call_count = {"n": 0}
+
+    def mock_loop(task, browser, llm_client, **kwargs):
+        call_count["n"] += 1
+        if call_count["n"] == 2:
+            return _mock_loop_emit_cache_invalidation(task, browser, llm_client, **kwargs)
+        return _CANNED_SUCCESS
+
+    with patch("scripts.eval.loop", side_effect=mock_loop):
+        out = run_suite(cases=[_DRIFT_RENAME_CASE], results_dir=tmp_path)
+    data = json.loads(out.read_text())
+    v2_case = next(c for c in data["cases"] if c["id"] == "maintenance-drift-rename-v2")
+    assert v2_case["cache_events"].get("invalidations", 0) >= 1
+    assert v2_case["status"] == "succeeded"
+
+
+def _capture_run_case_caches():
+    import scripts.eval as eval_mod
+
+    received: list = []
+    original = eval_mod._run_case
+
+    def capture(case, llm_client, browser, cache=None):
+        received.append(cache)
+        return original(case, llm_client, browser, cache=cache)
+
+    return received, capture
+
+
+def test_run_suite_shared_cache_same_instance_passed_to_variants(tmp_path):
+    received_caches, capture = _capture_run_case_caches()
+    with (
+        patch("scripts.eval.loop", return_value=_CANNED_SUCCESS),
+        patch("scripts.eval._run_case", side_effect=capture),
+    ):
+        run_suite(cases=[_DRIFT_RENAME_CASE], results_dir=tmp_path)
+
+    assert len(received_caches) == 2
+    assert received_caches[0] is not None
+    assert received_caches[0] is received_caches[1]
+
+
+def test_run_suite_no_shared_cache_when_absent(tmp_path):
+    case_no_shared_cache = {**_DRIFT_RENAME_CASE}
+    case_no_shared_cache.pop("shared_cache", None)
+
+    received_caches, capture = _capture_run_case_caches()
+    with (
+        patch("scripts.eval.loop", return_value=_CANNED_SUCCESS),
+        patch("scripts.eval._run_case", side_effect=capture),
+    ):
+        run_suite(cases=[case_no_shared_cache], results_dir=tmp_path)
+
+    assert all(c is None for c in received_caches)
+
+
+def test_maintenance_drift_rename_yaml_loads():
+    cases = load_cases("eval/cases/maintenance-drift-rename.yaml")
+    assert len(cases) == 1
+    c = cases[0]
+    assert c["fixture"] is True
+    assert c["category"] == "drift"
+    assert c["variants"] == ["v1", "v2"]
+    assert c["shared_cache"] is True
+
+
+def test_correction_l1_miss_l2_hit_yaml_loads():
+    cases = load_cases("eval/cases/correction-l1-miss-l2-hit.yaml")
+    assert len(cases) == 1
+    c = cases[0]
+    assert c["fixture"] is True
+    assert c["category"] == "correction"
+    assert c["budget"]["steps"] >= 3
+
+
+def test_correction_replan_yaml_loads():
+    cases = load_cases("eval/cases/correction-replan.yaml")
+    assert len(cases) == 1
+    c = cases[0]
+    assert c["fixture"] is True
+    assert c["category"] == "correction"
+
+
+def test_aggregate_diagnostics_escalation_to_tier_scoped_to_step_id():
+    run_id = _make_run_id()
+    writer = _writer_with_run(run_id)
+
+    locate_miss_s1 = LocateEvent(
+        run_id=run_id,
+        seq=writer.next_seq(run_id),
+        ts=_ts(),
+        step_id="s1",
+        intent="Submit button",
+        tier="L1_ax",
+        outcome="miss",
+        candidates=[],
+        chosen=None,
+        cache_action=None,
+        ms=10,
+    )
+    writer.append_event(locate_miss_s1)
+
+    sup_s1 = SupervisorEvent(
+        run_id=run_id,
+        seq=writer.next_seq(run_id),
+        ts=_ts(),
+        step_id="s1",
+        trigger_event_seq=locate_miss_s1.seq,
+        classified_as="LocatorMiss",
+        policy="next_tier",
+        attempt=1,
+    )
+    writer.append_event(sup_s1)
+
+    locate_hit_s2 = LocateEvent(
+        run_id=run_id,
+        seq=writer.next_seq(run_id),
+        ts=_ts(),
+        step_id="s2",
+        intent="Cancel link",
+        tier="L4_vision",
+        outcome="hit",
+        candidates=[],
+        chosen={"selector": "a"},
+        cache_action="write",
+        ms=20,
+    )
+    writer.append_event(locate_hit_s2)
+
+    escalations, _, _ = _aggregate_diagnostics(writer, run_id)
+    assert len(escalations) == 1
+    assert escalations[0]["from_tier"] == "L1_ax"
+    assert escalations[0]["to_tier"] is None

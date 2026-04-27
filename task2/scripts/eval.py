@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import sys
+import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -14,6 +15,17 @@ import yaml
 from agent.browser import Browser
 from agent.llm import LLMClient
 from agent.loop import RunResult, loop
+from agent.trace import (
+    AnyEvent,
+    LocateEvent,
+    PlanEvent,
+    Run,
+    RunBudget,
+    RunLLM,
+    SupervisorEvent,
+    TraceWriter,
+    _any_event_adapter,
+)
 
 _REQUIRED_FIELDS = ("id", "domain", "category", "task", "expect", "budget")
 _PASS_STATUSES = frozenset({"succeeded", "unverified"})
@@ -65,37 +77,117 @@ class CaseResult:
     latency_ms_total: int = 0
     latency_ms_per_step: list[int] = field(default_factory=list)
     step_breakdown: list[dict] = field(default_factory=list)
+    escalations: list[dict] = field(default_factory=list)
+    replans: int = 0
+    cache_events: dict = field(default_factory=dict)
 
 
-def _expand_variants(cases: list[dict]) -> list[dict]:
-    result: list[dict] = []
-    for case in cases:
-        variants = case.get("variants")
-        if variants:
-            for v in variants:
-                result.append({**case, "id": f"{case['id']}-{v}"})
-        else:
-            result.append(case)
-    return result
-
-
-def _run_case(case: dict[str, Any], llm_client: Any, browser: Any) -> CaseResult:
-    try:
-        run_result: RunResult = loop(
-            case["task"],
-            browser,
-            llm_client,
-            max_steps=case["budget"]["steps"],
+def _aggregate_diagnostics(writer: TraceWriter, run_id: str) -> tuple[list[dict], int, dict]:
+    rows = (
+        writer._require_conn()
+        .execute(
+            "SELECT payload FROM traces_events WHERE run_id = ? ORDER BY seq",
+            (run_id,),
         )
-    except Exception as exc:
-        return CaseResult(
-            id=case["id"],
-            status="failed",
-            steps=0,
-            usd=0.0,
-            l_tier_counts={},
-            validators=[{"name": "exception", "ok": False, "error": repr(exc)}],
-        )
+        .fetchall()
+    )
+
+    events: list[AnyEvent] = [_any_event_adapter.validate_json(row[0]) for row in rows]
+    locates_by_seq: dict[int, LocateEvent] = {
+        ev.seq: ev for ev in events if isinstance(ev, LocateEvent)
+    }
+
+    escalations: list[dict] = []
+    replan_count = 0
+    hits = 0
+    invalidations = 0
+    misses = 0
+
+    for i, ev in enumerate(events):
+        if isinstance(ev, SupervisorEvent) and ev.policy == "next_tier":
+            trigger = locates_by_seq.get(ev.trigger_event_seq)
+            from_tier = trigger.tier if trigger is not None else None
+            intent_str = trigger.intent if trigger is not None else ""
+            to_tier: str | None = None
+            for j in range(i + 1, len(events)):
+                nxt = events[j]
+                if (
+                    isinstance(nxt, LocateEvent)
+                    and nxt.step_id == ev.step_id
+                    and nxt.outcome == "hit"
+                ):
+                    to_tier = nxt.tier
+                    break
+            escalations.append(
+                {
+                    "intent": intent_str,
+                    "from_tier": from_tier,
+                    "to_tier": to_tier,
+                    "reason": ev.classified_as.lower(),
+                }
+            )
+        elif isinstance(ev, PlanEvent) and ev.reason == "replan":
+            replan_count += 1
+        elif isinstance(ev, LocateEvent):
+            if ev.cache_action == "read" and ev.outcome == "hit":
+                hits += 1
+            elif ev.cache_action == "invalidate":
+                invalidations += 1
+            elif ev.cache_action is None and ev.outcome == "miss":
+                misses += 1
+
+    return (
+        escalations,
+        replan_count,
+        {"hits": hits, "invalidations": invalidations, "misses": misses},
+    )
+
+
+def _open_trace_run(writer: TraceWriter, run_id: str, case: dict) -> None:
+    budget = case.get("budget", {})
+    run = Run(
+        run_id=run_id,
+        task=case.get("task", ""),
+        expect_schema=None,
+        budget=RunBudget(
+            steps=budget.get("steps", 20),
+            usd=budget.get("usd", 1.0),
+            seconds=budget.get("seconds", 300),
+        ),
+        llm=RunLLM(base_url="", model="", temperature=0.0, seed=None),
+        agent_version="eval",
+        started_at=datetime.now(UTC).isoformat(),
+        ended_at=None,
+        status=None,
+        final=None,
+        totals=None,
+    )
+    writer.open_run(run)
+
+
+def _run_case(case: dict[str, Any], llm_client: Any, browser: Any, cache: Any = None) -> CaseResult:
+    run_id = str(uuid.uuid4())
+    with TraceWriter(path=":memory:") as writer:
+        _open_trace_run(writer, run_id, case)
+        try:
+            run_result: RunResult = loop(
+                case["task"],
+                browser,
+                llm_client,
+                max_steps=case["budget"]["steps"],
+                trace_writer=writer,
+                run_id=run_id,
+            )
+        except Exception as exc:
+            return CaseResult(
+                id=case["id"],
+                status="failed",
+                steps=0,
+                usd=0.0,
+                l_tier_counts={},
+                validators=[{"name": "exception", "ok": False, "error": repr(exc)}],
+            )
+        escalations, replans, cache_events = _aggregate_diagnostics(writer, run_id)
     validator_results = run_validators(
         case.get("expect", {}).get("validators", []),
         run_result.result or {},
@@ -112,6 +204,9 @@ def _run_case(case: dict[str, Any], llm_client: Any, browser: Any) -> CaseResult
         latency_ms_total=run_result.latency_ms_total,
         latency_ms_per_step=run_result.latency_ms_per_step,
         step_breakdown=run_result.step_breakdown,
+        escalations=escalations,
+        replans=replans,
+        cache_events=cache_events,
     )
 
 
@@ -134,18 +229,31 @@ def run_suite(
     llm_client: Any = None,
     browser: Any = None,
 ) -> Path:
+    from agent.locator_cache import LocatorCache
+
     results_dir = Path(results_dir)
     results_dir.mkdir(parents=True, exist_ok=True)
     now = datetime.now(UTC)
-    cases = _expand_variants(cases)
     case_results: list[CaseResult] = []
-    for case in cases:
-        if not live and not case.get("fixture", False):
-            r = _skipped_result(case)
+
+    for parent_case in cases:
+        variants = parent_case.get("variants")
+        use_shared_cache = parent_case.get("shared_cache", False) and variants
+        shared_cache = LocatorCache(path=":memory:") if use_shared_cache else None
+
+        if variants:
+            sub_cases = [{**parent_case, "id": f"{parent_case['id']}-{v}"} for v in variants]
         else:
-            r = _run_case(case, llm_client, browser)
-        case_results.append(r)
-        print(f"[{_label(r.status)}] {r.id} ({r.steps} steps, ${r.usd:.4f})", flush=True)
+            sub_cases = [parent_case]
+
+        for case in sub_cases:
+            if not live and not case.get("fixture", False):
+                r = _skipped_result(case)
+            else:
+                r = _run_case(case, llm_client, browser, cache=shared_cache)
+            case_results.append(r)
+            print(f"[{_label(r.status)}] {r.id} ({r.steps} steps, ${r.usd:.4f})", flush=True)
+
     payload = {
         "run_at": now.isoformat(),
         "cases": [asdict(r) for r in case_results],

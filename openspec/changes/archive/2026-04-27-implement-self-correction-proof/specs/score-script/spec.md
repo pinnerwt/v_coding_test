@@ -1,9 +1,4 @@
-# score-script Specification
-
-## Purpose
-TBD - created by archiving change implement-quantitative-eval. Update Purpose after archive.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: score.py reads a results JSON and emits a markdown scoreboard
 
@@ -68,28 +63,11 @@ When `--update-readme` is passed (with `--readme-path` defaulting to `task2/READ
 <!-- SCOREBOARD:END -->
 ```
 
-If the sentinels are absent, `score.py` SHALL append the scoreboard as a new `## Live eval results` section.
+If the sentinels are absent, `--update-readme` SHALL append the scoreboard as a new `## Live eval results` section. If the content would not change, no write is performed.
 
-The splice SHALL be idempotent: running `--update-readme` twice SHALL produce the same README content as running it once.
+#### Scenario: --update-readme splices scoreboard into existing sentinel block
 
-#### Scenario: --update-readme replaces content between sentinels
-
-- **GIVEN** `task2/README.md` contains `<!-- SCOREBOARD:BEGIN -->` and `<!-- SCOREBOARD:END -->` with stale content between them
-- **WHEN** `score.py <results_file> --update-readme` is invoked
-- **THEN** the README content between the sentinels SHALL be replaced with the newly generated scoreboard
-- **AND** content outside the sentinels SHALL be unchanged
-
-#### Scenario: --update-readme is idempotent
-
-- **WHEN** `score.py <results_file> --update-readme` is invoked twice on the same results file
-- **THEN** the README content SHALL be identical after both invocations
-
-### Requirement: score.py --latest uses most-recent results file
-
-When no positional `results_file` is supplied, `score.py` SHALL automatically use the most recently modified file in `eval/results/` (sorted by `mtime`, descending).
-
-#### Scenario: No argument defaults to latest file
-
-- **GIVEN** `eval/results/` contains `20260101_120000.json` and `20260426_032729.json`
-- **WHEN** `score.py` is invoked with no positional argument
-- **THEN** it SHALL read `20260426_032729.json` (the more recent file)
+- **GIVEN** `task2/README.md` contains `<!-- SCOREBOARD:BEGIN -->` and `<!-- SCOREBOARD:END -->` sentinels
+- **WHEN** `score.py --update-readme` is invoked
+- **THEN** the content between the sentinels SHALL be replaced with the new scoreboard
+- **AND** content outside the sentinel block SHALL be unchanged

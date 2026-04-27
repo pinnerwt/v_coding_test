@@ -1,9 +1,4 @@
-# eval-metrics Specification
-
-## Purpose
-TBD - created by archiving change implement-quantitative-eval. Update Purpose after archive.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: CaseResult carries quantitative fields
 

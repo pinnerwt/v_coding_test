@@ -1,0 +1,13 @@
+id: correction-replan
+domain: fixture
+category: correction
+task: "Read the heading on this page and return it as title"
+expect:
+  schema:
+    title: str
+  validators: []
+budget:
+  steps: 5
+  usd: 0.05
+  seconds: 30
+fixture: true

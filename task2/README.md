@@ -11,15 +11,19 @@
 
 Cost and latency are split into passed vs. failed cases: a failing case bails out early, so a higher pass rate naturally raises totals. Compare the green (passed) and red (failed) series within a branch, not the totals across branches.
 
-### Latest run — `task2-implement-trace-writer-next-seq` (2026-04-27 06:37 UTC)
+### Latest run — `task2-implement-self-correction-proof` (2026-04-27 08:03 UTC)
 
 | Case | Status | Steps | Latency | Tokens | USD |
 |---|---|---:|---:|---:|---:|
-| `drift-submit-form-v1` | failed | 1 | 20.9 s | 1,592 | $0.0022 |
-| `drift-submit-form-v2` | failed | 1 | 20.3 s | 1,592 | $0.0022 |
-| `fixture-count` | unverified | 2 | 23.5 s | 2,635 | $0.0033 |
-| `fixture-heading` | failed | 2 | 28.2 s | 2,843 | $0.0037 |
-| **Total (4 cases, 1 passed)** | | 6 | 92.9 s | 8,662 | $0.0115 |
+| `correction-l1-miss-l2-hit` | failed | 2 | 24.0 s | 2,612 | $0.0033 |
+| `correction-replan` | failed | 2 | 26.3 s | 2,720 | $0.0035 |
+| `drift-submit-form-v1` | failed | 1 | 20.4 s | 1,589 | $0.0022 |
+| `drift-submit-form-v2` | failed | 1 | 20.5 s | 1,589 | $0.0022 |
+| `fixture-count` | failed | 2 | 30.2 s | 2,798 | $0.0037 |
+| `fixture-heading` | failed | 3 | 35.9 s | 4,198 | $0.0052 |
+| `maintenance-drift-rename-v1` | failed | 2 | 30.2 s | 2,786 | $0.0037 |
+| `maintenance-drift-rename-v2` | failed | 1 | 27.0 s | 1,738 | $0.0025 |
+| **Total (8 cases, 0 passed)** | | 14 | 214.5 s | 20,030 | $0.0264 |
 <!-- TRENDS:END -->
 
 
@@ -91,3 +95,25 @@ Environment variables consumed by the LLM client (see `agent/llm.py`):
 - `LLM_BASE_URL` — defaults to `http://localhost:8090`
 - `LLM_MODEL` — required (no default)
 - `LLM_API_KEY` — optional, forwarded as `Authorization: Bearer ...`
+
+## Self-correction & self-maintenance — measured
+
+Three eval cases in `eval/cases/` exercise the agent's self-correction and self-maintenance mechanisms end-to-end:
+
+- `correction-l1-miss-l2-hit` — forces the L1→L2 escalation path: the fixture page (`tests/fixtures/correction_l1_miss.html`) has a `<div class="btn">Submit</div>` with no ARIA role, so L1 (`get_by_role`) returns zero matches and the Supervisor escalates to L2 (CSS taxonomy selector). The `CaseResult.escalations` field must be non-empty.
+
+- `correction-replan` — forces the supervisor-halt → one-shot replan path: the fixture page (`tests/fixtures/correction_replan_deadend.html`) has only a heading and no actionable elements, causing repeated locate misses that exhaust the supervisor's attempts, triggering `halt` and then `plan_module.replan()`. The eval test mocks `loop()` to emit a `PlanEvent(reason="replan")` to the trace writer. `CaseResult.replans` must equal 1.
+
+- `maintenance-drift-rename` (variants `v1`, `v2`, `shared_cache: true`) — forces cache invalidation: v1 caches a selector for `<button>Submit</button>`, then v2 presents `<button>Send</button>`. The warm cache entry's AX fingerprint (accessible name "Submit") differs from the live element ("Send"), so `locate()` calls `cache.invalidate()` and falls through to the L1–L4 ladder. `CaseResult.cache_events["invalidations"]` for v2 must be ≥ 1.
+
+Per-case `Escalations`, `Replans`, and `Cache Inv.` columns appear in the scoreboard (see `<!-- SCOREBOARD:BEGIN -->` below) alongside a "Mechanism firing rates" block.
+
+### Known gaps
+
+- Single replan budget: the supervisor fires replan at most once per run (`replan_used` flag). A multi-replan budget is out of scope for this ticket.
+- `to_tier` heuristic within a step: `from_tier` is exact (resolved via `trigger_event_seq`); `to_tier` is the first `LocateEvent(outcome="hit")` scoped to the supervisor's `step_id`, so two escalations within the same step for different intents could in principle overlap (rare — most steps escalate at most one intent).
+- Replan path tested via partial mock: the `correction-replan` eval assertion uses a mocked `loop()` that emits a `PlanEvent(reason="replan")` directly. Full end-to-end coverage (with a real LLM call on the deadend fixture) is recorded as a gap.
+- Vision tier uncached: `L4_vision` results are intentionally not cached; the `maintenance-drift-rename` case only exercises the AX-fingerprint path.
+- No transient-failure retry: the current supervisor handles `LocatorMiss`, `Ambiguous`, and `NoEffect` but does not retry transient browser errors (e.g., network timeouts).
+- No post-action assertion: the agent does not verify that a click or type had the intended effect before advancing.
+- Coarse AX fingerprint: the fingerprint is built from accessible role + name only; layout or style changes that don't affect the AX tree are invisible to the cache invalidation path.

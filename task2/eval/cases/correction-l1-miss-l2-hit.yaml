@@ -1,0 +1,12 @@
+id: correction-l1-miss-l2-hit
+domain: fixture
+category: correction
+task: "Click the Submit button on the page"
+expect:
+  schema: {}
+  validators: []
+budget:
+  steps: 5
+  usd: 0.05
+  seconds: 30
+fixture: true
