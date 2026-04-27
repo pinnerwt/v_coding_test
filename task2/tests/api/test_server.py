@@ -406,7 +406,9 @@ def test_run_agent_logs_traceback(temp_db, monkeypatch, caplog):
     with caplog.at_level(logging.ERROR, logger="api.server"):
         _run_agent(run_id, TaskRequest(task="do a thing"))
 
-    error_records = [r for r in caplog.records if r.levelno == logging.ERROR and r.name == "api.server"]
+    error_records = [
+        r for r in caplog.records if r.levelno == logging.ERROR and r.name == "api.server"
+    ]
     assert error_records, "expected an ERROR record on api.server logger"
     rec = error_records[0]
     assert rec.exc_text is not None, "exc_text should be populated"

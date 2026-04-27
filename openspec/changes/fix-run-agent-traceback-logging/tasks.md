@@ -5,10 +5,10 @@
 
 ## 2. Green — Minimal Implementation
 
-- [ ] 2.1 In `task2/api/server.py`, add `import logging` at the top of the import block.
-- [ ] 2.2 Add `logger = logging.getLogger(__name__)` as a module-level constant (after imports, before `app = FastAPI()`).
-- [ ] 2.3 In `_run_agent`'s outer `except Exception` block (currently line 92), insert `logger.exception("agent run failed", extra={"run_id": run_id})` as the first statement, before the inner `try/except writer.close_run` block.
-- [ ] 2.4 Run `uv run pytest task2/tests/api/test_server.py::test_run_agent_logs_traceback -x` and confirm it passes.
+- [x] 2.1 In `task2/api/server.py`, add `import logging` at the top of the import block.
+- [x] 2.2 Add `logger = logging.getLogger(__name__)` as a module-level constant (after imports, before `app = FastAPI()`).
+- [x] 2.3 In `_run_agent`'s outer `except Exception` block (currently line 92), insert `logger.exception("agent run failed", extra={"run_id": run_id})` as the first statement, before the inner `try/except writer.close_run` block.
+- [x] 2.4 Run `uv run pytest task2/tests/api/test_server.py::test_run_agent_logs_traceback -x` and confirm it passes.
 
 ## 3. Regression Check
 
