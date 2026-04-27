@@ -13,7 +13,7 @@ The system SHALL provide a module-level function `_classify_failure(events: list
    e. `"schema_error"` — when a `DoneEvent` is present in `events` AND `event.verifier.get("ok") is False`.
    f. `"no_done_emitted"` — when no `DoneEvent` is present in `events`.
    g. `"other"` — catch-all for any remaining `failed` status.
-3. Returns `(failure_class, failure_detail)` where `failure_detail` is a short human-readable string constructed from the event/validator that triggered the class (e.g. `"SupervisorEvent.classified_as=Blocked"`, `"validator title.nonempty failed"`, `"ActEvent outcome=error"`). `failure_detail` is `None` only for the `"other"` and `"no_done_emitted"` classes where no specific event drives the detail.
+3. Returns `(failure_class, failure_detail)` where `failure_detail` is a short human-readable string constructed from the event/validator that triggered the class (e.g. `"Blocked"`, `"title.nonempty"`, `"TimeoutError"`). `failure_detail` is `None` only when `failure_class` is `None` (i.e. `status` was not `"failed"`); for every classified failure the detail is a non-empty string describing the signal (a generic placeholder string is used for `"other"` and `"no_done_emitted"` when no specific event drives the detail).
 
 The function is pure — it does not access `TraceWriter`, the file system, or any I/O. It is tested exclusively via synthetic event lists.
 
@@ -76,9 +76,10 @@ The function is pure — it does not access `TraceWriter`, the file system, or a
 - **WHEN** `_classify_failure(events, validators, status="failed")` is called
 - **THEN** the first element of the result SHALL equal `"no_done_emitted"`
 
-#### Scenario: other is catch-all for unrecognized failed state
+#### Scenario: other is catch-all when DoneEvent verifier passed but status is failed
 
-- **GIVEN** `events` is `[]` and `validators` is `[]`
+- **GIVEN** `events` contains a `DoneEvent(verifier={"ok": True})` and no failing supervisor / locator / act / validator signal
+- **AND** `validators` is `[]`
 - **WHEN** `_classify_failure(events, validators, status="failed")` is called
 - **THEN** the first element of the result SHALL equal `"other"`
 
