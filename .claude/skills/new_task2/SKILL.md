@@ -48,21 +48,13 @@ Invoke the `/opsx:new` skill with the change name (kebab-case derived above). Th
 
 ### 4. Generate all artifacts (subagent)
 
-Spawn a `general-purpose` subagent via the **Agent** tool to run `/opsx:ff` and produce every artifact required for `apply` (typically `proposal.md`, `design.md`, `tasks.md`, `specs/...`). The subagent has no conversation context, so the prompt must be self-contained.
+Spawn a `general-purpose` subagent via the **Agent** tool to run `/opsx:ff` and produce every artifact required for `apply` (typically `proposal.md`, `design.md`, `tasks.md`, `specs/...`). The subagent has no conversation context, so the full self-contained prompt template lives at `.claude/skills/new_task2/subagent-prompts/ff.md`. **Read that file**, substitute the placeholders (`{{change-name}}`, `{{ticket-number}}`, `{{ticket-title}}`, `{{ticket-text}}`), and pass the rendered string as the agent's `prompt`.
 
 Agent call:
 - `subagent_type`: `general-purpose`
 - `model`: `sonnet` — artifact generation translates a defined ticket into structured files; Opus-grade planning is not needed here and is reserved for the orchestrator.
 - `description`: `Generate opsx artifacts for <change-name>`
-- `prompt`: include all of the following so the subagent can run autonomously:
-  - The exact change name (kebab-case, derived in Step 1).
-  - The ticket number, title, and full ticket text from `task2/plan.md`.
-  - Instruction: "Invoke the `/opsx:ff` skill on `<change-name>`. Do not commit or push. Do not implement code — artifacts only."
-  - Grounding sources to read before drafting:
-    - `task2/plan.md` (ticket acceptance criteria).
-    - `task2/CLAUDE.md` and the rest of `task2/` for code conventions and existing structure.
-    - Repo-root `CLAUDE.md` (TDD non-negotiable, `uv` + `ruff` tooling, no hardcoded LLM provider).
-  - Required report back: list of files created under `openspec/changes/<change-name>/`, plus any open questions or assumptions made.
+- `prompt`: rendered contents of `subagent-prompts/ff.md` with placeholders substituted.
 
 Wait for the subagent to return, then **verify the actual artifacts on disk** (`ls openspec/changes/<change-name>/`, spot-read `proposal.md` and `tasks.md`) before continuing. The subagent's summary describes intent, not necessarily what landed.
 
@@ -76,60 +68,25 @@ Use a HEREDOC for the message and include the standard `Co-Authored-By` trailer 
 
 ### 6. Implement via /opsx:apply (subagent)
 
-Spawn a `general-purpose` subagent via the **Agent** tool to drive `/opsx:apply` for `<change-name>`. The subagent runs the full TDD loop and commits along the way; it has no conversation context, so embed everything it needs in the prompt.
+Spawn a `general-purpose` subagent via the **Agent** tool to drive `/opsx:apply` for `<change-name>`. The subagent runs the full TDD loop and commits along the way; the full self-contained prompt (TDD discipline, tooling commands, pre-commit gate, comment-discipline, scope rules, report-back schema) lives at `.claude/skills/new_task2/subagent-prompts/apply.md`. **Read that file**, substitute the placeholders (`{{change-name}}`, `{{branch}}`), and pass the rendered string as the agent's `prompt`.
 
 Agent call:
 - `subagent_type`: `general-purpose`
-- `model`: `sonnet` — TDD implementation is the canonical Sonnet workhorse task (Anthropic Advisor Strategy: Opus plans/reviews, Sonnet executes). Cheaper, faster, and benchmark-comparable on code-gen following an existing plan.
+- `model`: `sonnet`
 - `description`: `Apply opsx change <change-name>`
-- `prompt`: must include:
-  - The exact change name and the path `openspec/changes/<change-name>/`.
-  - The current branch name (`task2/<change-name>`) and instruction: "Stay on this branch. Do not switch branches, rebase, push, or open a PR — those are handled outside this subagent."
-  - Instruction: "Invoke the `/opsx:apply` skill on `<change-name>` and drive every task in `tasks.md` to completion under TDD discipline (red → green → refactor; tests live under `task2/tests/`)."
-  - **Tooling** — every command runs from the `task2/` directory:
-    - One-time setup if not already done: `uv sync && uv run playwright install chromium`.
-    - Tests: `uv run pytest`.
-    - Lint: `uv run ruff check .` (auto-fix with `uv run ruff check --fix .` only when safe).
-    - Format: `uv run ruff format .`.
-  - **Per red-green-refactor cycle:**
-    1. **Red** — write the failing test, run `uv run pytest <path-to-new-test>`, confirm it fails for the expected reason. Commit: `test(task2): <what the new failing test covers>`.
-    2. **Green** — minimal implementation. Run `uv run pytest` until green. Commit: `feat(task2): <what now works>`.
-    3. **Refactor** (optional, only while green). Re-run `uv run pytest` after each meaningful edit. Commit: `refactor(task2): <what changed>`.
-  - **No comments or docstrings in production code.** Write zero `#` comments and zero docstrings (module, class, or function) in any file under `task2/` that is not a test. Tests may have a single-line docstring only when it materially clarifies intent. Rationale: the `/simplify` pass strips them anyway, so writing them burns tokens for no kept output. Rely on clear naming. The only exception is a one-line comment explaining a non-obvious *why* (hidden constraint, workaround, surprising invariant) — never *what* the code does.
-  - **Pre-commit gate (mandatory before every commit):**
-    ```bash
-    cd task2
-    uv run ruff format .
-    uv run ruff check .
-    uv run pytest
-    ```
-    All three must be clean. Stage any `ruff format` rewrites into the same commit. Never commit with failing tests or ruff errors. Never use `--no-verify`.
-  - Keep commits small enough that the diff matches the message. Do not bundle unrelated changes.
-  - **Renames / signature changes need a repo-wide grep.** When a task renames a symbol or changes a parameter shape (e.g. `last_action` → `last_actions`, or `dict | None` → `list[dict]`), the artifact `tasks.md` typically only enumerates the obvious touch points. After the migration step, `grep -rn '<old name>\|<old shape sentinel>' task2/` and update every remaining caller — including tests not listed in `tasks.md`. Python doesn't enforce type hints at runtime, so stale `None` arguments to a now-`list`-typed parameter pass tests but violate the new contract; the verify step (Step 7) will flag them otherwise.
-  - If a task surfaces a design problem, **stop and report back** (per `/opsx:apply` guardrails) instead of papering over it. **Exception:** if the contradiction is purely in the literal `tasks.md` wording (e.g. "reset before X" when correct semantics is "reset after X") and the right behavior is unambiguous from the spec/tests, implement the correct behavior, note the divergence in the report-back, and continue. Don't block on prose drift in scaffold artifacts.
-  - Honor `task2/CLAUDE.md` and the repo-root `CLAUDE.md` (TDD, `uv`, `ruff`, configurable LLM base URL).
-  - Required report back: list of commits made (sha + subject), final `pytest` / `ruff` status, any tasks left unchecked in `tasks.md`, and any design questions that surfaced.
+- `prompt`: rendered contents of `subagent-prompts/apply.md` with placeholders substituted.
 
 Wait for the subagent to return, then **verify the work on disk**: `git log --oneline task2/<change-name> ^master`, re-run the pre-commit gate yourself, and read `tasks.md` to confirm checkboxes match what the subagent claims. If anything is off, address it in the main thread before continuing.
 
 ### 7. Verify (subagent)
 
-Once `tasks.md` is fully checked off, spawn a `general-purpose` subagent via the **Agent** tool to run `/opsx:verify` and close any gaps it surfaces.
+Once `tasks.md` is fully checked off, spawn a `general-purpose` subagent via the **Agent** tool to run `/opsx:verify` and close any gaps it surfaces. The full self-contained prompt lives at `.claude/skills/new_task2/subagent-prompts/verify.md`. **Read that file**, substitute the placeholders (`{{change-name}}`, `{{branch}}`), and pass the rendered string as the agent's `prompt`.
 
 Agent call:
 - `subagent_type`: `general-purpose`
-- `model`: `sonnet` — verification follows a defined rubric (`/opsx:verify` output → close gap → re-run); the orchestrator re-runs the verifier itself in the main thread for the final judgment call.
+- `model`: `sonnet`
 - `description`: `Verify opsx change <change-name>`
-- `prompt`: must include:
-  - The change name and the path `openspec/changes/<change-name>/`.
-  - The branch name (`task2/<change-name>`) and instruction: "Stay on this branch. Do not switch branches, push, or open a PR."
-  - Instruction: "Invoke `/opsx:verify` on `<change-name>`. Address every gap it reports — **extend tests first** when behavior is missing, then code. Re-run `/opsx:verify` until it is clean."
-  - Commit conventions for fixes:
-    - `fix(task2): address verify feedback for <change-name>` for code fixes.
-    - `test(task2): <what the new test covers>` if the change is purely additional tests.
-  - Pre-commit gate (same as Step 6) must pass before every commit; never `--no-verify`.
-  - **No comments or docstrings** in any non-test file. If `/opsx:verify` flags a missing comment/docstring, push back - close the gap with a clearer name or a test, not a comment. Same rule as Step 6: `/simplify` will strip them, so don't write them in the first place.
-  - Required report back: the final `/opsx:verify` output, list of commits added, and a confirmation that the verifier reports zero gaps.
+- `prompt`: rendered contents of `subagent-prompts/verify.md` with placeholders substituted.
 
 Wait for the subagent to return, then re-run `/opsx:verify` yourself in the main thread to confirm it really is clean. If any gap remains, decide whether to re-invoke the subagent or handle it directly.
 
@@ -142,13 +99,7 @@ Invoke the `/simplify` skill scoped to the diff introduced on this branch. Focus
 
 **Right-size the review.** The `/simplify` skill defaults to fanning out three parallel subagents (reuse / quality / efficiency). For small diffs (under ~150 changed lines, e.g. a single-module ticket like #23 CDP cache), the orchestrator can do the same review inline and apply fixes directly — skip the fan-out. For larger diffs (multi-module, eval changes, scoring overhauls) keep the three parallel agents, since the cost of missing a finding outweighs the subagent overhead.
 
-**Watch for these specific patterns** that this loop has produced before:
-- **Dead fallback branches.** When the ticket adds a new attribute to a class (`self._cdp_sessions`, `self._foo`) and you've already updated test fixtures / `SimpleNamespace` doubles to set it, any `getattr(obj, attr, None)` "fallback" branch is dead code. Drop the branch entirely; assume the attribute is present. Keep it only if a real, non-test caller exists.
-- **Per-test boilerplate.** Three new tests building the same `data:text/html;base64,...` URL inline → hoist to a module-level constant (`_BUTTON_DATA_URL`) or fixture. Ditto duplicated `import base64 as _b64` shadowing a module-level `import base64`.
-- **Branch-duplicated `try/finally`.** If two if/else branches both end in the same `cdp.send(...)` + `try: cdp.detach() except: pass` pattern, consolidate to one send + one finally below the if/else and gate the detach on a `transient` flag. (Then per the dead-branch rule above, often one branch can be removed entirely.)
-- **Branch-duplicated `dict` builds.** Two if/else branches both build a dict that shares 3-of-4 keys (e.g. `last_actions.append({"tool": ..., "intent": ..., "outcome": "ok"})` vs. `... "outcome": "error", "error": tool_result`). Collapse to one dict literal with a ternary on the differing key, then conditionally `dict[extra_key] = value` for the error-only field. Reuse the boolean (`is_error = ...`) for any later branch that re-checks the same condition (e.g. supervisor halt detection two lines down).
-- **Per-test scripted-LLM client classes.** When two new `loop.py` tests each define a near-identical `_FooClient` with `chat(messages, *, tools=...)` returning a different first-step `ChatResponse` and the same final `done` response, parameterize one shared `_ScriptedFirstStepClient(first_step_calls, done_evidence_url)` instead. The pattern is "first call returns scripted tool calls, second call returns `done`" — only the `tool_calls` list and the evidence URL vary.
-- **Repeated observation-from-captures extraction.** The pattern `obs_msg = next(m for m in reversed(captures[N]) if m["role"] == "user" and "Current state:" in m.get("content", "")); obs = _extract_obs_json(obs_msg["content"])` repeats across multi-step loop tests. Hoist a `_step_observation(captures, step_index) -> dict` helper next to `_extract_obs_json`. Apply it to existing migrated assertions too (e.g. `test_second_step_last_action_populated`), not just the new tests, to keep the file consistent.
+**Watch for recurring patterns this loop has produced before.** The catalog lives at `.claude/skills/new_task2/simplify-patterns.md`. **Read that file** at this step (not at the top of the run — keep it out of the orchestrator's prompt until it's actually needed) and check the diff against every entry. The catalog is append-mostly: when a new pattern shows up across two or more tickets, add it there rather than re-deriving it next time.
 
 Apply the simplifier's suggestions only where they hold under the existing tests. From `task2/`, re-run the full pre-commit gate (`uv run ruff format . && uv run ruff check . && uv run pytest`) to confirm green.
 
