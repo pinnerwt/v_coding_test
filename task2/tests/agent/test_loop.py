@@ -1533,3 +1533,70 @@ def test_interleaved_emitters_no_seq_error(fixture_server, playwright_chromium):
     assert obs_seq >= 1
     assert plan_seq < obs_seq, f"plan_seq={plan_seq} not < obs_seq={obs_seq}"
     writer.close()
+
+
+# ---------------------------------------------------------------------------
+# locator_cache kwarg tests (RED until loop() gains the kwarg)
+# ---------------------------------------------------------------------------
+
+
+def test_loop_accepts_locator_cache_kwarg(fixture_server, playwright_chromium):
+    """loop() must accept locator_cache=None without raising TypeError."""
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+    fake_llm = _FakeLLMClient([_done_response(fixture_url)])
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop("read the heading", browser, fake_llm, locator_cache=None)
+
+    assert isinstance(result, RunResult)
+
+
+def test_loop_forwards_cache_to_locate(fixture_server, playwright_chromium):
+    """When loop() receives a LocatorCache, locate() must be called with cache=<that instance>."""
+    from unittest.mock import MagicMock, patch
+
+    from agent.locate import LocateResult
+    from agent.locator_cache import LocatorCache
+
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+        _response_with_tool_call(_tool_call("read", {"intent": "Submit button"}, call_id="tc-2")),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"ok": True},
+                    "evidence": {"url": fixture_url, "text_snippet": "Hello, loop"},
+                },
+                call_id="tc-3",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+    mock_cache = MagicMock(spec=LocatorCache)
+
+    captured_kwargs: list[dict] = []
+    _stub_result = LocateResult(
+        tier="L1_ax",
+        role="button",
+        name="Submit",
+        selector='role=button[name="Submit" i]',
+        ax_fingerprint="fp",
+        confidence=1.0,
+    )
+
+    def _capture_locate(page, intent, **kwargs):
+        captured_kwargs.append(kwargs)
+        return _stub_result
+
+    with (
+        patch("agent.loop.locate", side_effect=_capture_locate),
+        Browser(playwright_browser=playwright_chromium) as browser,
+    ):
+        loop("click Submit", browser, fake_llm, locator_cache=mock_cache)
+
+    assert any(kw.get("cache") is mock_cache for kw in captured_kwargs), (
+        f"locate() was never called with cache=<mock_cache>; captured kwargs: {captured_kwargs}"
+    )
