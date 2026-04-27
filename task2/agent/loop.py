@@ -391,23 +391,15 @@ def loop(
 
             tool_result = _dispatch(tool_call.name, args, browser, supervisor)
 
-            if tool_result.startswith("Error:"):
-                last_actions.append(
-                    {
-                        "tool": tool_call.name,
-                        "intent": str(args),
-                        "outcome": "error",
-                        "error": tool_result,
-                    }
-                )
-            else:
-                last_actions.append(
-                    {
-                        "tool": tool_call.name,
-                        "intent": str(args),
-                        "outcome": "ok",
-                    }
-                )
+            is_error = tool_result.startswith("Error:")
+            action: dict = {
+                "tool": tool_call.name,
+                "intent": str(args),
+                "outcome": "error" if is_error else "ok",
+            }
+            if is_error:
+                action["error"] = tool_result
+            last_actions.append(action)
             messages.append(
                 {
                     "role": "tool",
@@ -416,7 +408,7 @@ def loop(
                 }
             )
 
-            if tool_result.startswith("Error:") and supervisor.last_policy == "halt":
+            if is_error and supervisor.last_policy == "halt":
                 supervisor.last_policy = None
                 if not supervisor.replan_used:
                     new_plan, replan_resp = plan_module.replan(
