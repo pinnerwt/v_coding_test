@@ -15,7 +15,10 @@
       "step_breakdown": [
         {"step": 1, "latency_ms": 200, "prompt_tokens": 100, "completion_tokens": 15, "usd": 0.00025, "tool_calls": ["goto"]},
         {"step": 2, "latency_ms": 200, "prompt_tokens": 100, "completion_tokens": 15, "usd": 0.00025, "tool_calls": ["done"]}
-      ]
+      ],
+      "escalations": [],
+      "replans": 0,
+      "cache_events": {"hits": 0, "invalidations": 0, "misses": 0}
     },
     {
       "id": "fixture-count",
@@ -30,7 +33,10 @@
       "latency_ms_per_step": [800],
       "step_breakdown": [
         {"step": 1, "latency_ms": 800, "prompt_tokens": 0, "completion_tokens": 0, "usd": 0.0, "tool_calls": ["fail"]}
-      ]
+      ],
+      "escalations": [],
+      "replans": 0,
+      "cache_events": {"hits": 0, "invalidations": 0, "misses": 0}
     }
   ]
 }
