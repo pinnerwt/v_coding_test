@@ -32,6 +32,9 @@ _REQUIRED_FIELDS = ("id", "domain", "category", "task", "expect", "budget")
 _PASS_STATUSES = frozenset({"succeeded", "unverified"})
 _FAIL_STATUSES = frozenset({"failed", "blocked", "timeout"})
 _SKIP_STATUS = "skipped"
+_VALID_SKIP_REASONS = frozenset(
+    {"live_disabled", "infra_unavailable", "fixture_missing", "feature_not_implemented"}
+)
 
 
 def load_cases(path: str | Path) -> list[dict]:
@@ -83,6 +86,16 @@ class CaseResult:
     cache_events: dict = field(default_factory=dict)
     failure_class: str | None = None
     failure_detail: str | None = None
+    skip_reason: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.status == _SKIP_STATUS:
+            if self.skip_reason is None:
+                raise ValueError("skip_reason must be set when status='skipped'")
+            if self.skip_reason not in _VALID_SKIP_REASONS:
+                raise ValueError(
+                    f"skip_reason {self.skip_reason!r} is not one of {sorted(_VALID_SKIP_REASONS)}"
+                )
 
 
 def _aggregate_diagnostics(
@@ -258,7 +271,7 @@ def _run_case(case: dict[str, Any], llm_client: Any, browser: Any, cache: Any = 
     )
 
 
-def _skipped_result(case: dict) -> CaseResult:
+def _skipped_result(case: dict, reason: str) -> CaseResult:
     return CaseResult(
         id=case["id"],
         status=_SKIP_STATUS,
@@ -266,6 +279,7 @@ def _skipped_result(case: dict) -> CaseResult:
         usd=0.0,
         l_tier_counts={},
         validators=[],
+        skip_reason=reason,
     )
 
 
@@ -295,8 +309,11 @@ def run_suite(
             sub_cases = [parent_case]
 
         for case in sub_cases:
-            if not live and not case.get("fixture", False):
-                r = _skipped_result(case)
+            fixture_path = case.get("fixture_path")
+            if fixture_path is not None and not Path(fixture_path).exists():
+                r = _skipped_result(case, "fixture_missing")
+            elif not live and not case.get("fixture", False):
+                r = _skipped_result(case, "live_disabled")
             else:
                 r = _run_case(case, llm_client, browser, cache=shared_cache)
             case_results.append(r)
