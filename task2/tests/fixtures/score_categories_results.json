@@ -1,0 +1,44 @@
+{
+  "run_at": "2026-04-27T00:00:00+00:00",
+  "cases": [
+    {
+      "id": "drift-submit-form-v1",
+      "status": "failed",
+      "steps": 1,
+      "latency_ms_total": 500,
+      "usd": 0.001,
+      "prompt_tokens": 100,
+      "completion_tokens": 20,
+      "l_tier_counts": {},
+      "escalations": [],
+      "replans": 0,
+      "cache_events": {"hits": 0, "invalidations": 0, "misses": 0}
+    },
+    {
+      "id": "fixture-login-v1",
+      "status": "succeeded",
+      "steps": 2,
+      "latency_ms_total": 300,
+      "usd": 0.002,
+      "prompt_tokens": 150,
+      "completion_tokens": 30,
+      "l_tier_counts": {},
+      "escalations": [],
+      "replans": 0,
+      "cache_events": {"hits": 0, "invalidations": 0, "misses": 0}
+    },
+    {
+      "id": "live-search-v1",
+      "status": "skipped",
+      "steps": 0,
+      "latency_ms_total": 0,
+      "usd": 0.0,
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "l_tier_counts": {},
+      "escalations": [],
+      "replans": 0,
+      "cache_events": {"hits": 0, "invalidations": 0, "misses": 0}
+    }
+  ]
+}

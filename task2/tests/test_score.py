@@ -428,3 +428,57 @@ def test_scoreboard_missing_failure_class_key_shows_dash():
     }
     output = generate_scoreboard(data)
     assert "| - |" in output
+
+
+# ---------------------------------------------------------------------------
+# implement-scoreboard-category-rows tests
+# ---------------------------------------------------------------------------
+
+_CATEGORIES_FIXTURE = Path(__file__).parent / "fixtures" / "score_categories_results.json"
+
+
+def test_suite_thresholds_importable():
+    from scripts.score import SUITE_THRESHOLDS
+
+    assert "drift" in SUITE_THRESHOLDS
+    assert "fixture" in SUITE_THRESHOLDS
+    assert "live" in SUITE_THRESHOLDS
+    assert SUITE_THRESHOLDS["drift"]["target_pct"] == 100
+    assert SUITE_THRESHOLDS["fixture"]["target_pct"] == 80
+    assert SUITE_THRESHOLDS["live"]["target_pct"] == 60
+    assert "correction-" in SUITE_THRESHOLDS["drift"]["id_prefixes"]
+    assert "maintenance-drift-" in SUITE_THRESHOLDS["drift"]["id_prefixes"]
+
+
+def test_category_summary_passing_fixture():
+    from scripts.score import generate_scoreboard
+
+    data = json.loads(_CATEGORIES_FIXTURE.read_text())
+    output = generate_scoreboard(data)
+    assert "Fixture: 1/1 (100%) [target 80%] ✅" in output
+
+
+def test_category_summary_failing_drift():
+    from scripts.score import generate_scoreboard
+
+    data = json.loads(_CATEGORIES_FIXTURE.read_text())
+    output = generate_scoreboard(data)
+    assert "Drift suite: 0/1 (0%) [target 100%] ❌" in output
+
+
+def test_category_summary_skipped_live():
+    from scripts.score import generate_scoreboard
+
+    data = json.loads(_CATEGORIES_FIXTURE.read_text())
+    output = generate_scoreboard(data)
+    assert "Live: 0/0 ran [target 60%] ⏭️" in output
+
+
+def test_category_summary_before_per_case_table():
+    from scripts.score import generate_scoreboard
+
+    data = json.loads(_CATEGORIES_FIXTURE.read_text())
+    output = generate_scoreboard(data)
+    drift_pos = output.index("Drift suite:")
+    table_pos = output.index("| ")
+    assert drift_pos < table_pos
