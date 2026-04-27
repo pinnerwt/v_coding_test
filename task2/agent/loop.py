@@ -18,8 +18,8 @@ from agent.locate import (
     parse_intent,
 )
 from agent.locator_cache import CacheEntry, _origin_from_url
-from agent.supervisor import Supervisor
-from agent.trace import LocateEvent, PlanEvent, TraceWriter
+from agent.supervisor import EscalationDecision, Supervisor
+from agent.trace import LocateEvent, PlanEvent, SupervisorEvent, TraceWriter
 
 if TYPE_CHECKING:
     from playwright.sync_api import Page
@@ -194,17 +194,69 @@ def _body_text(page: Page) -> str:
     return page.evaluate(_BODY_TEXT_JS)[:_BODY_TEXT_LIMIT]
 
 
-def _locate_via_ladder(page: Page, intent: str, supervisor: Supervisor) -> LocateResult:
+def _locate_via_ladder(
+    page: Page,
+    intent: str,
+    supervisor: Supervisor,
+    *,
+    trace_writer: TraceWriter | None = None,
+    run_id: str | None = None,
+    step_id: str | None = None,
+) -> LocateResult:
     role, name = parse_intent(intent)
     try:
         return locate_l1(page, role=role, name=name)
     except LocatorMiss as miss:
         if miss.reason != "zero_matches":
             raise
+        _emit_locate_event(
+            trace_writer=trace_writer,
+            run_id=run_id,
+            intent=intent,
+            tier="L1_ax",
+            outcome="miss",
+            cache_action=None,
+            chosen=None,
+            step_id=step_id,
+        )
+        # seq of the L1 miss event just written is next_seq - 1
+        l1_miss_seq = (trace_writer.next_seq(run_id) - 1) if (trace_writer and run_id) else 0
         decision = supervisor.handle(miss, current_tier="L1_ax")
+        _emit_supervisor_event(
+            trace_writer=trace_writer,
+            run_id=run_id,
+            decision=decision,
+            miss=miss,
+            trigger_event_seq=l1_miss_seq,
+            step_id=step_id,
+        )
         if decision.next_tier != "L2_dom":
             raise
-        return locate_l2(page, role=role, name=name)
+        try:
+            result = locate_l2(page, role=role, name=name)
+        except LocatorMiss:
+            _emit_locate_event(
+                trace_writer=trace_writer,
+                run_id=run_id,
+                intent=intent,
+                tier="L2_dom",
+                outcome="miss",
+                cache_action=None,
+                chosen=None,
+                step_id=step_id,
+            )
+            raise
+        _emit_locate_event(
+            trace_writer=trace_writer,
+            run_id=run_id,
+            intent=intent,
+            tier="L2_dom",
+            outcome="hit",
+            cache_action=None,
+            chosen={"role": result.role, "selector": result.selector},
+            step_id=step_id,
+        )
+        return result
 
 
 def _emit_locate_event(
@@ -237,6 +289,39 @@ def _emit_locate_event(
     trace_writer.append_event(event)
 
 
+_MISS_REASON_TO_CLASSIFIED_AS: dict[str, str] = {
+    "zero_matches": "LocatorMiss",
+    "ambiguous": "Ambiguous",
+    "vision_miss": "LocatorMiss",
+}
+
+
+def _emit_supervisor_event(
+    *,
+    trace_writer: TraceWriter | None,
+    run_id: str | None,
+    decision: EscalationDecision,
+    miss: LocatorMiss,
+    trigger_event_seq: int,
+    step_id: str | None = None,
+) -> None:
+    if trace_writer is None or run_id is None:
+        return
+    classified_as = _MISS_REASON_TO_CLASSIFIED_AS.get(miss.reason, "LocatorMiss")
+    seq = trace_writer.next_seq(run_id)
+    event = SupervisorEvent(
+        run_id=run_id,
+        seq=seq,
+        ts=datetime.now(UTC).isoformat(),
+        step_id=step_id,
+        trigger_event_seq=trigger_event_seq,
+        classified_as=classified_as,  # type: ignore[arg-type]
+        policy=decision.policy,  # type: ignore[arg-type]
+        attempt=decision.attempt,
+    )
+    trace_writer.append_event(event)
+
+
 def _locate_with_supervisor(
     page: Page,
     intent: str,
@@ -248,7 +333,14 @@ def _locate_with_supervisor(
     step_id: str | None = None,
 ) -> LocateResult:
     if cache is None:
-        return _locate_via_ladder(page, intent, supervisor)
+        return _locate_via_ladder(
+            page,
+            intent,
+            supervisor,
+            trace_writer=trace_writer,
+            run_id=run_id,
+            step_id=step_id,
+        )
 
     origin = _origin_from_url(page.url)
     entry = cache.get(origin=origin, intent=intent)
@@ -304,7 +396,14 @@ def _locate_with_supervisor(
                     coords=entry.coords,
                 )
 
-    result = _locate_via_ladder(page, intent, supervisor)
+    result = _locate_via_ladder(
+        page,
+        intent,
+        supervisor,
+        trace_writer=trace_writer,
+        run_id=run_id,
+        step_id=step_id,
+    )
 
     if result.tier == "L4_vision":
         stored_fingerprint = result.ax_fingerprint
