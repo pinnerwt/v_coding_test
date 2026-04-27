@@ -7,6 +7,14 @@ import pytest
 
 from agent.locate import LocatorMiss, locate_l1, locate_l2
 from agent.supervisor import EscalationDecision, Supervisor
+from agent.trace import EscalationPolicy
+
+
+def test_escalation_decision_policy_annotated_as_escalation_policy():
+    import typing
+
+    hints = typing.get_type_hints(EscalationDecision)
+    assert hints["policy"] is EscalationPolicy
 
 
 def test_supervisor_constructs_with_defaults():

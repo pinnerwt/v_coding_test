@@ -29,6 +29,8 @@ Otherwise, it SHALL:
 3. Construct a `SupervisorEvent` with `policy=decision.policy`, `attempt=decision.attempt`, `classified_as=<mapped value>`, `trigger_event_seq=trigger_event_seq`, `step_id=step_id`, and a valid ISO `ts`.
 4. Call `trace_writer.append_event(event)`.
 
+Because `EscalationDecision.policy` is now typed `EscalationPolicy` (the same `Literal` as `SupervisorEvent.policy`), the assignment `policy=decision.policy` SHALL be accepted by a static type checker without any `# type: ignore` comment. The `# type: ignore[arg-type]` suppression that previously appeared on that line SHALL be absent from the codebase.
+
 #### Scenario: _emit_supervisor_event is a no-op when trace_writer is None
 
 - **WHEN** `_emit_supervisor_event(trace_writer=None, run_id=None, decision=..., miss=..., trigger_event_seq=1, step_id=None)` is called
@@ -50,6 +52,12 @@ Otherwise, it SHALL:
 - **GIVEN** an open `TraceWriter` with `run_id`
 - **WHEN** `_emit_supervisor_event(..., miss=LocatorMiss(reason="ambiguous", match_count=3), ...)` is called
 - **THEN** the written `SupervisorEvent.classified_as` SHALL equal `"Ambiguous"`
+
+#### Scenario: No type: ignore comment on policy assignment
+
+- **WHEN** a static type checker (mypy or pyright) analyzes `agent/loop.py`
+- **THEN** the line `policy=decision.policy` in `_emit_supervisor_event` SHALL produce no `arg-type` or equivalent suppression warning
+- **AND** the source file SHALL contain no `# type: ignore[arg-type]` comment on that line
 
 ### Requirement: _locate_via_ladder emits LocateEvents for L1 miss and L2 outcomes
 

@@ -71,13 +71,16 @@ class ActEvent(EventBase):
     ms: int
 
 
+EscalationPolicy = Literal["next_tier", "rerank", "sweep_overlay", "replan", "halt"]
+
+
 class SupervisorEvent(EventBase):
     kind: Literal["supervisor"] = "supervisor"
     trigger_event_seq: int
     classified_as: Literal[
         "LocatorMiss", "Ambiguous", "NoEffect", "FormError", "NavDrift", "Blocked", "Timeout"
     ]
-    policy: Literal["next_tier", "rerank", "sweep_overlay", "replan", "halt"]
+    policy: EscalationPolicy
     attempt: int
 
 

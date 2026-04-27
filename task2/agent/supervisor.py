@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from agent.locate import LocatorMiss
+from agent.trace import EscalationPolicy
 
 # Only implemented escalation row. L2→L3, L3→L4, and L1-ambiguous→L3 are
 # deliberately absent so unknown (tier, reason) pairs fall through to halt.
@@ -14,7 +15,7 @@ _ESCALATION_TABLE: dict[tuple[str, str], str] = {
 @dataclass(frozen=True)
 class EscalationDecision:
     next_tier: str | None
-    policy: str
+    policy: EscalationPolicy
     attempt: int
 
 
@@ -22,7 +23,7 @@ class Supervisor:
     def __init__(self, *, max_attempts: int = 3) -> None:
         self._max_attempts = max_attempts
         self._attempts: dict[tuple[str, str], int] = {}
-        self.last_policy: str | None = None
+        self.last_policy: EscalationPolicy | None = None
         self.replan_used: bool = False
 
     def handle(self, miss: LocatorMiss, *, current_tier: str) -> EscalationDecision:
