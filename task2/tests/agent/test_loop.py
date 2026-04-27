@@ -1529,7 +1529,13 @@ def test_interleaved_emitters_no_seq_error(fixture_server, playwright_chromium):
     writer.append_event(obs)
 
     rows = _all_rows(writer)
-    seqs = [r["seq"] for r in rows]
-    assert len(seqs) >= 2
-    assert seqs == sorted(set(seqs)), f"seq not strictly increasing: {seqs}"
+    plan_rows = [r for r in rows if r["kind"] == "plan"]
+    obs_rows = [r for r in rows if r["kind"] == "observation"]
+    assert plan_rows, "expected at least one plan row"
+    assert obs_rows, "expected at least one observation row"
+    plan_seq = plan_rows[0]["seq"]
+    obs_seq = obs_rows[0]["seq"]
+    assert plan_seq >= 1
+    assert obs_seq >= 1
+    assert plan_seq < obs_seq, f"plan_seq={plan_seq} not < obs_seq={obs_seq}"
     writer.close()

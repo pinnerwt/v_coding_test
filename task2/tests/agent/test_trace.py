@@ -779,6 +779,8 @@ def test_trace_writer_methods_on_closed_raise():
         writer.append_event(_observation_event())
     with pytest.raises(sqlite3.ProgrammingError):
         writer.close_run("x", status="failed", ended_at=TS, final={}, totals={})
+    with pytest.raises(sqlite3.ProgrammingError):
+        writer.next_seq("any-run-id")
 
 
 def test_next_seq_on_fresh_run_returns_1():
