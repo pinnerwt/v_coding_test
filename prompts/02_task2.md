@@ -69,3 +69,5 @@ Create a script that - run after we finished the benchmark in /done_pr, - read a
 /new_task2, and iterate different skills (ask claude to update the skill from what it has learned)
 
 Can you check how we show the benchmark results in /done_pr , how we adjust the task2/README.md ? Propose a better way to visualize the benchmark evolution: 1. please add latest benchmark results as a table. 2. The latest benchmark has higher success rate, while the cost/latency got higher. But this is natural because we spend more steps on the successful task. Adjust the visualization to handle this.
+
+I got a question for you. When writing skills, shall I divide different parts into different minor files, and read them when we are in the next step? I think this would help since we will only read the skill at the very beginning of the prompt process. Read different files make sure the implementations is more dynamic and that the implementation will be in more recent context.
