@@ -1568,6 +1568,47 @@ def test_loop_accepts_locator_cache_kwarg(fixture_server, playwright_chromium):
     writer.close()
 
 
+def test_loop_locator_cache_none_skips_emission_on_read_dispatch(
+    fixture_server, playwright_chromium
+):
+    fixture_url = f"{fixture_server}/drift/submit-form/v1/index.html"
+    intent = "Submit button"
+    run_id = "test-kwarg-none-with-read"
+    writer = _make_writer_with_run(run_id)
+
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+        _response_with_tool_call(_tool_call("read", {"intent": intent}, call_id="tc-2")),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"ok": True},
+                    "evidence": {"url": fixture_url, "text_snippet": "Submit"},
+                },
+                call_id="tc-3",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop(
+            "click Submit",
+            browser,
+            fake_llm,
+            trace_writer=writer,
+            run_id=run_id,
+            locator_cache=None,
+        )
+
+    assert result.status == "succeeded"
+    assert _locate_rows(writer) == [], (
+        "no LocateEvent rows should be emitted when locator_cache=None even on read dispatch"
+    )
+    writer.close()
+
+
 def test_loop_forwards_cache_to_locate(fixture_server, playwright_chromium):
     """When loop() receives a LocatorCache, the read-path locate flow must write to it."""
     from agent.locator_cache import LocatorCache, _origin_from_url
