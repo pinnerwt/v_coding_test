@@ -1000,8 +1000,8 @@ def test_maintenance_drift_rename_real_loop_cache_invalidation(playwright_chromi
 
     cache = LocatorCache(path=":memory:")
 
-    v1_url = f"{fixture_server}/drift/submit-form/v1/index.html"
-    v2_url = f"{fixture_server}/drift/submit-form/v2/index.html"
+    v1_url = f"{fixture_server}/drift/rename/v1/index.html"
+    v2_url = f"{fixture_server}/drift/rename/v2/index.html"
 
     def _open_run(writer, run_id, task_str):
         run = Run(
@@ -1026,7 +1026,7 @@ def test_maintenance_drift_rename_real_loop_cache_invalidation(playwright_chromi
         _open_run(writer_v1, run_id_v1, "click Submit")
         with Browser(playwright_browser=playwright_chromium) as browser:
             browser.goto(v1_url)
-            real_loop(
+            result_v1 = real_loop(
                 "click Submit",
                 browser,
                 _make_llm(v1_url),
@@ -1041,7 +1041,7 @@ def test_maintenance_drift_rename_real_loop_cache_invalidation(playwright_chromi
         _open_run(writer_v2, run_id_v2, "click Submit")
         with Browser(playwright_browser=playwright_chromium) as browser:
             browser.goto(v2_url)
-            real_loop(
+            result_v2 = real_loop(
                 "click Submit",
                 browser,
                 _make_llm(v2_url),
@@ -1055,3 +1055,5 @@ def test_maintenance_drift_rename_real_loop_cache_invalidation(playwright_chromi
     assert cache_events["invalidations"] >= 1, (
         f"Expected at least 1 cache invalidation on v2, got: {cache_events}"
     )
+    assert result_v1.status in {"succeeded", "unverified"}, f"v1 status: {result_v1.status}"
+    assert result_v2.status in {"succeeded", "unverified"}, f"v2 status: {result_v2.status}"
