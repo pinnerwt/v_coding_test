@@ -2,14 +2,29 @@ from __future__ import annotations
 
 import json
 import re
+import uuid
 from dataclasses import asdict
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
 
 from agent.loop import RunResult
-from scripts.eval import CaseResult, _run_case, load_cases, run_suite, run_validators
+from agent.trace import (
+    LocateEvent,
+    PlanEvent,
+    SupervisorEvent,
+    TraceWriter,
+)
+from scripts.eval import (
+    CaseResult,
+    _aggregate_diagnostics,
+    _run_case,
+    load_cases,
+    run_suite,
+    run_validators,
+)
 
 _FIXTURE_CASE = {
     "id": "fixture-heading",
@@ -430,3 +445,196 @@ def test_case_result_serialises_with_quantitative_fields():
     data = json.loads(serialized)
     assert data["prompt_tokens"] == 100
     assert data["latency_ms_per_step"] == [200, 300]
+
+
+# ---------------------------------------------------------------------------
+# Task 1.1: CaseResult diagnostic fields — default values (RED until 4.1)
+# ---------------------------------------------------------------------------
+
+
+def test_case_result_default_diagnostic_fields():
+    cr = CaseResult(id="x", status="succeeded", steps=0, usd=0.0, l_tier_counts={}, validators=[])
+    assert cr.escalations == []
+    assert cr.replans == 0
+    assert cr.cache_events == {}
+
+
+# ---------------------------------------------------------------------------
+# Task 1.2: _aggregate_diagnostics escalation from SupervisorEvent (RED until 4.2)
+# ---------------------------------------------------------------------------
+
+
+def _make_run_id() -> str:
+    return str(uuid.uuid4())
+
+
+def _ts() -> str:
+    return datetime.now(UTC).isoformat()
+
+
+def _writer_with_run(run_id: str) -> TraceWriter:
+    from agent.trace import Run, RunBudget, RunLLM
+
+    writer = TraceWriter(path=":memory:")
+    run = Run(
+        run_id=run_id,
+        task="test",
+        expect_schema=None,
+        budget=RunBudget(steps=5, usd=0.1, seconds=30),
+        llm=RunLLM(base_url="http://x", model="m", temperature=0.0, seed=None),
+        agent_version="test",
+        started_at=_ts(),
+        ended_at=None,
+        status=None,
+        final=None,
+        totals=None,
+    )
+    writer.open_run(run)
+    return writer
+
+
+def test_aggregate_diagnostics_escalation_from_supervisor_event():
+    run_id = _make_run_id()
+    writer = _writer_with_run(run_id)
+
+    locate_miss = LocateEvent(
+        run_id=run_id,
+        seq=writer.next_seq(run_id),
+        ts=_ts(),
+        step_id="s1",
+        intent="Submit button",
+        tier="L1_ax",
+        outcome="miss",
+        candidates=[],
+        chosen=None,
+        cache_action=None,
+        ms=10,
+    )
+    writer.append_event(locate_miss)
+
+    supervisor_ev = SupervisorEvent(
+        run_id=run_id,
+        seq=writer.next_seq(run_id),
+        ts=_ts(),
+        step_id="s1",
+        trigger_event_seq=locate_miss.seq,
+        classified_as="LocatorMiss",
+        policy="next_tier",
+        attempt=1,
+    )
+    writer.append_event(supervisor_ev)
+
+    locate_hit = LocateEvent(
+        run_id=run_id,
+        seq=writer.next_seq(run_id),
+        ts=_ts(),
+        step_id="s1",
+        intent="Submit button",
+        tier="L2_dom",
+        outcome="hit",
+        candidates=[],
+        chosen={"selector": ".btn"},
+        cache_action="write",
+        ms=15,
+    )
+    writer.append_event(locate_hit)
+
+    escalations, replans, cache_events = _aggregate_diagnostics(writer, run_id)
+    assert len(escalations) == 1
+    assert escalations[0]["from_tier"] == "L1_ax"
+    assert escalations[0]["to_tier"] == "L2_dom"
+
+
+# ---------------------------------------------------------------------------
+# Task 1.3: _aggregate_diagnostics counts PlanEvent(reason="replan") (RED until 4.2)
+# ---------------------------------------------------------------------------
+
+
+def test_aggregate_diagnostics_counts_replan():
+    run_id = _make_run_id()
+    writer = _writer_with_run(run_id)
+
+    plan_initial = PlanEvent(
+        run_id=run_id,
+        seq=writer.next_seq(run_id),
+        ts=_ts(),
+        step_id=None,
+        reason="initial",
+        steps=["step 1"],
+        llm_call_id="c1",
+    )
+    writer.append_event(plan_initial)
+
+    plan_replan = PlanEvent(
+        run_id=run_id,
+        seq=writer.next_seq(run_id),
+        ts=_ts(),
+        step_id=None,
+        reason="replan",
+        steps=["step 2"],
+        llm_call_id="c2",
+    )
+    writer.append_event(plan_replan)
+
+    _, replans, _ = _aggregate_diagnostics(writer, run_id)
+    assert replans == 1
+
+
+# ---------------------------------------------------------------------------
+# Task 1.4: _aggregate_diagnostics cache events from LocateEvent (RED until 4.2)
+# ---------------------------------------------------------------------------
+
+
+def test_aggregate_diagnostics_cache_events():
+    run_id = _make_run_id()
+    writer = _writer_with_run(run_id)
+
+    cache_hit = LocateEvent(
+        run_id=run_id,
+        seq=writer.next_seq(run_id),
+        ts=_ts(),
+        step_id="s1",
+        intent="Submit",
+        tier="L1_ax",
+        outcome="hit",
+        candidates=[],
+        chosen={"selector": ".btn"},
+        cache_action="read",
+        ms=5,
+    )
+    writer.append_event(cache_hit)
+
+    cache_invalidate = LocateEvent(
+        run_id=run_id,
+        seq=writer.next_seq(run_id),
+        ts=_ts(),
+        step_id="s1",
+        intent="Submit",
+        tier="L1_ax",
+        outcome="miss",
+        candidates=[],
+        chosen=None,
+        cache_action="invalidate",
+        ms=5,
+    )
+    writer.append_event(cache_invalidate)
+
+    cache_miss = LocateEvent(
+        run_id=run_id,
+        seq=writer.next_seq(run_id),
+        ts=_ts(),
+        step_id="s1",
+        intent="Submit",
+        tier="L1_ax",
+        outcome="miss",
+        candidates=[],
+        chosen=None,
+        cache_action=None,
+        ms=5,
+    )
+    writer.append_event(cache_miss)
+
+    _, _, cache_events = _aggregate_diagnostics(writer, run_id)
+    assert cache_events["hits"] == 1
+    assert cache_events["invalidations"] == 1
+    assert cache_events["misses"] == 1
