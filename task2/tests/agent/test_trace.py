@@ -834,3 +834,80 @@ def test_next_seq_closed_run_raises():
         )
         with pytest.raises(LookupError):
             writer.next_seq(run.run_id)
+
+
+def test_iter_events_empty_run_returns_empty_iterator():
+    run = _run_full()
+    with TraceWriter(":memory:") as writer:
+        writer.open_run(run)
+        assert list(writer.iter_events(run.run_id)) == []
+
+
+def test_iter_events_unknown_run_id_returns_empty_iterator():
+    with TraceWriter(":memory:") as writer:
+        assert list(writer.iter_events("never-opened-run")) == []
+
+
+def test_iter_events_yields_n_events_in_seq_order():
+    run = _run_full()
+    with TraceWriter(":memory:") as writer:
+        writer.open_run(run)
+        writer.append_event(_plan_event(run_id=run.run_id, seq=1))
+        writer.append_event(_locate_event(run_id=run.run_id, seq=2))
+        writer.append_event(_supervisor_event(run_id=run.run_id, seq=3))
+        result = list(writer.iter_events(run.run_id))
+    assert len(result) == 3
+    assert isinstance(result[0], PlanEvent)
+    assert result[0].seq == 1
+    assert isinstance(result[1], LocateEvent)
+    assert result[1].seq == 2
+    assert isinstance(result[2], SupervisorEvent)
+    assert result[2].seq == 3
+
+
+def test_iter_events_types_match_any_event_adapter():
+    from agent.trace import _any_event_adapter
+
+    run = _run_full()
+    with TraceWriter(":memory:") as writer:
+        writer.open_run(run)
+        writer.append_event(_plan_event(run_id=run.run_id, seq=1))
+        writer.append_event(_locate_event(run_id=run.run_id, seq=2))
+        writer.append_event(_supervisor_event(run_id=run.run_id, seq=3))
+        result = list(writer.iter_events(run.run_id))
+        raw_rows = writer._conn.execute(
+            "SELECT payload FROM traces_events WHERE run_id = ? ORDER BY seq", (run.run_id,)
+        ).fetchall()
+    expected = [_any_event_adapter.validate_json(row[0]) for row in raw_rows]
+    assert result == expected
+
+
+def test_iter_events_on_closed_writer_raises():
+    writer = TraceWriter(":memory:")
+    writer.close()
+    with pytest.raises(sqlite3.ProgrammingError):
+        list(writer.iter_events("any-run-id"))
+
+
+def test_iter_events_on_closed_run_still_yields():
+    run = _run_full()
+    with TraceWriter(":memory:") as writer:
+        writer.open_run(run)
+        writer.append_event(_plan_event(run_id=run.run_id, seq=1))
+        writer.append_event(_locate_event(run_id=run.run_id, seq=2))
+        writer.close_run(
+            run.run_id,
+            status="succeeded",
+            ended_at="2024-01-01T00:01:00Z",
+            final={"result": {"answer": "cats"}, "evidence": {}, "failure": None},
+            totals={
+                "steps": 1,
+                "llm_calls": 0,
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "usd": 0.0,
+                "browser_ms": 0,
+            },
+        )
+        result = list(writer.iter_events(run.run_id))
+    assert len(result) == 2
