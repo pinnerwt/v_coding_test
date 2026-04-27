@@ -12,7 +12,7 @@
 
 ## 3. Regression Check
 
-- [ ] 3.1 Run the full `task2/tests/api/test_server.py` suite and confirm all existing tests still pass.
-- [ ] 3.2 Run `uv run ruff check task2/api/server.py task2/tests/api/test_server.py` — fix any lint errors.
-- [ ] 3.3 Run `uv run ruff format task2/api/server.py task2/tests/api/test_server.py` — apply formatting.
-- [ ] 3.4 Re-run `uv run ruff check task2/api/server.py task2/tests/api/test_server.py` to confirm clean.
+- [x] 3.1 Run the full `task2/tests/api/test_server.py` suite and confirm all existing tests still pass.
+- [x] 3.2 Run `uv run ruff check task2/api/server.py task2/tests/api/test_server.py` — fix any lint errors.
+- [x] 3.3 Run `uv run ruff format task2/api/server.py task2/tests/api/test_server.py` — apply formatting.
+- [x] 3.4 Re-run `uv run ruff check task2/api/server.py task2/tests/api/test_server.py` to confirm clean.
