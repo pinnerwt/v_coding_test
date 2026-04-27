@@ -509,3 +509,41 @@ def test_category_summary_omits_unmatched_cases():
     summary_block = output[: output.index("| Case")]
     assert "unmatched" not in summary_block
     assert "other" not in summary_block.lower()
+
+
+def test_category_summary_buckets_correction_and_maintenance_drift_into_drift():
+    from scripts.score import generate_scoreboard
+
+    data = {
+        "run_at": "2026-04-27T00:00:00+00:00",
+        "cases": [
+            {
+                "id": "correction-replan",
+                "status": "succeeded",
+                "steps": 2,
+                "latency_ms_total": 100,
+                "usd": 0.001,
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "l_tier_counts": {},
+                "escalations": [],
+                "replans": 1,
+                "cache_events": {"hits": 0, "invalidations": 0, "misses": 0},
+            },
+            {
+                "id": "maintenance-drift-rename-v2",
+                "status": "succeeded",
+                "steps": 2,
+                "latency_ms_total": 100,
+                "usd": 0.001,
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "l_tier_counts": {},
+                "escalations": [],
+                "replans": 0,
+                "cache_events": {"hits": 0, "invalidations": 1, "misses": 0},
+            },
+        ],
+    }
+    output = generate_scoreboard(data)
+    assert "Drift suite: 2/2 (100%) [target 100%] ✅" in output
