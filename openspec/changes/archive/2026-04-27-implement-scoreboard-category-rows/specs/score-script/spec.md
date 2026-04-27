@@ -1,9 +1,4 @@
-# score-script Specification
-
-## Purpose
-TBD - created by archiving change implement-quantitative-eval. Update Purpose after archive.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: score.py reads a results JSON and emits a markdown scoreboard
 
@@ -86,6 +81,8 @@ The scoreboard SHALL contain all of the following sections, in order:
 - **WHEN** `generate_scoreboard(data)` is called
 - **THEN** the position of `Drift suite:` in the output string SHALL be less than the position of the first `|` character of the per-case table header row
 
+## ADDED Requirements
+
 ### Requirement: Suite-threshold config block
 
 `scripts/score.py` SHALL define a module-level constant `SUITE_THRESHOLDS: dict[str, dict]` that maps suite keys to their configuration. Each entry SHALL have:
@@ -119,39 +116,3 @@ No threshold value SHALL appear as a literal integer in the scoreboard-generatio
 - **WHEN** checking membership
 - **THEN** `"correction-"` SHALL be in the list
 - **AND** `"maintenance-drift-"` SHALL be in the list
-
-### Requirement: score.py --update-readme splices scoreboard into README
-
-When `--update-readme` is passed (with `--readme-path` defaulting to `task2/README.md`), `score.py` SHALL splice the generated scoreboard between sentinel comments in the README:
-
-```
-<!-- SCOREBOARD:BEGIN -->
-...generated markdown...
-<!-- SCOREBOARD:END -->
-```
-
-If the sentinels are absent, `score.py` SHALL append the scoreboard as a new `## Live eval results` section.
-
-The splice SHALL be idempotent: running `--update-readme` twice SHALL produce the same README content as running it once.
-
-#### Scenario: --update-readme replaces content between sentinels
-
-- **GIVEN** `task2/README.md` contains `<!-- SCOREBOARD:BEGIN -->` and `<!-- SCOREBOARD:END -->` with stale content between them
-- **WHEN** `score.py <results_file> --update-readme` is invoked
-- **THEN** the README content between the sentinels SHALL be replaced with the newly generated scoreboard
-- **AND** content outside the sentinels SHALL be unchanged
-
-#### Scenario: --update-readme is idempotent
-
-- **WHEN** `score.py <results_file> --update-readme` is invoked twice on the same results file
-- **THEN** the README content SHALL be identical after both invocations
-
-### Requirement: score.py --latest uses most-recent results file
-
-When no positional `results_file` is supplied, `score.py` SHALL automatically use the most recently modified file in `eval/results/` (sorted by `mtime`, descending).
-
-#### Scenario: No argument defaults to latest file
-
-- **GIVEN** `eval/results/` contains `20260101_120000.json` and `20260426_032729.json`
-- **WHEN** `score.py` is invoked with no positional argument
-- **THEN** it SHALL read `20260426_032729.json` (the more recent file)

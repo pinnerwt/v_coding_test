@@ -428,3 +428,132 @@ def test_scoreboard_missing_failure_class_key_shows_dash():
     }
     output = generate_scoreboard(data)
     assert "| - |" in output
+
+
+# ---------------------------------------------------------------------------
+# implement-scoreboard-category-rows tests
+# ---------------------------------------------------------------------------
+
+_CATEGORIES_FIXTURE = Path(__file__).parent / "fixtures" / "score_categories_results.json"
+
+
+def test_suite_thresholds_importable():
+    from scripts.score import SUITE_THRESHOLDS
+
+    assert "drift" in SUITE_THRESHOLDS
+    assert "fixture" in SUITE_THRESHOLDS
+    assert "live" in SUITE_THRESHOLDS
+    assert SUITE_THRESHOLDS["drift"]["target_pct"] == 100
+    assert SUITE_THRESHOLDS["fixture"]["target_pct"] == 80
+    assert SUITE_THRESHOLDS["live"]["target_pct"] == 60
+    assert "correction-" in SUITE_THRESHOLDS["drift"]["id_prefixes"]
+    assert "maintenance-drift-" in SUITE_THRESHOLDS["drift"]["id_prefixes"]
+
+
+def test_category_summary_passing_fixture():
+    from scripts.score import generate_scoreboard
+
+    data = json.loads(_CATEGORIES_FIXTURE.read_text())
+    output = generate_scoreboard(data)
+    assert "Fixture: 1/1 (100%) [target 80%] ✅" in output
+
+
+def test_category_summary_failing_drift():
+    from scripts.score import generate_scoreboard
+
+    data = json.loads(_CATEGORIES_FIXTURE.read_text())
+    output = generate_scoreboard(data)
+    assert "Drift suite: 0/1 (0%) [target 100%] ❌" in output
+
+
+def test_category_summary_skipped_live():
+    from scripts.score import generate_scoreboard
+
+    data = json.loads(_CATEGORIES_FIXTURE.read_text())
+    output = generate_scoreboard(data)
+    assert "Live: 0/0 ran [target 60%] ⏭️" in output
+
+
+def test_category_summary_before_per_case_table_header():
+    from scripts.score import generate_scoreboard
+
+    data = json.loads(_CATEGORIES_FIXTURE.read_text())
+    output = generate_scoreboard(data)
+    drift_pos = output.index("Drift suite:")
+    header_pos = output.index("| Case")
+    assert drift_pos < header_pos
+
+
+def test_fixture_summary_before_first_fixture_row():
+    from scripts.score import generate_scoreboard
+
+    data = json.loads(_CATEGORIES_FIXTURE.read_text())
+    output = generate_scoreboard(data)
+    fixture_pos = output.index("Fixture:")
+    first_fixture_row_pos = output.index("| fixture-login-v1")
+    assert fixture_pos < first_fixture_row_pos
+
+
+def test_category_summary_omits_unmatched_cases():
+    from scripts.score import generate_scoreboard
+
+    data = {
+        "run_at": "2026-04-27T00:00:00+00:00",
+        "cases": [
+            {
+                "id": "unmatched-case-v1",
+                "status": "succeeded",
+                "steps": 1,
+                "latency_ms_total": 100,
+                "usd": 0.001,
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "l_tier_counts": {},
+                "escalations": [],
+                "replans": 0,
+                "cache_events": {"hits": 0, "invalidations": 0, "misses": 0},
+            }
+        ],
+    }
+    output = generate_scoreboard(data)
+    summary_block = output[: output.index("| Case")]
+    assert "unmatched" not in summary_block
+    assert "other" not in summary_block.lower()
+
+
+def test_category_summary_buckets_correction_and_maintenance_drift_into_drift():
+    from scripts.score import generate_scoreboard
+
+    data = {
+        "run_at": "2026-04-27T00:00:00+00:00",
+        "cases": [
+            {
+                "id": "correction-replan",
+                "status": "succeeded",
+                "steps": 2,
+                "latency_ms_total": 100,
+                "usd": 0.001,
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "l_tier_counts": {},
+                "escalations": [],
+                "replans": 1,
+                "cache_events": {"hits": 0, "invalidations": 0, "misses": 0},
+            },
+            {
+                "id": "maintenance-drift-rename-v2",
+                "status": "succeeded",
+                "steps": 2,
+                "latency_ms_total": 100,
+                "usd": 0.001,
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "l_tier_counts": {},
+                "escalations": [],
+                "replans": 0,
+                "cache_events": {"hits": 0, "invalidations": 1, "misses": 0},
+            },
+        ],
+    }
+    output = generate_scoreboard(data)
+    assert "Drift suite: 2/2 (100%) [target 100%] ✅" in output
