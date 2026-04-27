@@ -313,6 +313,10 @@ Candidate tickets, ordered roughly by impact-per-effort. Each is TDD-shaped so i
 
 45. **Surface tracebacks from `_run_agent`'s internal-error path.** `task2/api/server.py:93-104` catches `Exception` and writes a `final.failure.reason="internal error"` row, but the `except Exception: pass` block (`api/server.py:103-104`) swallows the underlying traceback entirely — it never reaches the uvicorn log, so a smoke-test failure surfaces only as `status=failed, reason="internal error"`, with no signal as to whether the cause was an LLM 404, a Playwright timeout, an import error, or a database lock. Observed during ticket #32's smoke run: first invocation timed out at 60s, server log contained only INFO request lines, and the diagnostic had to be reproduced by hand-instrumenting `_run_agent` in a one-off script. Add structured error logging on the outer `except Exception` (e.g. `logger.exception("agent run failed", extra={"run_id": run_id})`) so the traceback lands in stderr / uvicorn's structured log, and keep the inner `except Exception: pass` only around the `writer.close_run` retry. Tests: a synthetic `_run_agent(run_id, task_req)` where `loop()` raises `RuntimeError("boom")` produces a stderr line containing `RuntimeError: boom` and the file/line of the raise, while still writing the `final.failure.reason="internal error"` row; the inner-close swallowing is unchanged. *Why useful:* removes a recurring "smoke failed but I can't tell why" debugging round that adds 5–10 min per failed iteration.
 
+46. **Promote `Browser._page` to a public read-only accessor.** Multiple tests in `task2/tests/agent/test_loop.py` (and `tests/test_observe.py`) reach into `Browser._page` to drive `_locate_via_ladder` / fixture HTML directly. The underscore is the module's "do not touch outside class" contract, so each leak weakens the convention. Add a `Browser.page` property (or a `Browser.current_page() -> Page` method) returning `self._page` and migrate test call sites. Production code that already lives inside `Browser` keeps using `self._page` as today. Tests: existing tests pass after migration; a new test asserts `Browser.page` returns the same object as `Browser._page` for a freshly opened browser. *Why useful:* the underscore convention should mean something; today it is consistently violated by the test surface. *Trigger:* surfaced repeatedly by review subagents on PR #62 (iteration 2 and iteration 3 reviews).
+
+47. **Tighten `EscalationDecision.policy` to the same `Literal` as `SupervisorEvent.policy`.** `agent/supervisor.py:17` types `EscalationDecision.policy` as plain `str`, but `agent/trace.py:80` types `SupervisorEvent.policy` as `Literal["next_tier", "rerank", "sweep_overlay", "replan", "halt"]`. The mismatch forces a `# type: ignore[arg-type]` in `_emit_supervisor_event` (`agent/loop.py`). Tightening `EscalationDecision.policy` to the same `Literal` enforces the contract end-to-end at type-check time and removes the suppression. Touch all call sites in `Supervisor.handle` (`agent/supervisor.py`) so they construct `EscalationDecision` with literal values, and update unit tests in `tests/test_supervisor.py` to type-check against the new alias. Tests: existing `test_supervisor.py` continues to pass; a mypy / ruff run shows no `arg-type` suppression remaining in `_emit_supervisor_event`. *Why useful:* removes a real type-narrowing gap and a `# type: ignore` line. *Trigger:* surfaced by review subagents on PR #62 (iterations 2 and 3); iteration 2 deferred it as out of scope.
+
 ## Undone
 
 Tickets not yet merged, ordered by urgency. `/new_task2` step 1 selects from this list — pick the highest-urgency entry available; tie-break by lowest ticket number.
@@ -330,9 +334,9 @@ Urgency tags:
 - **#44** — Align eval-runner `LLM_MODEL` default with `api/server.py`. Every Task 7.1 currently defers because the eval default (`qwen3`) 404s against the local Qwen (`qwen3-5-27b`).
 - **#45** — Surface tracebacks from `_run_agent`'s internal-error path. Removes the recurring "smoke failed but I can't tell why" debug round.
 
-### P1 — observed bugs
+### P1 — observed bugs / type-narrowing gaps
 
-_(none currently)_
+- **#47** — Tighten `EscalationDecision.policy` to `Literal[...]`; removes a `# type: ignore` and enforces SupervisorEvent contract end-to-end.
 
 ### P2 — measurable improvements
 
@@ -350,6 +354,7 @@ _(none currently)_
 
 - **#39** — Robustness mini-suite (prompt injection, malformed fixtures).
 - **#40** — Cost & latency budget overruns as soft failures (`near_budget` flag).
+- **#46** — Promote `Browser._page` to a public read-only accessor.
 
 ### In flight
 

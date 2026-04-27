@@ -2245,6 +2245,47 @@ def test_emit_supervisor_event_maps_ambiguous_reason():
     writer.close()
 
 
+def test_emit_supervisor_event_maps_vision_miss_reason():
+    from agent.locate import LocatorMiss
+    from agent.loop import _emit_supervisor_event
+    from agent.supervisor import EscalationDecision
+
+    run_id = "sv-test-3"
+    writer = _make_writer_with_run(run_id)
+
+    locate_event = LocateEvent(
+        run_id=run_id,
+        seq=1,
+        ts="2024-01-01T00:00:00+00:00",
+        step_id=None,
+        intent="Submit button",
+        tier="L4_vision",
+        outcome="miss",
+        candidates=[],
+        chosen=None,
+        cache_action=None,
+        ms=0,
+    )
+    writer.append_event(locate_event)
+
+    decision = EscalationDecision(next_tier=None, policy="halt", attempt=1)
+    miss = LocatorMiss(reason="vision_miss", match_count=0)
+    _emit_supervisor_event(
+        trace_writer=writer,
+        run_id=run_id,
+        decision=decision,
+        miss=miss,
+        trigger_event_seq=1,
+        step_id=None,
+    )
+
+    events = list(writer.iter_events(run_id))
+    sv_events = [e for e in events if isinstance(e, SupervisorEvent)]
+    assert len(sv_events) == 1
+    assert sv_events[0].classified_as == "LocatorMiss"
+    writer.close()
+
+
 # ---------------------------------------------------------------------------
 # _locate_via_ladder trace emission unit tests
 # ---------------------------------------------------------------------------
