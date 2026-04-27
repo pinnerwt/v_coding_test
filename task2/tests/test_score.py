@@ -480,8 +480,8 @@ def test_category_summary_before_per_case_table():
     data = json.loads(_CATEGORIES_FIXTURE.read_text())
     output = generate_scoreboard(data)
     drift_pos = output.index("Drift suite:")
-    table_pos = output.index("| ")
-    assert drift_pos < table_pos
+    first_row_pos = output.index("| drift-submit-form-v1")
+    assert drift_pos < first_row_pos
 
 
 def test_category_summary_omits_unmatched_cases():
