@@ -25,7 +25,7 @@ TBD - created by archiving change implement-observe-ax-tree. Update Purpose afte
 
 ### Requirement: build_observation function signature
 
-`agent.observe` SHALL export a function `build_observation(browser, last_action)` that accepts a `Browser` instance and a `last_action` dict or `None`, and returns a `dict` with exactly these keys: `url` (str), `title` (str), `ax_tree_digest` (str), `ax_fingerprint` (str), `last_action` (dict or None).
+`agent.observe` SHALL export a function `build_observation(browser, last_action)` that accepts a `Browser` instance and a `last_action` dict or `None`, and returns a `dict` with exactly these keys: `url` (str), `title` (str), `ax_tree_digest` (str), `ax_fingerprint` (str), `last_action` (dict or None). The internal helper `_ax_nodes` SHALL accept the `Browser` instance (not the raw page) so it can access the CDP session cache.
 
 #### Scenario: Return dict has required keys
 
