@@ -1,7 +1,7 @@
 ## 1. Write failing test (TDD red)
 
-- [ ] 1.1 Add a test to `tests/agent/test_supervisor.py` that imports `EscalationPolicy` from `agent.trace` and asserts `EscalationDecision.policy` is annotated with it — run pytest to confirm it fails (ImportError or AttributeError)
-- [ ] 1.2 Run `uv run pytest task2/tests/agent/test_supervisor.py -x` and verify the new test fails for the expected reason
+- [x] 1.1 Add a test to `tests/agent/test_supervisor.py` that imports `EscalationPolicy` from `agent.trace` and asserts `EscalationDecision.policy` is annotated with it — run pytest to confirm it fails (ImportError or AttributeError)
+- [x] 1.2 Run `uv run pytest task2/tests/agent/test_supervisor.py -x` and verify the new test fails for the expected reason
 
 ## 2. Define EscalationPolicy alias in agent/trace.py
 
