@@ -2093,7 +2093,7 @@ def test_loop_emit_locate_event_step_id_on_cache_hit(fixture_server, playwright_
 
 
 # ---------------------------------------------------------------------------
-# _emit_supervisor_event unit tests (Task 2.3)
+# _emit_supervisor_event unit tests
 # ---------------------------------------------------------------------------
 
 
@@ -2202,7 +2202,7 @@ def test_emit_supervisor_event_maps_ambiguous_reason():
 
 
 # ---------------------------------------------------------------------------
-# _locate_via_ladder trace emission unit tests (Task 3.6)
+# _locate_via_ladder trace emission unit tests
 # ---------------------------------------------------------------------------
 
 
@@ -2217,19 +2217,6 @@ def _make_mock_supervisor_next_tier(next_tier: str = "L2_dom"):
             return decision
 
     return _AlwaysNextTier()
-
-
-def _make_mock_supervisor_halt():
-    from agent.locate import LocatorMiss
-    from agent.supervisor import EscalationDecision, Supervisor
-
-    class _AlwaysHalt(Supervisor):
-        def handle(self, miss: LocatorMiss, *, current_tier: str) -> EscalationDecision:
-            decision = EscalationDecision(next_tier=None, policy="halt", attempt=1)
-            self.last_policy = decision.policy
-            return decision
-
-    return _AlwaysHalt()
 
 
 def test_locate_via_ladder_l1_miss_l2_hit_emits_three_events(fixture_server, playwright_chromium):
