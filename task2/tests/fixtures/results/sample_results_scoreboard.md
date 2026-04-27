@@ -15,6 +15,8 @@ Total USD: $0.0005   Total tokens: 200 prompt + 30 completion
 |---|---|
 | (none) | 0 |
 
+**Mechanism firing rates**
+
 | Mechanism | Cases with ≥1 firing |
 |---|---|
 | L1→L2 escalation | 0/2 |

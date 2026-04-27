@@ -23,8 +23,9 @@ def generate_scoreboard(data: dict) -> str:
     lines.append(f"Generated from eval run: {run_at}")
     lines.append("")
 
-    lines.append("| Case | Status | Steps | Latency (ms) | USD | Tokens (P+C) |")
-    lines.append("|---|---|---|---|---|---|")
+    _hdr = "| Case | Status | Steps | Latency (ms) | USD | Tokens (P+C)"
+    lines.append(_hdr + " | Escalations | Replans | Cache Inv. |")
+    lines.append("|---|---|---|---|---|---|---|---|---|")
 
     non_skipped = []
     total_usd = 0.0
@@ -40,8 +41,14 @@ def generate_scoreboard(data: dict) -> str:
         prompt = case.get("prompt_tokens", 0)
         completion = case.get("completion_tokens", 0)
         cid = case.get("id", "?")
+        esc_count = len(case.get("escalations", []))
+        replan_count = case.get("replans", 0)
+        cache_inv = case.get("cache_events", {}).get("invalidations", 0)
 
-        lines.append(f"| {cid} | {status} | {steps} | {lat} | ${usd:.4f} | {prompt}+{completion} |")
+        lines.append(
+            f"| {cid} | {status} | {steps} | {lat} | ${usd:.4f} | {prompt}+{completion}"
+            f" | {esc_count} | {replan_count} | {cache_inv} |"
+        )
 
         if status != "skipped":
             non_skipped.append(case)
@@ -77,6 +84,21 @@ def generate_scoreboard(data: dict) -> str:
             lines.append(f"| {tier} | {count} |")
     else:
         lines.append("| (none) | 0 |")
+
+    lines.append("")
+
+    esc_with_firing = sum(1 for c in non_skipped if len(c.get("escalations", [])) >= 1)
+    replan_with_firing = sum(1 for c in non_skipped if c.get("replans", 0) >= 1)
+    cache_inv_with_firing = sum(
+        1 for c in non_skipped if c.get("cache_events", {}).get("invalidations", 0) >= 1
+    )
+    lines.append("**Mechanism firing rates**")
+    lines.append("")
+    lines.append("| Mechanism | Cases with ≥1 firing |")
+    lines.append("|---|---|")
+    lines.append(f"| L1→L2 escalation | {esc_with_firing}/{total} |")
+    lines.append(f"| Replan | {replan_with_firing}/{total} |")
+    lines.append(f"| Cache invalidation | {cache_inv_with_firing}/{total} |")
 
     lines.append("")
     lines.append(f"Recorded at: {run_at}")
