@@ -412,6 +412,8 @@ def test_run_agent_logs_traceback(temp_db, monkeypatch, caplog):
     assert rec.exc_text is not None, "exc_text should be populated"
     assert "RuntimeError" in rec.exc_text
     assert "boom" in rec.exc_text
+    assert "test_server.py" in rec.exc_text
+    assert getattr(rec, "run_id", None) == run_id
 
     conn = sqlite3.connect(temp_db)
     row = conn.execute(
