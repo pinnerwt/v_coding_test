@@ -9,16 +9,19 @@ Wraps up an OpenSpec-driven PR end-to-end: archive → commit → push → merge
 
 ## Steps
 
-0. **Pre-flight: working tree.** Before invoking any sub-skill, run `git status` and decide:
-   - **Clean** → proceed.
-   - **Dirty with files in this PR's scope** (e.g. an in-progress `.claude/commands/<name>.md` skill update from the same lessons-learned thread on this branch — especially when there is already a sibling `chore(skills):` commit on the branch) → commit it on the branch as a separate `chore(<scope>):` commit *before* archive, with the standard `Co-Authored-By` trailer. Do not bundle it into the archive commit.
-   - **Dirty with unrelated files** → stop and ask the user. Never silently `git stash` or `git restore`.
+0. **Pre-flight: working tree and local master.** Before invoking any sub-skill:
+   - Run `git status` and decide:
+     - **Clean** → proceed.
+     - **Dirty with files in this PR's scope** (e.g. an in-progress `.claude/commands/<name>.md` skill update from the same lessons-learned thread on this branch — especially when there is already a sibling `chore(skills):` commit on the branch) → commit it on the branch as a separate `chore(<scope>):` commit *before* archive, with the standard `Co-Authored-By` trailer. Do not bundle it into the archive commit.
+     - **Dirty with unrelated files** → stop and ask the user. Never silently `git stash` or `git restore`.
+   - Run `git fetch origin master` then `git log --oneline origin/master..master` to catch local-only commits sitting on master. If there are any, surface them to the user **now** rather than tripping over them at step 5: they are usually either (a) a stale duplicate of changes already landed via a feature branch (the cheapest check is `git diff origin/master master -- <touched paths>` — if empty, the local commit is redundant and should be dropped via `git reset --hard origin/master` after confirmation) or (b) genuine unpushed work that needs its own PR before this skill can cleanly fast-forward master.
 
 1. **Archive the change.** Invoke the `opsx:archive` skill (equivalently `openspec-archive-change`). If the user did not pass a change name as `args`, follow the archive skill's normal prompting flow to pick one. Pass `args` straight through if provided.
 
    **Critical ordering:** if the change has delta specs under `openspec/changes/<name>/specs/`, the `opsx:sync` step MUST run *before* `mv`-ing the directory to `archive/`. The archive skill's prompt assesses sync state and offers to invoke `/opsx:sync`; accept it (or invoke `/opsx:sync <name>` yourself) **before** the move. Once the directory has moved, the deltas are no longer at the path the sync skill looks at, and the main specs will silently miss the update. This is especially important when a delta introduces a *new* capability (a directory under `specs/` that does not yet exist under `openspec/specs/`) — sync is the only step that creates the new main spec.
 
 1a. **Record task2 benchmark (if task2 was touched).**
+   - **Important — index hygiene first.** The archive in step 1 uses `git mv`, which auto-stages the rename. If you `git add task2/...` and `git commit` here without unstaging, the commit sweeps in the staged openspec renames as well. Before staging benchmark files, run `git restore --staged openspec/` (or stage explicit paths and verify with `git diff --staged --name-only` that only `task2/` paths are present). The openspec renames belong in the step-2 commit, not this one.
    - Detect: `git diff --name-only origin/master...HEAD -- task2/` — if empty, skip this step entirely.
    - **Pre-check Qwen reachability** before starting the benchmark (the run takes minutes and silently degrades with a dead endpoint):
      `curl -sf http://localhost:8090/v1/models -m 3 -o /dev/null && echo Qwen reachable || echo Qwen NOT reachable`
@@ -49,6 +52,7 @@ Wraps up an OpenSpec-driven PR end-to-end: archive → commit → push → merge
    - If mergeable is `CONFLICTING`, stop and ask the user.
    - Otherwise merge with `gh pr merge --squash --delete-branch` (default: squash + delete branch). If the user passed a different strategy via `args` (e.g. `merge`, `rebase`), honor it.
    - **Verifying the merge landed:** there is no `merged` JSON field on `gh pr view` (it will fail with `Unknown JSON field: "merged"`). Use `gh pr view --json state,mergedAt,mergeCommit -q .` instead — `state` flips to `MERGED`, `mergedAt` becomes a timestamp, and `mergeCommit.oid` is the squash sha.
+   - **Don't panic on a noisy `gh pr merge` tail.** When local master has diverged (the step-0 check should have caught this), the embedded post-merge `git pull` inside `gh pr merge --delete-branch` aborts with `fatal: Not possible to fast-forward, aborting.`. That message refers to the local-checkout sync only — the squash merge has already landed remotely. Verify with the `gh pr view` JSON above and continue to step 5.
 
 5. **Sync master.** `gh pr merge --delete-branch` already switches the local checkout back to `master` and prunes the remote branch, so a bare `git checkout master` is usually a no-op (and `git pull` without a fast-forward guard will silently pull a merge commit if your local master has diverged). Prefer `git pull --ff-only` here. If `--ff-only` refuses, stop and investigate — your local master has work that isn't on the remote and a blind pull would hide that. Report the new HEAD briefly.
 
