@@ -62,6 +62,7 @@ Agent call:
     - `task2/plan.md` (ticket acceptance criteria).
     - `task2/CLAUDE.md` and the rest of `task2/` for code conventions and existing structure.
     - Repo-root `CLAUDE.md` (TDD non-negotiable, `uv` + `ruff` tooling, no hardcoded LLM provider).
+    - Existing main specs under `openspec/specs/` — `grep -rn "ticket #<N>" openspec/specs/` for the ticket number being implemented. If a prior change's spec contains a Note like "tracked under ticket #<N>" referring to *this* ticket, the MODIFIED delta MUST update that Note to drop the now-stale forward reference (the ticket is being implemented, not deferred). Missing this leaves the merged main spec pointing at a closed ticket.
   - Required report back: list of files created under `openspec/changes/<change-name>/`, plus any open questions or assumptions made.
 
 Wait for the subagent to return, then **verify the actual artifacts on disk** (`ls openspec/changes/<change-name>/`, spot-read `proposal.md` and `tasks.md`) before continuing. The subagent's summary describes intent, not necessarily what landed.

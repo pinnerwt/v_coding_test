@@ -123,6 +123,7 @@ Subject conventions for the per-iteration pattern:
 - `chore(task2): apply codex review fixes` — the iteration that addresses the bulk of (a) findings.
 - `chore(task2): sync tasks.md with narrowed spec scenarios` — when the iteration only updates tasks.md/checklist text to match a spec narrowed in an earlier iteration.
 - `chore(task2): align proposal.md with as-built <X> behavior` — when the iteration only fixes proposal.md drift.
+- `chore(task2): drop redundant <X> in <test-or-file>` — when the iteration only removes a single now-unreachable branch, redundant `try/except`, or dead assertion that codex flagged once the surrounding contract was tightened in a prior iteration.
 
 Each commit:
 - Stages only the relevant files (do **not** `git add -A` blindly — exclude `.venv/`, scratch files, anything not tied to the review fixes).
