@@ -2476,9 +2476,7 @@ def test_loop_click_to_done(fixture_server, playwright_chromium):
 
     responses = [
         _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
-        _response_with_tool_call(
-            _tool_call("click", {"intent": "Submit button"}, call_id="tc-2")
-        ),
+        _response_with_tool_call(_tool_call("click", {"intent": "Submit button"}, call_id="tc-2")),
         _response_with_tool_call(
             _tool_call(
                 "done",
@@ -2524,9 +2522,7 @@ def test_loop_click_outcome_nav(fixture_server, playwright_chromium):
 
     responses = [
         _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
-        _response_with_tool_call(
-            _tool_call("click", {"intent": "Go button"}, call_id="tc-2")
-        ),
+        _response_with_tool_call(_tool_call("click", {"intent": "Go button"}, call_id="tc-2")),
         _response_with_tool_call(
             _tool_call(
                 "done",
@@ -2568,9 +2564,7 @@ def test_loop_click_l1_miss_supervisor_escalation(fixture_server, playwright_chr
 
     responses = [
         _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
-        _response_with_tool_call(
-            _tool_call("click", {"intent": "Submit button"}, call_id="tc-2")
-        ),
+        _response_with_tool_call(_tool_call("click", {"intent": "Submit button"}, call_id="tc-2")),
         _response_with_tool_call(
             _tool_call(
                 "done",
@@ -2593,10 +2587,9 @@ def test_loop_click_l1_miss_supervisor_escalation(fixture_server, playwright_chr
     events = list(writer.iter_events(run_id))
     supervisor_events = [e for e in events if isinstance(e, SupervisorEvent)]
     assert len(supervisor_events) >= 1, "expected at least one SupervisorEvent"
-    next_tier_event = next(
-        (e for e in supervisor_events if e.policy == "next_tier"), None
-    )
+    next_tier_event = next((e for e in supervisor_events if e.policy == "next_tier"), None)
+    policies = [e.policy for e in supervisor_events]
     assert next_tier_event is not None, (
-        f"expected SupervisorEvent(policy='next_tier'), got policies={[e.policy for e in supervisor_events]}"
+        f"expected SupervisorEvent(policy='next_tier'), got policies={policies}"
     )
     writer.close()

@@ -8,19 +8,19 @@
 
 ## 2. Production Code (Green Phase)
 
-- [ ] 2.1 Add `click` fixture HTML to `task2/tests/fixtures/` — a minimal page with `<button>Submit</button>` and a nav-triggering page with a button that links to a second page
-- [ ] 2.2 Update `ToolName` literal in `loop.py` to include `"click"`
-- [ ] 2.3 Append `click` entry to `TOOLS` list in `loop.py` — `function.name="click"`, `parameters.properties={"intent": {"type": "string"}}`, `required=["intent"]`
-- [ ] 2.4 Add `_emit_act_event` helper in `loop.py` mirroring `_emit_locate_event` / `_emit_supervisor_event` pattern
-- [ ] 2.5 Add `click` branch in `_dispatch`: call `_locate_with_supervisor`, record `url_before`, call `page.locator(result.selector).click(timeout=5000)`, detect nav/ok/timeout/error, emit `ActEvent`, return outcome string
-- [ ] 2.6 Run `uv run pytest task2/tests/agent/test_loop.py -k "click"` — confirm all four new tests pass
+- [x] 2.1 Add `click` fixture HTML to `task2/tests/fixtures/` — a minimal page with `<button>Submit</button>` and a nav-triggering page with a button that links to a second page
+- [x] 2.2 Update `ToolName` literal in `loop.py` to include `"click"`
+- [x] 2.3 Append `click` entry to `TOOLS` list in `loop.py` — `function.name="click"`, `parameters.properties={"intent": {"type": "string"}}`, `required=["intent"]`
+- [x] 2.4 Add `_emit_act_event` helper in `loop.py` mirroring `_emit_locate_event` / `_emit_supervisor_event` pattern
+- [x] 2.5 Add `click` branch in `_dispatch`: call `_locate_with_supervisor`, record `url_before`, call `page.locator(result.selector).click(timeout=5000)`, detect nav/ok/timeout/error, emit `ActEvent`, return outcome string
+- [x] 2.6 Run `uv run pytest task2/tests/agent/test_loop.py -k "click"` — confirm all four new tests pass
 
 ## 3. Full Test Suite and Lint
 
-- [ ] 3.1 Run `uv run pytest task2/tests/agent/test_loop.py` — confirm no regressions in existing loop tests
-- [ ] 3.2 Run `uv run pytest task2/tests/` — confirm full suite stays green
-- [ ] 3.3 Run `uv run ruff check task2/` — fix any lint errors
-- [ ] 3.4 Run `uv run ruff format task2/` — fix any formatting issues
+- [x] 3.1 Run `uv run pytest task2/tests/agent/test_loop.py` — confirm no regressions in existing loop tests
+- [x] 3.2 Run `uv run pytest task2/tests/` — confirm full suite stays green
+- [x] 3.3 Run `uv run ruff check task2/` — fix any lint errors
+- [x] 3.4 Run `uv run ruff format task2/` — fix any formatting issues
 
 ## 4. Benchmark Verification
 
