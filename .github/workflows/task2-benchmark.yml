@@ -60,9 +60,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          DIFF_FILE="${{ github.workspace }}/task2/benchmark/${{ github.head_ref }}/diff.md"
+          SAFE_BRANCH=$(echo "${{ github.head_ref }}" | sed 's|[^a-zA-Z0-9._-]|-|g' | sed 's|^[.-]*||;s|[.-]*$||')
+          DIFF_FILE="${{ github.workspace }}/task2/benchmark/${SAFE_BRANCH}/diff.md"
           if [ ! -f "$DIFF_FILE" ] || [ ! -s "$DIFF_FILE" ]; then
-            echo "No diff.md found for branch ${{ github.head_ref }}; skipping PR comment"
+            echo "No diff.md found for branch ${SAFE_BRANCH}; skipping PR comment"
             exit 0
           fi
           gh pr comment "${{ github.event.pull_request.number }}" \
