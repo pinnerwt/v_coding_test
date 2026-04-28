@@ -5,6 +5,7 @@ import json
 import os
 import sys
 import uuid
+from collections.abc import Iterator
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -14,6 +15,7 @@ import yaml
 
 from agent.browser import Browser
 from agent.llm import _DEFAULT_LLM_MODEL, LLMClient
+from agent.locator_cache import LocatorCache
 from agent.loop import RunResult, loop
 from agent.trace import (
     ActEvent,
@@ -294,6 +296,33 @@ def _skipped_result(case: dict, reason: SkipReason) -> CaseResult:
     )
 
 
+def iter_runnable_subcases(
+    parent_cases: list[dict],
+    *,
+    live: bool,
+) -> Iterator[tuple[dict, LocatorCache | None, SkipReason | None]]:
+    for parent_case in parent_cases:
+        variants = parent_case.get("variants")
+        use_shared_cache = parent_case.get("shared_cache", False) and variants
+        shared_cache: LocatorCache | None = (
+            LocatorCache(path=":memory:") if use_shared_cache else None
+        )
+
+        if variants:
+            sub_cases = [{**parent_case, "id": f"{parent_case['id']}-{v}"} for v in variants]
+        else:
+            sub_cases = [parent_case]
+
+        for case in sub_cases:
+            fixture_path = case.get("fixture_path")
+            if fixture_path is not None and not Path(fixture_path).exists():
+                yield case, None, "fixture_missing"
+            elif not live and not case.get("fixture", False):
+                yield case, None, "live_disabled"
+            else:
+                yield case, shared_cache, None
+
+
 def run_suite(
     cases: list[dict],
     *,
@@ -302,8 +331,6 @@ def run_suite(
     llm_client: Any = None,
     browser: Any = None,
 ) -> Path:
-    from agent.locator_cache import LocatorCache
-
     results_dir = Path(results_dir)
     results_dir.mkdir(parents=True, exist_ok=True)
     now = datetime.now(UTC)

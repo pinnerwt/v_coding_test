@@ -9,11 +9,11 @@
 
 ## 2. GREEN — Implement iter_runnable_subcases
 
-- [ ] 2.1 Hoist `from agent.locator_cache import LocatorCache` to module level in `task2/scripts/eval.py` (remove the deferred import inside `run_suite`).
-- [ ] 2.2 Add `from typing import Iterator` to `task2/scripts/eval.py` imports (if not already present).
-- [ ] 2.3 Implement `iter_runnable_subcases(parent_cases: list[dict], *, live: bool) -> Iterator[tuple[dict, LocatorCache | None, SkipReason | None]]` in `task2/scripts/eval.py` immediately above `run_suite`, following the skip ladder described in the spec: fixture_path missing → `"fixture_missing"`, else not live and no fixture → `"live_disabled"`, else `None`.
-- [ ] 2.4 Run `uv run pytest task2/tests/test_iter_runnable_subcases.py` and confirm all five new tests PASS.
-- [ ] 2.5 Run `uv run pytest task2/` and confirm no existing tests are broken.
+- [x] 2.1 Hoist `from agent.locator_cache import LocatorCache` to module level in `task2/scripts/eval.py` (remove the deferred import inside `run_suite`).
+- [x] 2.2 Add `from typing import Iterator` to `task2/scripts/eval.py` imports (if not already present).
+- [x] 2.3 Implement `iter_runnable_subcases(parent_cases: list[dict], *, live: bool) -> Iterator[tuple[dict, LocatorCache | None, SkipReason | None]]` in `task2/scripts/eval.py` immediately above `run_suite`, following the skip ladder described in the spec: fixture_path missing → `"fixture_missing"`, else not live and no fixture → `"live_disabled"`, else `None`.
+- [x] 2.4 Run `uv run pytest task2/tests/test_iter_runnable_subcases.py` and confirm all five new tests PASS.
+- [x] 2.5 Run `uv run pytest task2/` and confirm no existing tests are broken.
 
 ## 3. REFACTOR — Consume iterator in run_suite
 
