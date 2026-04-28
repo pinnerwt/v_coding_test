@@ -67,9 +67,17 @@ _CANNED_RESULT_2 = RunResult(
 def test_run_case_navigates_to_fixture_url_before_loop():
     case = {**_FIXTURE_CASE, "fixture_url": "data:text/html,<h1>Hi</h1>"}
     browser = MagicMock()
-    with patch("scripts.eval.loop", return_value=_CANNED_RESULT):
+    goto_called_before_loop = False
+
+    def _loop_spy(*args, **kwargs):
+        nonlocal goto_called_before_loop
+        goto_called_before_loop = browser.goto.called
+        return _CANNED_RESULT
+
+    with patch("scripts.eval.loop", side_effect=_loop_spy):
         _run_case(case, llm_client=MagicMock(), browser=browser)
     browser.goto.assert_called_once_with("data:text/html,<h1>Hi</h1>")
+    assert goto_called_before_loop
 
 
 def test_run_case_skips_navigation_when_no_fixture_url():
@@ -87,6 +95,17 @@ def test_run_case_captures_exception_as_failed(tmp_path):
         result = _run_case(_FIXTURE_CASE, llm_client=MagicMock(), browser=MagicMock())
     assert result.status == "failed"
     assert result.id == "fixture-heading"
+
+
+def test_run_case_captures_goto_exception_as_failed():
+    browser = MagicMock()
+    browser.goto.side_effect = RuntimeError("nav fail")
+    case = {**_FIXTURE_CASE, "fixture_url": "data:text/html,<h1>x</h1>"}
+    with patch("scripts.eval.loop", return_value=_CANNED_RESULT):
+        result = _run_case(case, llm_client=MagicMock(), browser=browser)
+    assert result.status == "failed"
+    assert result.failure_class == "tool_error"
+    assert "nav fail" in result.failure_detail
 
 
 def test_results_json_shape(tmp_path):
@@ -1545,6 +1564,14 @@ def test_pass_statuses_is_public_module_attribute():
     from scripts.eval import PASS_STATUSES
 
     assert PASS_STATUSES == frozenset({"succeeded", "unverified"})
+
+
+def test_fail_statuses_is_public_module_attribute():
+    from scripts.eval import FAIL_STATUSES, PASS_STATUSES
+
+    assert isinstance(FAIL_STATUSES, frozenset)
+    assert FAIL_STATUSES == frozenset({"failed", "blocked", "timeout"})
+    assert not FAIL_STATUSES & PASS_STATUSES
 
 
 # canary field on CaseResult (eval-runner canary spec)

@@ -16,8 +16,8 @@
 ## 3. Case YAML changes — tag canary cases
 
 - [x] 3.1 Add `canary: true` to `task2/eval/cases/fixture-heading.yaml`.
-- [x] 3.2 Add `canary: true` to `task2/eval/cases/fixture-count.yaml`.
-- [x] 3.3 Create `task2/eval/cases/canary-read-h1.yaml` with the spec-required fields (`id: canary-read-h1`, `canary: true`, `fixture: true`, `budget.steps: 1`, etc.). Reuse the same fixture page as `fixture-heading` (check what `fixture_path` or fixture URL `fixture-heading` uses and mirror it).
+- [x] 3.2 Add `fixture_url` (a `data:text/html,...` URL with a minimal `<ul><li>...` page) to `task2/eval/cases/fixture-count.yaml`. Do NOT add `canary: true` — fixture-count is intentionally non-canary because of the unrelated IntentParseError tracked as ticket #56.
+- [x] 3.3 Create `task2/eval/cases/canary-read-h1.yaml` with the spec-required fields (`id: canary-read-h1`, `canary: true`, `fixture: true`, `budget.steps: 5`, etc.). Reuse the same fixture page as `fixture-heading` (check what `fixture_path` or fixture URL `fixture-heading` uses and mirror it).
 - [x] 3.4 Run `uv run python -m scripts.eval --case fixture-heading` with a mocked/stub run and verify the output JSON contains `"canary": true`.
 
 ## 4. canary_gate module — make tests green

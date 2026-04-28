@@ -228,11 +228,11 @@ def _run_case(
 ) -> CaseResult:
     run_id = str(uuid.uuid4())
     fixture_url = case.get("fixture_url")
-    if fixture_url:
-        browser.goto(fixture_url)
     with TraceWriter(path=":memory:") as writer:
         _open_trace_run(writer, run_id, case)
         try:
+            if fixture_url:
+                browser.goto(fixture_url)
             run_result: RunResult = loop(
                 case["task"],
                 browser,
