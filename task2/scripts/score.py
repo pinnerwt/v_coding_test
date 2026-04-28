@@ -33,6 +33,23 @@ SUITE_THRESHOLDS: dict[str, dict] = {
 }
 
 
+def _render_step_breakdown(steps: list[dict]) -> str:
+    if not steps:
+        return ""
+    header = "| Step | Tool | Prompt Tokens | Completion Tokens | Latency (ms) |"
+    sep = "|---|---|---|---|---|"
+    rows = [header, sep]
+    for step in steps:
+        tool = ", ".join(step.get("tool_calls") or []) or "-"
+        rows.append(
+            f"| {step['step']} | {tool}"
+            f" | {step.get('prompt_tokens', 0)}"
+            f" | {step.get('completion_tokens', 0)}"
+            f" | {step.get('latency_ms', 0)} |"
+        )
+    return "\n".join(rows)
+
+
 def _percentile(values: list[int], pct: int) -> int:
     if not values:
         return 0
@@ -64,7 +81,7 @@ def _render_case_status(case: dict) -> str:
     return case.get("status", "unknown")
 
 
-def generate_scoreboard(data: dict) -> str:
+def generate_scoreboard(data: dict, *, detail: bool = False) -> str:
     cases = data.get("cases", [])
     run_at = data.get("run_at", "unknown")
 
@@ -116,6 +133,23 @@ def generate_scoreboard(data: dict) -> str:
             f"| {cid} | {status} | {steps} | {lat} | ${usd:.4f} | {prompt}+{completion}"
             f" | {esc_count} | {replan_count} | {cache_inv} | {fc} |"
         )
+
+        raw_status = case.get("status", "unknown")
+        is_failing = raw_status not in ("succeeded", "unverified", "skipped")
+        steps_data = case.get("step_breakdown") or []
+        if is_failing and steps_data:
+            table = _render_step_breakdown(steps_data)
+            lines.append("")
+            if detail:
+                lines.append(table)
+            else:
+                lines.append(
+                    f"<details><summary>step breakdown ({len(steps_data)} steps)</summary>"
+                )
+                lines.append("")
+                lines.append(table)
+                lines.append("")
+                lines.append("</details>")
 
         if status != "skipped":
             non_skipped.append(case)
@@ -233,6 +267,11 @@ def main(argv: list[str] | None = None) -> None:
         default=None,
         help="Path to baseline results JSON; appends Δ vs master diff block to output",
     )
+    parser.add_argument(
+        "--detail",
+        action="store_true",
+        help="Emit per-step breakdown table for failing cases",
+    )
     args = parser.parse_args(argv)
 
     if args.results_file:
@@ -242,7 +281,7 @@ def main(argv: list[str] | None = None) -> None:
         results_path = _find_latest_results(results_dir)
 
     data = json.loads(results_path.read_text())
-    scoreboard = generate_scoreboard(data)
+    scoreboard = generate_scoreboard(data, detail=args.detail)
 
     if args.diff is not None:
         diff_path = Path(args.diff)
