@@ -4,10 +4,16 @@ Drift suite: 0/0 ran [target 100%] ⏭️
 Fixture: 1/2 (50%) [target 80%] ❌
 Live: 0/0 ran [target 60%] ⏭️
 
+**Failure histogram** (1 failed)
+
+| Failure class | Count |
+|---|---|
+| no_done_emitted | 1 |
+
 | Case | Status | Steps | Latency (ms) | USD | Tokens (P+C) | Escalations | Replans | Cache Hits | Cache Misses | Cache Inv. | Failure class |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | fixture-heading | succeeded | 2 | 400 | $0.0005 | 200+30 | 0 | 0 | 0 | 0 | 0 | - |
-| fixture-count | failed | 1 | 800 | $0.0000 | 0+0 | 0 | 0 | 0 | 0 | 0 | - |
+| fixture-count | failed | 1 | 800 | $0.0000 | 0+0 | 0 | 0 | 0 | 0 | 0 | no_done_emitted |
 
 <details><summary>step breakdown (1 steps)</summary>
 

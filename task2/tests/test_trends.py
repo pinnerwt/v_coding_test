@@ -516,6 +516,149 @@ def test_flag_regression_returns_false_for_empty_list():
     assert flag_regression([]) is False
 
 
+# ---------------------------------------------------------------------------
+# implement-failure-clustering-histogram: trends tests (Red phase)
+# ---------------------------------------------------------------------------
+
+
+def _case_with_fc(
+    *,
+    cid: str = "c",
+    status: str = "failed",
+    failure_class: str | None = None,
+) -> dict:
+    base = _case(cid=cid, status=status)
+    base["failure_class"] = failure_class
+    return base
+
+
+def test_collect_failure_class_runs_basic(tmp_path):
+    from scripts.trends import collect_failure_class_runs
+
+    _write_run(
+        tmp_path / "r1" / "results.json",
+        "2026-04-26T01:00:00+00:00",
+        [
+            _case_with_fc(cid="a", failure_class="supervisor_halt"),
+            _case_with_fc(cid="b", failure_class="supervisor_halt"),
+        ],
+    )
+    _write_run(
+        tmp_path / "r2" / "results.json",
+        "2026-04-26T02:00:00+00:00",
+        [
+            _case_with_fc(cid="c", failure_class="locator_miss"),
+        ],
+    )
+    result = collect_failure_class_runs(tmp_path)
+    assert len(result) == 2
+    assert result[0] == {"supervisor_halt": 2}
+    assert result[1] == {"locator_miss": 1}
+
+
+def test_collect_failure_class_runs_excludes_none(tmp_path):
+    from scripts.trends import collect_failure_class_runs
+
+    _write_run(
+        tmp_path / "r1" / "results.json",
+        "2026-04-26T01:00:00+00:00",
+        [_case_with_fc(cid="a", failure_class=None)],
+    )
+    result = collect_failure_class_runs(tmp_path)
+    assert len(result) == 1
+    assert result[0] == {}
+
+
+def test_render_failure_classes_svg_basic(tmp_path):
+    from scripts.trends import render_failure_classes_svg
+
+    runs = [
+        _make_run("b1", "2026-04-26T01:00:00+00:00", 0.5),
+        _make_run("b2", "2026-04-26T02:00:00+00:00", 0.5),
+    ]
+    class_counts = [{"supervisor_halt": 2}, {"locator_miss": 1}]
+    svg = render_failure_classes_svg(runs, class_counts)
+    assert svg.startswith("<svg")
+    assert svg.rstrip().endswith("</svg>")
+    assert "supervisor_halt" in svg
+    assert "locator_miss" in svg
+    assert len(svg) > 0
+
+
+def test_render_failure_classes_svg_empty():
+    from scripts.trends import render_failure_classes_svg
+
+    svg = render_failure_classes_svg([], [])
+    assert "Failure classes: no data" in svg
+
+
+def test_render_failure_classes_svg_deterministic_colors():
+    from scripts.trends import render_failure_classes_svg
+
+    run = _make_run("b1", "2026-04-26T01:00:00+00:00", 0.5)
+
+    class_counts_a = [{"supervisor_halt": 3, "locator_miss": 1}]
+    class_counts_b = [{"supervisor_halt": 1, "locator_miss": 2}]
+
+    svg_a = render_failure_classes_svg([run], class_counts_a)
+    svg_b = render_failure_classes_svg([run], class_counts_b)
+
+    import re
+
+    def _extract_class_color(svg: str, cls: str) -> str | None:
+        pattern = rf'fill="(#[0-9a-fA-F]{{6}})"/><text[^>]*>{re.escape(cls)}</text>'
+        m = re.search(pattern, svg)
+        return m.group(1) if m else None
+
+    color_halt_a = _extract_class_color(svg_a, "supervisor_halt")
+    color_halt_b = _extract_class_color(svg_b, "supervisor_halt")
+    assert color_halt_a is not None
+    assert color_halt_a == color_halt_b
+
+
+def test_write_trends_writes_failure_classes_svg(tmp_path):
+    from scripts.trends import collect_runs, write_trends
+
+    _write_run(
+        tmp_path / "bench" / "r1" / "results.json",
+        "2026-04-26T01:00:00+00:00",
+        [_case_with_fc(cid="a", failure_class="supervisor_halt")],
+    )
+    out_dir = tmp_path / "bench" / "_trends"
+    bench_root = tmp_path / "bench"
+    runs = collect_runs(bench_root)
+    write_trends(runs, out_dir=out_dir, benchmark_root=bench_root)
+    svg_path = out_dir / "failure_classes.svg"
+    assert svg_path.exists()
+    assert svg_path.read_text().startswith("<svg")
+
+
+def test_write_trends_readme_includes_failure_classes_svg(tmp_path):
+    from scripts.trends import collect_runs, write_trends
+
+    _write_run(
+        tmp_path / "bench" / "r1" / "results.json",
+        "2026-04-26T01:00:00+00:00",
+        [_case_with_fc(cid="a", failure_class="supervisor_halt")],
+    )
+    readme = tmp_path / "README.md"
+    readme.write_text(
+        "# Title\n\n<!-- TRENDS:BEGIN -->\nold\n<!-- TRENDS:END -->\n\n## Other\nkeep\n"
+    )
+    bench_root = tmp_path / "bench"
+    out_dir = bench_root / "_trends"
+    runs = collect_runs(bench_root)
+    write_trends(runs, out_dir=out_dir, readme_path=readme, benchmark_root=bench_root)
+    text = readme.read_text()
+    begin = text.index("<!-- TRENDS:BEGIN -->") + len("<!-- TRENDS:BEGIN -->")
+    end = text.index("<!-- TRENDS:END -->")
+    block = text[begin:end]
+    assert "benchmark/_trends/failure_classes.svg" in block
+    cost_pos = block.index("benchmark/_trends/cost.svg")
+    fc_pos = block.index("benchmark/_trends/failure_classes.svg")
+    assert cost_pos < fc_pos
+
+
 def test_flag_regression_returns_false_at_exactly_5pp_boundary():
     from scripts.trends import flag_regression
 
@@ -527,6 +670,47 @@ def test_flag_regression_returns_false_at_exactly_5pp_boundary():
     assert flag_regression(runs) is False
 
 
+def test_render_failure_classes_svg_polygons_are_cumulatively_stacked():
+    import re
+
+    from scripts.trends import render_failure_classes_svg
+
+    runs = [_make_run("b1", "2026-04-26T01:00:00+00:00", 0.0)]
+    class_counts = [{"alpha": 2, "beta": 3}]
+    svg = render_failure_classes_svg(runs, class_counts)
+
+    _W = 720
+    _H = 220
+    _PAD_L = 60
+    _PAD_R = 20
+    _PAD_T = 30
+    _PAD_B = 60
+    plot_w = _W - _PAD_L - _PAD_R
+    plot_h = _H - _PAD_T - _PAD_B
+    axis_y = _PAD_T + plot_h
+    y_max_raw = max(sum(c.values()) for c in class_counts)
+    y_max = y_max_raw * 1.15
+
+    def y_at(v):
+        return axis_y - (v / y_max) * plot_h
+
+    x0 = _PAD_L + plot_w / 2
+
+    polygons = re.findall(r'<polygon points="([^"]+)"', svg)
+    assert len(polygons) == 2, f"expected 2 polygons, got {len(polygons)}: {polygons}"
+
+    alpha_pts = polygons[0]
+    beta_pts = polygons[1]
+
+    alpha_top = f"{x0:.2f},{y_at(2):.2f}"
+    beta_top = f"{x0:.2f},{y_at(5):.2f}"
+    beta_baseline = f"{x0:.2f},{y_at(2):.2f}"
+
+    assert alpha_top in alpha_pts, f"alpha top {alpha_top!r} not in {alpha_pts!r}"
+    assert beta_top in beta_pts, f"beta top {beta_top!r} not in {beta_pts!r}"
+    assert beta_baseline in beta_pts, f"beta baseline {beta_baseline!r} not in {beta_pts!r}"
+
+
 def test_flag_regression_returns_false_when_latest_above_median():
     from scripts.trends import flag_regression
 
@@ -536,6 +720,17 @@ def test_flag_regression_returns_false_when_latest_above_median():
         _make_run("b3", "2026-04-26T03:00:00+00:00", 0.8),
     ]
     assert flag_regression(runs) is False
+
+
+def test_write_trends_writes_failure_classes_svg_when_benchmark_root_none(tmp_path):
+    from scripts.trends import write_trends
+
+    runs = [_make_run("b1", "2026-04-26T01:00:00+00:00", 0.5)]
+    out_dir = tmp_path / "out"
+    write_trends(runs, out_dir=out_dir, benchmark_root=None)
+    svg_path = out_dir / "failure_classes.svg"
+    assert svg_path.exists()
+    assert svg_path.read_text().startswith("<svg")
 
 
 def test_flag_regression_no_warning_for_single_run_in_readme(tmp_path):
