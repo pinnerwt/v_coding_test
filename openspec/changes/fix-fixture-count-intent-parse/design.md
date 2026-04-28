@@ -45,9 +45,9 @@ Option (b) adds a parser mode that does not flow through `role`/`name` at all, r
 
 ## Risks / Trade-offs
 
-- [Risk] The LLM in production may still phrase the intent as `"items"` (invalid token). Mitigation: the integration test's stub is written to emit the canonical valid phrasing; a system-prompt note may be added in a follow-up to enumerate valid role tokens.
+- [Risk] The LLM in production may phrase the intent as `"items"` or `"list items"` (would-be invalid tokens under the original validator). Mitigation: the `_ROLE_ALIASES` map normalizes both of those phrasings to canonical roles before the allow-list check; the integration test stub emits the production phrasing exactly, and end-to-end verification under real Qwen3.5-27B confirms `[PASS] fixture-count`.
 - [Risk] `page.get_by_role("listitem")` with `name=None` matches all `<li>` elements, returning an ambiguous count, causing L3 LLM disambiguation or L4 fallback. Mitigation: this is expected and correct; the locate ladder handles it; the integration stub sidesteps it by returning a count-based answer without a locate call per item.
-- [Risk] Extending `_SUPPORTED_ROLES` with `list`/`listitem` may cause the spec validator in existing tests to fail if they assert the exact set. Mitigation: check `test_locate.py` for hardcoded role sets before the implementation PR.
+- [Risk] Extending `_SUPPORTED_ROLES` with `list`/`listitem` may cause downstream tests that assert the exact role set to drift. Mitigation: the supported set is derived from `get_args(SupportedRole)`, and `test_supported_role_literal_alias_exported` locks the seven-role set so any future ticket adding a role MUST update both the `Literal` alias and that test in lockstep.
 
 ## Migration Plan
 

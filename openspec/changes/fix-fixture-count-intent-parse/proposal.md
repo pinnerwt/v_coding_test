@@ -7,7 +7,7 @@
 - Extend `_SUPPORTED_ROLES` in `agent/locate.py` to include `list` and `listitem`.
 - Add a role-alias normalization map (`_ROLE_ALIASES = {"items": "listitem", "lists": "list"}`) in `agent/locate.py` and apply it in `parse_intent` after lowercasing the role token, so the production-LLM phrasing `"list items"` parses to `("listitem", "list")` instead of raising `IntentParseError`.
 - Add the L1/L2 cascade handling for these new roles: `list` and `listitem` have no interactive counterpart, so the L2 branch returns a `LocatorMiss(reason="zero_matches")` for them, falling through to L4; document this in the spec.
-- Add a unit test in `task2/tests/test_locate.py` asserting `parse_intent("the list items")` returns `("listitem", "the list")` — no exception — and `parse_intent("list")` returns `("list", None)`.
+- Add a unit test in `task2/tests/test_locate.py` asserting `parse_intent("list items")` returns `("listitem", "list")` (production-LLM phrasing — `items` aliased to `listitem`, leaving `list` as the name) — no exception — and `parse_intent("list")` returns `("list", None)`.
 - Add a stubbed-LLM integration test in `task2/tests/test_eval.py` running `fixture-count` against a minimal fake that emits the canonical phrasing and asserts `status in {"succeeded", "unverified"}`.
 - Re-add `canary: true` to `task2/eval/cases/fixture-count.yaml` once the locate fix is green.
 - Update `openspec/specs/canary-gate/spec.md` to enumerate three canary cases instead of two, and remove the hold-out note about `fixture-count`.
