@@ -29,9 +29,9 @@
 
 ## 5. CI workflow — add canary gate step
 
-- [ ] 5.1 In `.github/workflows/task2-benchmark.yml`, add the "Canary gate" step after the "Verify benchmark recorded for branch" step.
-- [ ] 5.2 The step computes `SAFE_BRANCH` (same pattern as the "Post diff as PR comment" step) and runs `uv run python -m scripts.canary_gate --results benchmark/${SAFE_BRANCH}/results.json`.
-- [ ] 5.3 Confirm the step has `set -euo pipefail` so exit code 1 from the gate propagates to the CI job.
+- [x] 5.1 In `.github/workflows/task2-benchmark.yml`, add the "Canary gate" step after the "Verify benchmark recorded for branch" step.
+- [x] 5.2 The step computes `SAFE_BRANCH` (same pattern as the "Post diff as PR comment" step) and runs `uv run python -m scripts.canary_gate --results benchmark/${SAFE_BRANCH}/results.json`.
+- [x] 5.3 Confirm the step has `set -euo pipefail` so exit code 1 from the gate propagates to the CI job.
 
 ## 6. Spec delta — update bench-repeats forward reference
 
