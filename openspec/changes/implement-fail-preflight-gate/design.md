@@ -38,17 +38,17 @@ The ticket names `"login wall"` and `"captcha"` as examples. A case-insensitive 
 
 The ticket says "step ≤ 1 of a budget-N run." In the current loop, `step_num` starts at 1 and increments before the `fail` branch is reached. A step-1 `fail` arrives when `step_num == 1`. The condition `step_num <= 1` is equivalent but written to match ticket wording exactly.
 
-**Decision: `SupervisorEvent.trigger_event_seq` is set to `0` for `premature_fail` events when `trace_writer` is `None`.**
+**Decision: `SupervisorEvent.trigger_event_seq` is unconditionally set to `0` for `premature_fail` events.**
 
-When `trace_writer` and `run_id` are both provided, `trigger_event_seq` is set to `trace_writer.next_seq(run_id) - 1` (the seq of the most recent emitted event). When `trace_writer` is `None`, the `SupervisorEvent` is appended to `events` (like `_DecisionMarker`) with `seq=0` and `run_id="loop"` — the same pattern used by `_emit_plan_event` in no-writer mode.
+`trigger_event_seq` is always `0`, regardless of whether `trace_writer` and `run_id` are provided. The spec permits this (see `specs/trace-schema-writer/spec.md:7`, "MAY be set to `0`"). The rationale: a premature_fail by definition fires when `_prior_act_outcomes` is empty — there has been no prior Locate or Act event in this iteration that could serve as the triggering event, so `0` is the canonical "no trigger" sentinel rather than a synthetic `next_seq - 1` value.
 
 **Decision: nudge string format is `f"you have {max_steps - step_num} steps left and have not attempted to interact — try \`click\`/\`type\` first."`**
 
 This matches the ticket verbatim. `max_steps - step_num` gives remaining steps at the time of rejection (the current step is not counted as consumed since it did not terminate the loop).
 
-**Decision: `_has_actionable_outcome` is a private module-level helper.**
+**Decision: the actionable-outcome predicate is inlined as `not _prior_act_outcomes` — no standalone helper.**
 
-Signature: `def _has_actionable_outcome(outcome: str) -> bool`. Returns `True` when `outcome in {"ok", "nav"}`. This is the same predicate as `_CLICK_SUCCESS_OUTCOMES` for `click`. For `type`, `"ok"` is the only success outcome. Using a shared helper keeps the accumulation condition readable.
+The simplify pass collapsed the originally-planned private helper into a direct truthiness check on `_prior_act_outcomes`. Since the list only ever receives values from successful click/type dispatches (outcome in `{"ok", "nav"}` for click, `"ok"` for type), an empty list is equivalent to "no actionable outcome recorded." The inline `not _prior_act_outcomes` check is simpler and avoids an unnecessary module-level function.
 
 ## Risks / Trade-offs
 

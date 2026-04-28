@@ -73,6 +73,8 @@ def test_supervisor_event_premature_fail_literal():
         attempt=1,
     )
     assert event.classified_as == "premature_fail"
+    serialized = event.model_dump_json()
+    assert '"classified_as":"premature_fail"' in serialized
 
 
 def test_loop_fail_step1_no_prior_action_is_rejected(fixture_server, playwright_chromium):
@@ -150,7 +152,7 @@ def test_loop_fail_irrecoverable_keyword_honored_on_step1(fixture_server, playwr
     assert len(premature_events) == 0
 
 
-def test_loop_fail_step1_after_successful_click_is_honored(fixture_server, playwright_chromium):
+def test_loop_fail_after_successful_click_is_honored(fixture_server, playwright_chromium):
     fixture_url = f"{fixture_server}/loop_happy_path.html"
 
     events: list = []
