@@ -89,6 +89,7 @@ class CaseResult:
     failure_class: str | None = None
     failure_detail: str | None = None
     skip_reason: SkipReason | None = None
+    canary: bool = False
 
     def __post_init__(self) -> None:
         if self.status == _SKIP_STATUS:
@@ -222,7 +223,9 @@ def _classify_failure(
     return "no_done_emitted", "no DoneEvent in trace"
 
 
-def _run_case(case: dict[str, Any], llm_client: Any, browser: Any, cache: Any = None) -> CaseResult:
+def _run_case(
+    case: dict[str, Any], llm_client: Any, browser: Any, cache: Any = None, canary: bool = False
+) -> CaseResult:
     run_id = str(uuid.uuid4())
     with TraceWriter(path=":memory:") as writer:
         _open_trace_run(writer, run_id, case)
@@ -246,6 +249,7 @@ def _run_case(case: dict[str, Any], llm_client: Any, browser: Any, cache: Any = 
                 validators=[{"name": "exception", "ok": False, "error": repr(exc)}],
                 failure_class="tool_error",
                 failure_detail=repr(exc),
+                canary=canary,
             )
         events, escalations, replans, cache_events = _aggregate_diagnostics(writer, run_id)
     validator_results = run_validators(
@@ -270,6 +274,7 @@ def _run_case(case: dict[str, Any], llm_client: Any, browser: Any, cache: Any = 
         cache_events=cache_events,
         failure_class=failure_class,
         failure_detail=failure_detail,
+        canary=canary,
     )
 
 
@@ -282,6 +287,7 @@ def _skipped_result(case: dict, reason: SkipReason) -> CaseResult:
         l_tier_counts={},
         validators=[],
         skip_reason=reason,
+        canary=case.get("canary", False),
     )
 
 
@@ -317,7 +323,13 @@ def run_suite(
             elif not live and not case.get("fixture", False):
                 r = _skipped_result(case, "live_disabled")
             else:
-                r = _run_case(case, llm_client, browser, cache=shared_cache)
+                r = _run_case(
+                    case,
+                    llm_client,
+                    browser,
+                    cache=shared_cache,
+                    canary=case.get("canary", False),
+                )
             case_results.append(r)
             print(f"[{_label(r.status)}] {r.id} ({r.steps} steps, ${r.usd:.4f})", flush=True)
 

@@ -5,13 +5,13 @@
 
 ## 2. Schema changes — add `canary` field to CaseResult and AggregatedCaseResult
 
-- [ ] 2.1 In `task2/scripts/eval.py`, add `canary: bool = False` field to `CaseResult` (after `skip_reason`).
-- [ ] 2.2 In `task2/scripts/eval.py`, update `_skipped_result` to accept and forward `canary=case.get("canary", False)` to `CaseResult`.
-- [ ] 2.3 In `task2/scripts/eval.py`, update `run_suite` to pass `canary=case.get("canary", False)` when calling `_run_case` — and update `_run_case` signature to accept and forward `canary: bool = False` to `CaseResult`.
-- [ ] 2.4 In `task2/scripts/benchmark.py`, add `canary: bool = False` field to `AggregatedCaseResult`.
-- [ ] 2.5 In `task2/scripts/benchmark.py`, update `_skipped_aggregate` to accept and forward `canary=case.get("canary", False)`.
-- [ ] 2.6 In `task2/scripts/benchmark.py`, update `aggregate_repeats` to pass `canary=case.get("canary", False)` to `AggregatedCaseResult`.
-- [ ] 2.7 Run existing tests: `uv run pytest tests/` — confirm no regressions from field additions.
+- [x] 2.1 In `task2/scripts/eval.py`, add `canary: bool = False` field to `CaseResult` (after `skip_reason`).
+- [x] 2.2 In `task2/scripts/eval.py`, update `_skipped_result` to accept and forward `canary=case.get("canary", False)` to `CaseResult`.
+- [x] 2.3 In `task2/scripts/eval.py`, update `run_suite` to pass `canary=case.get("canary", False)` when calling `_run_case` — and update `_run_case` signature to accept and forward `canary: bool = False` to `CaseResult`.
+- [x] 2.4 In `task2/scripts/benchmark.py`, add `canary: bool = False` field to `AggregatedCaseResult`.
+- [x] 2.5 In `task2/scripts/benchmark.py`, update `_skipped_aggregate` to accept and forward `canary=case.get("canary", False)`.
+- [x] 2.6 In `task2/scripts/benchmark.py`, update `aggregate_repeats` to pass `canary=case.get("canary", False)` to `AggregatedCaseResult`.
+- [x] 2.7 Run existing tests: `uv run pytest tests/` — confirm no regressions from field additions.
 
 ## 3. Case YAML changes — tag canary cases
 

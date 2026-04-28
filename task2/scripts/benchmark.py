@@ -54,6 +54,7 @@ class AggregatedCaseResult:
     cache_events: dict = field(default_factory=dict)
     failure_class: str | None = None
     skip_reason: str | None = None
+    canary: bool = False
 
     def __post_init__(self) -> None:
         if self.repeat_status not in _VALID_REPEAT_STATUSES:
@@ -94,6 +95,7 @@ def _skipped_aggregate(case: dict, *, repeats: int, reason: str) -> AggregatedCa
         cache_events={},
         failure_class=None,
         skip_reason=reason,
+        canary=case.get("canary", False),
     )
 
 
@@ -168,6 +170,7 @@ def aggregate_repeats(
         cache_events=rep_run.cache_events,
         failure_class=rep_run.failure_class,
         skip_reason=rep_run.skip_reason if repeat_status == "skipped" else None,
+        canary=case.get("canary", False),
     )
 
 

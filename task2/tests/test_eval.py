@@ -829,9 +829,9 @@ def _capture_run_case_caches():
     received: list = []
     original = eval_mod._run_case
 
-    def capture(case, llm_client, browser, cache=None):
+    def capture(case, llm_client, browser, cache=None, canary=False):
         received.append(cache)
-        return original(case, llm_client, browser, cache=cache)
+        return original(case, llm_client, browser, cache=cache, canary=canary)
 
     return received, capture
 
