@@ -11,15 +11,20 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal, get_args
 
+from agent.locator_cache import LocatorCache
 from scripts.eval import (
     _PASS_STATUSES,
+    _SKIP_STATUS,
     _run_case,
+    _skipped_result,
     build_clients,
     compute_exit_code,
     load_cases,
     run_suite,
 )
 from scripts.score import _percentile, generate_scoreboard
+
+_DEFAULT_REPEATS = 1
 
 RepeatStatus = Literal["all_pass", "partial", "all_fail", "skipped"]
 _VALID_REPEAT_STATUSES: frozenset[str] = frozenset(get_args(RepeatStatus))
@@ -54,10 +59,56 @@ class AggregatedCaseResult:
             )
 
 
-def aggregate_repeats(case: dict, *, repeats: int, llm_client, browser) -> AggregatedCaseResult:
-    runs = [_run_case(case, llm_client, browser) for _ in range(repeats)]
+def _pre_run_skip_reason(case: dict, *, live: bool) -> str | None:
+    fixture_path = case.get("fixture_path")
+    if fixture_path is not None and not Path(fixture_path).exists():
+        return "fixture_missing"
+    if not live and not case.get("fixture", False):
+        return "live_disabled"
+    return None
 
-    all_skipped = all(r.status == "skipped" for r in runs)
+
+def _skipped_aggregate(case: dict, *, repeats: int, reason: str) -> AggregatedCaseResult:
+    skip = _skipped_result(case, reason)
+    return AggregatedCaseResult(
+        id=case["id"],
+        repeat_status="skipped",
+        repeats=repeats,
+        passed_runs=0,
+        median_latency_ms=0,
+        p95_latency_ms=0,
+        stddev_usd=0.0,
+        avg_mechanism_firings=0.0,
+        status=_SKIP_STATUS,
+        steps=0,
+        usd=0.0,
+        prompt_tokens=0,
+        completion_tokens=0,
+        latency_ms_total=0,
+        escalations=[],
+        replans=0,
+        cache_events={},
+        failure_class=None,
+        skip_reason=skip.skip_reason,
+    )
+
+
+def aggregate_repeats(
+    case: dict,
+    *,
+    repeats: int,
+    llm_client,
+    browser,
+    live: bool = False,
+    cache=None,
+) -> AggregatedCaseResult:
+    skip_reason = _pre_run_skip_reason(case, live=live)
+    if skip_reason is not None:
+        return _skipped_aggregate(case, repeats=repeats, reason=skip_reason)
+
+    runs = [_run_case(case, llm_client, browser, cache=cache) for _ in range(repeats)]
+
+    all_skipped = all(r.status == _SKIP_STATUS for r in runs)
     passed_runs = sum(1 for r in runs if r.status in _PASS_STATUSES)
 
     if all_skipped:
@@ -73,7 +124,7 @@ def aggregate_repeats(case: dict, *, repeats: int, llm_client, browser) -> Aggre
         "all_pass": "succeeded",
         "partial": "failed",
         "all_fail": "failed",
-        "skipped": "skipped",
+        "skipped": _SKIP_STATUS,
     }
     derived_status = status_map[repeat_status]
 
@@ -90,7 +141,7 @@ def aggregate_repeats(case: dict, *, repeats: int, llm_client, browser) -> Aggre
     median_steps = int(statistics.median(steps_values)) if steps_values else 0
     mean_usd = sum(usd_values) / len(usd_values) if usd_values else 0.0
 
-    failing_runs = [r for r in runs if r.status not in _PASS_STATUSES and r.status != "skipped"]
+    failing_runs = [r for r in runs if r.status not in _PASS_STATUSES and r.status != _SKIP_STATUS]
     rep_run = failing_runs[-1] if failing_runs else runs[-1]
 
     return AggregatedCaseResult(
@@ -107,7 +158,7 @@ def aggregate_repeats(case: dict, *, repeats: int, llm_client, browser) -> Aggre
         usd=mean_usd,
         prompt_tokens=sum(r.prompt_tokens for r in runs),
         completion_tokens=sum(r.completion_tokens for r in runs),
-        latency_ms_total=median_lat,
+        latency_ms_total=sum(latencies),
         escalations=rep_run.escalations,
         replans=round(mean_replans),
         cache_events=rep_run.cache_events,
@@ -187,7 +238,7 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="verify mode: check results exist and run_at >= BASE_ISO_DATE; do not run",
     )
-    parser.add_argument("--repeats", type=int, default=1)
+    parser.add_argument("--repeats", type=int, default=_DEFAULT_REPEATS)
     args = parser.parse_args(argv)
 
     if args.repeats < 1:
@@ -214,14 +265,32 @@ def main(argv: list[str] | None = None) -> int:
 
     llm_client, browser = build_clients()
 
-    if args.repeats > 1:
+    if args.repeats > _DEFAULT_REPEATS:
+        agg_results: list[AggregatedCaseResult] = []
         with browser:
-            agg_results = [
-                aggregate_repeats(
-                    case, repeats=args.repeats, llm_client=llm_client, browser=browser
-                )
-                for case in all_cases
-            ]
+            for parent_case in all_cases:
+                variants = parent_case.get("variants")
+                use_shared_cache = parent_case.get("shared_cache", False) and variants
+                shared_cache = LocatorCache(path=":memory:") if use_shared_cache else None
+
+                if variants:
+                    sub_cases = [
+                        {**parent_case, "id": f"{parent_case['id']}-{v}"} for v in variants
+                    ]
+                else:
+                    sub_cases = [parent_case]
+
+                for case in sub_cases:
+                    agg_results.append(
+                        aggregate_repeats(
+                            case,
+                            repeats=args.repeats,
+                            llm_client=llm_client,
+                            browser=browser,
+                            live=args.live,
+                            cache=shared_cache,
+                        )
+                    )
         data = {
             "run_at": datetime.now(UTC).isoformat(),
             "cases": [asdict(r) for r in agg_results],

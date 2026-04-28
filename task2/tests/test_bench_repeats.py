@@ -176,9 +176,7 @@ def test_render_case_status_missing_passed_runs_no_error():
     from scripts.score import _render_case_status
 
     case = {"repeats": 3, "status": "failed"}
-    result = _render_case_status(case)
-    assert isinstance(result, str)
-    assert "3" in result
+    assert _render_case_status(case) == "0/3 ✗"
 
 
 def test_stddev_usd_is_zero_for_single_run():
@@ -354,6 +352,159 @@ def test_generate_scoreboard_renders_fractional_all_pass():
     }
     out = generate_scoreboard(data)
     assert "3/3 ✓" in out
+
+
+def test_aggregate_repeats_skips_live_disabled_without_calling_run_case():
+    from scripts.benchmark import aggregate_repeats
+
+    live_only_case = {**_SAMPLE_CASE, "id": "live-x", "fixture": False}
+    with patch("scripts.benchmark._run_case") as mock_run:
+        result = aggregate_repeats(
+            live_only_case,
+            repeats=3,
+            llm_client=None,
+            browser=None,
+            live=False,
+        )
+
+    assert mock_run.call_count == 0
+    assert result.repeat_status == "skipped"
+    assert result.skip_reason == "live_disabled"
+    assert result.repeats == 3
+    assert result.passed_runs == 0
+
+
+def test_aggregate_repeats_skips_fixture_missing_without_calling_run_case(tmp_path):
+    from scripts.benchmark import aggregate_repeats
+
+    missing_path = tmp_path / "does_not_exist.html"
+    case = {**_SAMPLE_CASE, "id": "fixture-missing-x", "fixture_path": str(missing_path)}
+    with patch("scripts.benchmark._run_case") as mock_run:
+        result = aggregate_repeats(
+            case,
+            repeats=3,
+            llm_client=None,
+            browser=None,
+            live=False,
+        )
+
+    assert mock_run.call_count == 0
+    assert result.repeat_status == "skipped"
+    assert result.skip_reason == "fixture_missing"
+
+
+def test_aggregate_repeats_forwards_cache_to_run_case():
+    from scripts.benchmark import aggregate_repeats
+
+    sentinel_cache = object()
+    passing = _make_case_result("succeeded")
+    with patch("scripts.benchmark._run_case", return_value=passing) as mock_run:
+        aggregate_repeats(
+            _SAMPLE_CASE,
+            repeats=2,
+            llm_client="L",
+            browser="B",
+            cache=sentinel_cache,
+        )
+
+    assert mock_run.call_count == 2
+    for call in mock_run.call_args_list:
+        assert call.kwargs.get("cache") is sentinel_cache
+
+
+def test_aggregate_repeats_latency_ms_total_is_sum_not_median():
+    from scripts.benchmark import aggregate_repeats
+
+    results = [_make_case_result("succeeded", latency_ms_total=lat) for lat in [100, 200, 300]]
+    with patch("scripts.benchmark._run_case", side_effect=results):
+        result = aggregate_repeats(_SAMPLE_CASE, repeats=3, llm_client=None, browser=None)
+
+    assert result.latency_ms_total == 600
+    assert result.median_latency_ms == 200
+
+
+def test_main_repeats_expands_variants(tmp_path, monkeypatch):
+    from unittest.mock import MagicMock
+
+    from scripts.benchmark import main
+
+    cases_dir = tmp_path / "cases"
+    cases_dir.mkdir()
+    (cases_dir / "case.yaml").write_text(
+        "id: fixture-variants\n"
+        "domain: example.com\n"
+        "category: fixture\n"
+        "task: do something\n"
+        "expect: {}\n"
+        "budget: {steps: 5, usd: 1.0, seconds: 30}\n"
+        "fixture: true\n"
+        "variants: [v1, v2]\n"
+    )
+
+    monkeypatch.setenv("EVAL_CASES_DIR", str(cases_dir))
+    monkeypatch.setenv("GITHUB_HEAD_REF", "test-branch")
+    monkeypatch.chdir(tmp_path)
+
+    passing = _make_case_result("succeeded")
+    mock_browser = MagicMock()
+    mock_browser.__enter__ = MagicMock(return_value=mock_browser)
+    mock_browser.__exit__ = MagicMock(return_value=False)
+
+    with (
+        patch("scripts.benchmark._run_case", return_value=passing),
+        patch("scripts.benchmark.build_clients", return_value=(MagicMock(), mock_browser)),
+    ):
+        rc = main(["--repeats", "2"])
+
+    assert rc == 0
+    import json
+
+    data = json.loads((tmp_path / "benchmark" / "test-branch" / "results.json").read_text())
+    case_ids = sorted(c["id"] for c in data["cases"])
+    assert case_ids == ["fixture-variants-v1", "fixture-variants-v2"]
+    for case in data["cases"]:
+        assert case["repeats"] == 2
+        assert case["passed_runs"] == 2
+
+
+def test_main_repeats_skips_live_disabled_without_running_n_times(tmp_path, monkeypatch):
+    from unittest.mock import MagicMock
+
+    from scripts.benchmark import main
+
+    cases_dir = tmp_path / "cases"
+    cases_dir.mkdir()
+    (cases_dir / "case.yaml").write_text(
+        "id: live-only-case\n"
+        "domain: example.com\n"
+        "category: live\n"
+        "task: do something\n"
+        "expect: {}\n"
+        "budget: {steps: 5, usd: 1.0, seconds: 30}\n"
+        "fixture: false\n"
+    )
+
+    monkeypatch.setenv("EVAL_CASES_DIR", str(cases_dir))
+    monkeypatch.setenv("GITHUB_HEAD_REF", "test-branch")
+    monkeypatch.chdir(tmp_path)
+
+    mock_browser = MagicMock()
+    mock_browser.__enter__ = MagicMock(return_value=mock_browser)
+    mock_browser.__exit__ = MagicMock(return_value=False)
+
+    with (
+        patch("scripts.benchmark._run_case") as mock_run,
+        patch("scripts.benchmark.build_clients", return_value=(MagicMock(), mock_browser)),
+    ):
+        rc = main(["--repeats", "3"])
+
+    assert rc == 0
+    assert mock_run.call_count == 0
+    import json
+
+    data = json.loads((tmp_path / "benchmark" / "test-branch" / "results.json").read_text())
+    assert data["cases"][0]["repeat_status"] == "skipped"
+    assert data["cases"][0]["skip_reason"] == "live_disabled"
 
 
 def test_generate_scoreboard_renders_fractional_partial():
