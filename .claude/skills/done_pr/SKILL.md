@@ -38,11 +38,13 @@ Wraps up an OpenSpec-driven PR end-to-end: archive → commit → push → merge
        uv run python -m scripts.bench --suite webvoyager --live
      ```
      This writes `task2/benchmark/<sanitized-branch>/webvoyager/<timestamp>.json` (a `cases` payload in the same shape as `task2/benchmark/task2-benchmarks-readme-and-tier0/webvoyager/baseline.json`).
-   - Stage `task2/benchmark/<sanitized-branch>/webvoyager/` and commit with a HEREDOC message:
+   - Then regenerate the WebVoyager trend SVGs and refresh the README's `<!-- WEBVOYAGER_TRENDS:BEGIN -->` block:
+     `cd task2 && uv run python -m scripts.webvoyager_trends`
+     (reads each `task2/benchmark/<branch>/webvoyager/*.json` — taking the latest per branch by `run_at` — overwrites `task2/benchmark/_webvoyager_trends/{pass_rate,latency,cost,failure_classes}.svg`, and rewrites the trends block in `task2/README.md` between the `<!-- WEBVOYAGER_TRENDS:BEGIN -->` / `<!-- WEBVOYAGER_TRENDS:END -->` markers.)
+   - Stage `task2/benchmark/<sanitized-branch>/webvoyager/`, `task2/benchmark/_webvoyager_trends/`, and `task2/README.md` and commit with a HEREDOC message:
      `chore(task2): record webvoyager benchmark for <branch>`
      including the standard `Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>` trailer.
-   - **Exit code 1 with `[FAIL]` cases is not a crash.** `scripts.bench` exits 1 whenever any case status is in `FAIL_STATUSES`, but the JSON results file is written before exit. WebVoyager runs against live websites and a non-trivial fail rate is expected. Verify the artifact exists (`ls task2/benchmark/<sanitized-branch>/webvoyager/*.json`) and inspect the tail of stdout for `[PASS]`/`[FAIL]`/`[SKIP]` lines; if the artifact is present, proceed to commit.
-   - **No trends/scoreboard generation.** `scripts.trends` and `scripts.benchmark`'s scoreboard rendering are tied to the basic-benchmark layout (single `results.json` per branch + drift/canary suites) and are not invoked here. WebVoyager artifacts are recorded as raw `<timestamp>.json` per branch; trend analysis across runs is left for a future ticket.
+   - **Exit code 1 with `[FAIL]` cases is not a crash.** `scripts.bench` exits 1 whenever any case status is in `FAIL_STATUSES`, but the JSON results file is written before exit. WebVoyager runs against live websites and a non-trivial fail rate is expected. Verify the artifact exists (`ls task2/benchmark/<sanitized-branch>/webvoyager/*.json`) and inspect the tail of stdout for `[PASS]`/`[FAIL]`/`[SKIP]` lines; if the artifact is present, proceed to the trends step and commit.
    - **No-op case:** the only time `git status` is clean after this step is a re-run of `/done_pr` on an already-finalized branch (rare). A first run always produces a new `<timestamp>.json` under `task2/benchmark/<sanitized-branch>/webvoyager/`; a clean `git status` on a first run signals the bench script silently failed — investigate before continuing.
 
 1b. **Diagnose benchmark failures and file actionable tickets in `task2/plan.md`.**

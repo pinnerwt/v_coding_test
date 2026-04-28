@@ -18,7 +18,30 @@ EVAL_RESULTS_DIR="benchmark/${SAFE_BRANCH}/webvoyager" \
   uv run python -m scripts.bench --suite webvoyager --live
 ```
 
-Artifacts land at `task2/benchmark/<sanitized-branch>/webvoyager/<timestamp>.json` in the same `cases[]` shape as `benchmark/task2-benchmarks-readme-and-tier0/webvoyager/baseline.json`. There is no aggregated trend view yet; comparing runs is a manual diff between the JSON files until a future ticket adds it.
+Artifacts land at `task2/benchmark/<sanitized-branch>/webvoyager/<timestamp>.json` in the same `cases[]` shape as `benchmark/task2-benchmarks-readme-and-tier0/webvoyager/baseline.json`.
+
+<!-- WEBVOYAGER_TRENDS:BEGIN -->
+### WebVoyager trends
+
+![Pass rate over time](benchmark/_webvoyager_trends/pass_rate.svg)
+
+![Latency by status (p50 solid, p95 dashed)](benchmark/_webvoyager_trends/latency.svg)
+
+![Cost by status](benchmark/_webvoyager_trends/cost.svg)
+
+![Failure classes over time](benchmark/_webvoyager_trends/failure_classes.svg)
+
+Each branch contributes its most recent WebVoyager run (`benchmark/<branch>/webvoyager/<timestamp>.json`). Pass-rate, latency, and cost are split into passed vs. failed cases; failure-class counts come from the `failure_class` field on each non-passed case.
+
+#### Latest run — `task2-benchmarks-readme-and-tier0` (2026-04-28 16:37 UTC)
+
+| Case | Status | Steps | Latency | Tokens | USD |
+|---|---|---:|---:|---:|---:|
+| `webvoyager-1` | failed | 0 | 0 ms | 0 | $0.0000 |
+| `webvoyager-2` | succeeded | 9 | 92.9 s | 112,679 | $0.1146 |
+| `webvoyager-3` | succeeded | 6 | 51.9 s | 39,567 | $0.0405 |
+| **Total (3 cases, 2 passed)** | | 15 | 144.8 s | 152,246 | $0.1551 |
+<!-- WEBVOYAGER_TRENDS:END -->
 
 #### Tier-0 baseline (3 tasks, 2026-04-28)
 
