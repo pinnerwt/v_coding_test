@@ -1,6 +1,6 @@
 # Regression Onset Report
 
-Generated: 2026-04-28T03:21:14+00:00
+Generated: 2026-04-28T03:27:38+00:00
 Benchmark root: benchmark
 
 Branch names map to git branches via 'git log --oneline <branch> -1'.

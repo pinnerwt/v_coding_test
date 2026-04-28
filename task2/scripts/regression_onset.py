@@ -49,8 +49,7 @@ def _classify_cases(
             if cid not in first_seen:
                 first_seen[cid] = branch
                 seen_count[cid] = 0
-            if status != "skipped":
-                seen_count[cid] += 1
+            seen_count[cid] += 1
             if status in _PASSING:
                 ever_passed.add(cid)
                 last_pass[cid] = branch
