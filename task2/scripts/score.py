@@ -5,6 +5,8 @@ import json
 import sys
 from pathlib import Path
 
+from scripts.baseline_diff import generate_diff_markdown
+
 _SKIP_REASON_ORDER = [
     "live_disabled",
     "infra_unavailable",
@@ -247,11 +249,6 @@ def main(argv: list[str] | None = None) -> None:
         if not diff_path.exists():
             print(f"error: --diff path does not exist: {args.diff}", file=sys.stderr)
             sys.exit(1)
-        _pkg_root = Path(__file__).resolve().parent.parent
-        if str(_pkg_root) not in sys.path:
-            sys.path.insert(0, str(_pkg_root))
-        from scripts.baseline_diff import generate_diff_markdown
-
         baseline_data = json.loads(diff_path.read_text())
         diff_block = generate_diff_markdown(baseline_data, data)
         scoreboard = scoreboard + "\n---\n" + diff_block

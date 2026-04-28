@@ -16,7 +16,7 @@ _SCORE_MD = Path(__file__).parent.parent.parent / ".claude" / "commands" / "scor
 
 def _run_score(*args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        [sys.executable, "scripts/score.py", *args],
+        [sys.executable, "-m", "scripts.score", *args],
         cwd=str(Path(__file__).parent.parent),
         capture_output=True,
         text=True,
