@@ -2593,3 +2593,40 @@ def test_loop_click_l1_miss_supervisor_escalation(fixture_server, playwright_chr
         f"expected SupervisorEvent(policy='next_tier'), got policies={policies}"
     )
     writer.close()
+
+
+# ---------------------------------------------------------------------------
+# Click tool: invalid intent (IntentParseError) returns error string, loop continues
+# ---------------------------------------------------------------------------
+
+
+def test_loop_click_invalid_intent_returns_error_string_loop_continues(
+    fixture_server, playwright_chromium
+):
+    fixture_url = f"{fixture_server}/loop_click_submit.html"
+
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+        _response_with_tool_call(
+            _tool_call("click", {"intent": "the full page content"}, call_id="tc-2")
+        ),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"done": True},
+                    "evidence": {"url": fixture_url, "text_snippet": "Submit"},
+                },
+                call_id="tc-3",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop("click submit", browser, fake_llm, max_steps=10)
+
+    assert result.status == "succeeded", (
+        f"expected loop to continue past IntentParseError and reach done, got {result.status!r}"
+    )
+    assert result.steps <= 4

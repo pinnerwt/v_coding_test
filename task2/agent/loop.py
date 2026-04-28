@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Literal
 import agent.observe as observe
 import agent.plan as plan_module
 from agent.locate import (
+    IntentParseError,
     LocateResult,
     LocatorMiss,
     _canonical_ax_fingerprint,
@@ -534,7 +535,7 @@ def _dispatch(
                 run_id=run_id,
                 step_id=step_id,
             )
-        except LocatorMiss as miss:
+        except (LocatorMiss, IntentParseError) as miss:
             return f"Error: could not locate element for intent {intent_val!r} ({miss})"
         url_before = page.url
         t_click = time.monotonic()
