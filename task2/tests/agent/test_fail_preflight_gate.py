@@ -5,7 +5,7 @@ import json
 from agent.browser import Browser
 from agent.llm import ChatResponse, ToolCall, Usage
 from agent.loop import loop
-from agent.trace import SupervisorEvent
+from agent.trace import Run, RunBudget, RunLLM, SupervisorEvent, TraceWriter
 
 _DUMMY_USAGE = Usage(prompt_tokens=1, completion_tokens=1, total_tokens=2)
 
@@ -171,3 +171,138 @@ def test_loop_fail_step1_after_successful_click_is_honored(fixture_server, playw
         e for e in events if isinstance(e, SupervisorEvent) and e.classified_as == "premature_fail"
     ]
     assert len(premature_events) == 0
+
+
+def test_loop_fail_captcha_keyword_honored_on_step1(fixture_server, playwright_chromium):
+    """CAPTCHA keyword (case-insensitive) bypasses the premature_fail gate."""
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+
+    events: list = []
+    responses = [
+        _response_with_tool_call(
+            _tool_call("fail", {"reason": "CAPTCHA encountered, cannot proceed"}, call_id="tc-f")
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        browser.goto(fixture_url)
+        result = loop("task", browser, fake_llm, events=events, max_steps=10)
+
+    assert result.status == "failed"
+    premature_events = [
+        e for e in events if isinstance(e, SupervisorEvent) and e.classified_as == "premature_fail"
+    ]
+    assert len(premature_events) == 0
+
+
+def test_loop_fail_step1_rejected_nudge_content(fixture_server, playwright_chromium):
+    """Nudge message injected on rejection contains remaining budget and 'click'/'type'."""
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+
+    captured_messages: list[list[dict]] = []
+
+    class _CapturingLLMClient:
+        def __init__(self, responses: list[ChatResponse]):
+            self._responses = list(responses)
+            self._index = 0
+
+        def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
+            if tools is None:
+                return _plan_stub_response()
+            captured_messages.append(list(messages))
+            if self._index < len(self._responses):
+                resp = self._responses[self._index]
+                self._index += 1
+                return resp
+            return ChatResponse(
+                content="done",
+                tool_calls=[],
+                finish_reason="stop",
+                model="fake",
+                usage=_DUMMY_USAGE,
+                raw={},
+            )
+
+    responses = [
+        _response_with_tool_call(_tool_call("fail", {"reason": "nothing here"}, call_id="tc-f")),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"ok": True},
+                    "evidence": {"url": fixture_url, "text_snippet": "Hello"},
+                },
+                call_id="tc-done",
+            )
+        ),
+    ]
+    fake_llm = _CapturingLLMClient(responses)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        browser.goto(fixture_url)
+        loop("task", browser, fake_llm, max_steps=10)
+
+    tool_results = [
+        msg["content"] for msgs in captured_messages for msg in msgs if msg.get("role") == "tool"
+    ]
+    nudge_msgs = [m for m in tool_results if "steps left" in m]
+    assert len(nudge_msgs) >= 1
+    nudge = nudge_msgs[0]
+    assert "9 steps left" in nudge
+    assert "click" in nudge
+    assert "type" in nudge
+
+
+def _make_trace_run(run_id: str) -> TraceWriter:
+    writer = TraceWriter(path=":memory:")
+    run = Run(
+        run_id=run_id,
+        task="test",
+        expect_schema=None,
+        budget=RunBudget(steps=10, usd=0.1, seconds=60),
+        llm=RunLLM(base_url="http://x", model="m", temperature=0.0, seed=None),
+        agent_version="test",
+        started_at="2026-01-01T00:00:00+00:00",
+        ended_at=None,
+        status=None,
+        final=None,
+        totals=None,
+    )
+    writer.open_run(run)
+    return writer
+
+
+def test_loop_fail_step1_rejected_emits_to_trace_writer(fixture_server, playwright_chromium):
+    """premature_fail SupervisorEvent is written to trace_writer when one is provided."""
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+    run_id = "test-run-preflight"
+
+    responses = [
+        _response_with_tool_call(_tool_call("fail", {"reason": "nothing here"}, call_id="tc-f")),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"ok": True},
+                    "evidence": {"url": fixture_url, "text_snippet": "Hello"},
+                },
+                call_id="tc-done",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+
+    with _make_trace_run(run_id) as writer:
+        with Browser(playwright_browser=playwright_chromium) as browser:
+            browser.goto(fixture_url)
+            loop("task", browser, fake_llm, run_id=run_id, trace_writer=writer, max_steps=10)
+
+        recorded = list(writer.iter_events(run_id))
+
+    premature_events = [
+        e
+        for e in recorded
+        if isinstance(e, SupervisorEvent) and e.classified_as == "premature_fail"
+    ]
+    assert len(premature_events) >= 1
