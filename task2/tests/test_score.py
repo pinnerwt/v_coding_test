@@ -629,3 +629,33 @@ def test_skipped_subsection_old_results_no_skip_reason():
     }
     output = generate_scoreboard(data)
     assert "**Skipped**" not in output
+
+
+def test_skipped_subsection_multiple_reasons():
+    from scripts.score import generate_scoreboard
+
+    data = {
+        "run_at": "2026-04-27T00:00:00+00:00",
+        "cases": [
+            _make_skipped_case("c1", skip_reason="live_disabled"),
+            _make_skipped_case("c2", skip_reason="fixture_missing"),
+        ],
+    }
+    output = generate_scoreboard(data)
+    assert "**Skipped** (2 cases)" in output
+    assert "| live_disabled | 1 |" in output
+    assert "| fixture_missing | 1 |" in output
+
+
+def test_skipped_subsection_before_aggregate_summary():
+    from scripts.score import generate_scoreboard
+
+    data = {
+        "run_at": "2026-04-27T00:00:00+00:00",
+        "cases": [_make_skipped_case("c1", skip_reason="live_disabled")],
+    }
+    output = generate_scoreboard(data)
+    skipped_pos = output.index("**Skipped**")
+    # The aggregate summary line starts with "**0/0 succeeded" when all cases are skipped
+    summary_pos = output.index("**0/0 succeeded")
+    assert skipped_pos < summary_pos

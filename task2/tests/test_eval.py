@@ -1445,3 +1445,22 @@ def test_fixture_missing_skip_reason(tmp_path):
     data = json.loads(out.read_text())
     assert data["cases"][0]["status"] == "skipped"
     assert data["cases"][0]["skip_reason"] == "fixture_missing"
+
+
+def test_all_valid_skip_reasons_accepted():
+    for reason in (
+        "live_disabled",
+        "infra_unavailable",
+        "fixture_missing",
+        "feature_not_implemented",
+    ):
+        r = CaseResult(
+            id="x",
+            status="skipped",
+            steps=0,
+            usd=0.0,
+            l_tier_counts={},
+            validators=[],
+            skip_reason=reason,
+        )
+        assert r.skip_reason == reason
