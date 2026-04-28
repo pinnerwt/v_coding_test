@@ -2887,3 +2887,348 @@ def test_loop_click_playwright_error_yields_outcome_error(monkeypatch):
     assert result_str.startswith("Error: click error"), (
         f"expected tool result to start with 'Error: click error', got {result_str!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Type tool: TOOLS list includes type entry with intent and text parameters
+# ---------------------------------------------------------------------------
+
+
+def test_tools_list_includes_type():
+    from agent.loop import TOOLS
+
+    type_entry = next((t for t in TOOLS if t["function"]["name"] == "type"), None)
+    assert type_entry is not None, "TOOLS must contain an entry with function.name == 'type'"
+    props = type_entry["function"]["parameters"]["properties"]
+    assert "intent" in props, "type entry must have 'intent' in parameters.properties"
+    assert props["intent"]["type"] == "string", "type 'intent' parameter must be type 'string'"
+    assert "text" in props, "type entry must have 'text' in parameters.properties"
+    assert props["text"]["type"] == "string", "type 'text' parameter must be type 'string'"
+    required = type_entry["function"]["parameters"]["required"]
+    assert "intent" in required, "'intent' must appear in type's parameters.required"
+    assert "text" in required, "'text' must appear in type's parameters.required"
+
+
+# ---------------------------------------------------------------------------
+# Type tool: LLM calls type → ActEvent(outcome="ok") emitted, run succeeds
+# ---------------------------------------------------------------------------
+
+
+def test_loop_type_fills_textbox(fixture_server, playwright_chromium):
+    fixture_url = f"{fixture_server}/loop_type_textbox.html"
+
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+        _response_with_tool_call(
+            _tool_call(
+                "type",
+                {"intent": "Email textbox", "text": "hello@example.com"},
+                call_id="tc-2",
+            )
+        ),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"typed": True},
+                    "evidence": {"url": fixture_url, "text_snippet": "Type Textbox"},
+                },
+                call_id="tc-3",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+
+    run_id = "test-type-fills-textbox"
+    writer = _make_writer_with_run(run_id)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop("fill email", browser, fake_llm, trace_writer=writer, run_id=run_id)
+        filled_value = browser._page.locator("#email").input_value()
+
+    assert result.status == "succeeded"
+    assert result.steps <= 4
+    assert filled_value == "hello@example.com", (
+        f"expected textbox to contain typed text, got {filled_value!r}"
+    )
+
+    act_events = [e for e in writer.iter_events(run_id) if isinstance(e, ActEvent)]
+    type_act = next((e for e in act_events if e.tool == "type"), None)
+    assert type_act is not None, "expected ActEvent with tool='type'"
+    assert type_act.outcome == "ok", f"expected outcome='ok', got {type_act.outcome!r}"
+    assert type_act.args["intent"] == "Email textbox"
+    writer.close()
+
+
+# ---------------------------------------------------------------------------
+# Type tool: L1 miss (all tiers miss) → tool error returned, loop continues
+# ---------------------------------------------------------------------------
+
+
+def test_loop_type_l1_miss_returns_tool_error_loop_continues(fixture_server, playwright_chromium):
+    fixture_url = f"{fixture_server}/loop_type_textbox.html"
+
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+        _response_with_tool_call(
+            _tool_call(
+                "type",
+                {"intent": "Nonexistent textbox", "text": "foo"},
+                call_id="tc-2",
+            )
+        ),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"done": True},
+                    "evidence": {"url": fixture_url, "text_snippet": "Type Textbox"},
+                },
+                call_id="tc-3",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+
+    run_id = "test-type-l1-miss"
+    writer = _make_writer_with_run(run_id)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop(
+            "fill nonexistent", browser, fake_llm, max_steps=10, trace_writer=writer, run_id=run_id
+        )
+
+    assert result.status == "succeeded", (
+        f"expected loop to continue past type miss and reach done, got {result.status!r}"
+    )
+    assert result.steps <= 4
+
+    events = list(writer.iter_events(run_id))
+    type_act_events = [e for e in events if isinstance(e, ActEvent) and e.tool == "type"]
+    assert len(type_act_events) == 0, (
+        f"expected zero type ActEvents (locate-miss path returns before emit), "
+        f"got {[(e.tool, e.outcome) for e in type_act_events]}"
+    )
+    writer.close()
+
+
+# ---------------------------------------------------------------------------
+# Type tool: Locator.fill raises TimeoutError → outcome=timeout, loop continues
+# ---------------------------------------------------------------------------
+
+
+def _make_fake_browser_for_type(
+    selector: str,
+    fill_raises: Exception | None = None,
+):
+    import types
+
+    from agent.locate import LocateResult
+
+    locate_result = LocateResult(
+        tier="L2_dom",
+        role="textbox",
+        name="Email",
+        selector=selector,
+        ax_fingerprint="fp-stub",
+        confidence=1.0,
+        coords=None,
+    )
+
+    class _StubLocator:
+        def __init__(self):
+            self.fill_calls: list[dict] = []
+
+        def fill(self, text, *, timeout):
+            self.fill_calls.append({"text": text, "timeout": timeout})
+            if fill_raises is not None:
+                raise fill_raises
+
+    stub_locator = _StubLocator()
+
+    class _StubPage:
+        @property
+        def url(self):
+            return "http://example.com/"
+
+        def locator(self, sel):
+            assert sel == locate_result.selector, (
+                f"expected page.locator({locate_result.selector!r}), got {sel!r}"
+            )
+            return stub_locator
+
+    fake_page = _StubPage()
+    fake_browser = types.SimpleNamespace(_page=fake_page)
+    return fake_browser, locate_result, stub_locator
+
+
+def test_loop_type_playwright_timeout_yields_outcome_timeout(monkeypatch):
+    import playwright.sync_api as pw_api
+
+    from agent.loop import _dispatch
+    from agent.supervisor import Supervisor
+
+    selector = "input#email"
+    fill_err = pw_api.TimeoutError("fill timed out")
+    fake_browser, locate_result, stub_locator = _make_fake_browser_for_type(
+        selector, fill_raises=fill_err
+    )
+
+    monkeypatch.setattr(
+        "agent.loop._locate_or_error_msg",
+        lambda *_args, **_kwargs: locate_result,
+    )
+
+    run_id = "unit-type-timeout"
+    writer = _open_click_writer(run_id)
+
+    result_str = _dispatch(
+        "type",
+        {"intent": "Email textbox", "text": "foo"},
+        fake_browser,
+        Supervisor(),
+        trace_writer=writer,
+        run_id=run_id,
+        step_id=f"{run_id}:step-1",
+    )
+
+    act_events = [e for e in writer.iter_events(run_id) if isinstance(e, ActEvent)]
+    assert len(act_events) == 1
+    assert act_events[0].outcome == "timeout", (
+        f"expected outcome=timeout, got {act_events[0].outcome!r}"
+    )
+    assert act_events[0].tool == "type"
+    assert act_events[0].args["intent"] == "Email textbox"
+    assert result_str.startswith("Error: type timeout"), (
+        f"expected tool result to start with 'Error: type timeout', got {result_str!r}"
+    )
+    assert stub_locator.fill_calls == [{"text": "foo", "timeout": 5000}], (
+        f"expected one fill call with timeout=5000, got {stub_locator.fill_calls!r}"
+    )
+    writer.close()
+
+
+def test_loop_type_playwright_error_yields_outcome_error(monkeypatch):
+    import playwright.sync_api as pw_api
+
+    from agent.loop import _dispatch
+    from agent.supervisor import Supervisor
+
+    selector = "input#email"
+    fill_err = pw_api.Error("element is not an HTMLInputElement")
+    fake_browser, locate_result, _stub_locator = _make_fake_browser_for_type(
+        selector, fill_raises=fill_err
+    )
+
+    monkeypatch.setattr(
+        "agent.loop._locate_or_error_msg",
+        lambda *_args, **_kwargs: locate_result,
+    )
+
+    run_id = "unit-type-error"
+    writer = _open_click_writer(run_id)
+
+    result_str = _dispatch(
+        "type",
+        {"intent": "Email textbox", "text": "foo"},
+        fake_browser,
+        Supervisor(),
+        trace_writer=writer,
+        run_id=run_id,
+        step_id=f"{run_id}:step-1",
+    )
+
+    act_events = [e for e in writer.iter_events(run_id) if isinstance(e, ActEvent)]
+    assert len(act_events) == 1
+    assert act_events[0].outcome == "error", (
+        f"expected outcome=error, got {act_events[0].outcome!r}"
+    )
+    assert act_events[0].tool == "type"
+    assert act_events[0].args["intent"] == "Email textbox"
+    assert result_str.startswith("Error: type error"), (
+        f"expected tool result to start with 'Error: type error', got {result_str!r}"
+    )
+    writer.close()
+
+
+# ---------------------------------------------------------------------------
+# Type tool: validation guard — missing/empty intent or text → error, no ActEvent
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "args,expected_field",
+    [
+        ({"text": "foo"}, "intent"),
+        ({"intent": "", "text": "foo"}, "intent"),
+        ({"intent": "Email textbox"}, "text"),
+        ({"intent": "Email textbox", "text": ""}, "text"),
+    ],
+    ids=["missing-intent", "empty-intent", "missing-text", "empty-text"],
+)
+def test_loop_type_validation_guard_returns_error_without_locating(args, expected_field):
+    import types
+
+    from agent.loop import _dispatch
+    from agent.supervisor import Supervisor
+
+    fake_browser = types.SimpleNamespace(_page=None)
+    run_id = f"unit-type-guard-{expected_field}-{len(args)}"
+    writer = _open_click_writer(run_id)
+
+    result_str = _dispatch(
+        "type",
+        args,
+        fake_browser,
+        Supervisor(),
+        trace_writer=writer,
+        run_id=run_id,
+        step_id=f"{run_id}:step-1",
+    )
+
+    act_events = [e for e in writer.iter_events(run_id) if isinstance(e, ActEvent)]
+    assert result_str.startswith("Error: type requires"), (
+        f"expected error string, got {result_str!r}"
+    )
+    assert expected_field in result_str
+    assert len(act_events) == 0, f"locate must not run when {expected_field} guard fires"
+    writer.close()
+
+
+# ---------------------------------------------------------------------------
+# Type tool: success path → _dispatch returns spec-mandated "Typed into" string
+# ---------------------------------------------------------------------------
+
+
+def test_loop_type_dispatch_ok_returns_typed_into_string(monkeypatch):
+    from agent.loop import _dispatch
+    from agent.supervisor import Supervisor
+
+    selector = "input#email"
+    fake_browser, locate_result, _stub_locator = _make_fake_browser_for_type(selector)
+
+    monkeypatch.setattr(
+        "agent.loop._locate_or_error_msg",
+        lambda *_a, **_kw: locate_result,
+    )
+
+    run_id = "unit-type-ok"
+    writer = _open_click_writer(run_id)
+
+    result_str = _dispatch(
+        "type",
+        {"intent": "Email textbox", "text": "hello"},
+        fake_browser,
+        Supervisor(),
+        trace_writer=writer,
+        run_id=run_id,
+        step_id=f"{run_id}:step-1",
+    )
+
+    act_events = [e for e in writer.iter_events(run_id) if isinstance(e, ActEvent)]
+    assert result_str == "Typed into 'Email textbox' (ok)", (
+        f"expected spec-mandated success string, got {result_str!r}"
+    )
+    assert act_events[0].outcome == "ok"
+    assert act_events[0].tool == "type"
+    writer.close()
