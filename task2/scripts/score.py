@@ -52,6 +52,8 @@ def _bucket_cases_by_suite(cases: list[dict]) -> dict[str, list[dict]]:
 
 
 def _render_case_status(case: dict) -> str:
+    if case.get("repeat_status") == "skipped":
+        return case.get("status", "skipped")
     repeats = case.get("repeats", 1)
     if repeats > 1:
         passed_runs = case.get("passed_runs", 0)

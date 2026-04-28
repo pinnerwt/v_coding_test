@@ -16,7 +16,6 @@ from scripts.eval import (
     _PASS_STATUSES,
     _SKIP_STATUS,
     _run_case,
-    _skipped_result,
     build_clients,
     compute_exit_code,
     load_cases,
@@ -74,7 +73,6 @@ def _pre_run_skip_reason(case: dict, *, live: bool) -> str | None:
 
 
 def _skipped_aggregate(case: dict, *, repeats: int, reason: str) -> AggregatedCaseResult:
-    skip = _skipped_result(case, reason)
     return AggregatedCaseResult(
         id=case["id"],
         repeat_status="skipped",
@@ -94,7 +92,7 @@ def _skipped_aggregate(case: dict, *, repeats: int, reason: str) -> AggregatedCa
         replans=0,
         cache_events={},
         failure_class=None,
-        skip_reason=skip.skip_reason,
+        skip_reason=reason,
     )
 
 

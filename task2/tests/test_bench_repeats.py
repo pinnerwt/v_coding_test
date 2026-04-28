@@ -67,13 +67,15 @@ def test_aggregate_repeats_partial():
     assert result.repeat_status == "partial"
 
 
-def test_repeats_zero_exits_nonzero(tmp_path, monkeypatch):
+def test_repeats_zero_exits_nonzero(tmp_path, monkeypatch, capsys):
     from scripts.benchmark import main
 
     monkeypatch.setenv("GITHUB_HEAD_REF", "test-branch")
     monkeypatch.chdir(tmp_path)
     rc = main(["--repeats", "0"])
+    captured = capsys.readouterr()
     assert rc != 0
+    assert "--repeats" in captured.err
 
 
 def test_aggregated_case_result_rejects_unknown_status():
@@ -179,6 +181,13 @@ def test_render_case_status_missing_passed_runs_no_error():
     assert _render_case_status(case) == "0/3 ✗"
 
 
+def test_render_case_status_skipped_case_does_not_render_as_failure():
+    from scripts.score import _render_case_status
+
+    case = {"repeats": 3, "passed_runs": 0, "status": "skipped", "repeat_status": "skipped"}
+    assert _render_case_status(case) == "skipped"
+
+
 def test_stddev_usd_is_zero_for_single_run():
     from scripts.benchmark import aggregate_repeats
 
@@ -265,9 +274,11 @@ def test_results_json_with_repeats_contains_aggregation_fields(tmp_path, monkeyp
 
 
 def test_results_json_with_repeats_1_has_no_aggregation_fields(tmp_path, monkeypatch):
+    import json
     from unittest.mock import MagicMock
 
     from scripts.benchmark import main
+    from scripts.eval import CaseResult
 
     cases_dir = tmp_path / "cases"
     cases_dir.mkdir()
@@ -285,47 +296,43 @@ def test_results_json_with_repeats_1_has_no_aggregation_fields(tmp_path, monkeyp
     monkeypatch.setenv("GITHUB_HEAD_REF", "test-branch")
     monkeypatch.chdir(tmp_path)
 
+    stub_result = CaseResult(
+        id="fixture-single-test",
+        status="succeeded",
+        steps=1,
+        usd=0.001,
+        l_tier_counts={},
+        validators=[],
+        prompt_tokens=10,
+        completion_tokens=5,
+        latency_ms_total=100,
+        latency_ms_per_step=[100],
+        step_breakdown=[],
+        escalations=[],
+        replans=0,
+        cache_events={"hits": 0, "invalidations": 0, "misses": 0},
+        failure_class=None,
+        failure_detail=None,
+        skip_reason=None,
+    )
+
     mock_browser = MagicMock()
     mock_browser.__enter__ = MagicMock(return_value=mock_browser)
     mock_browser.__exit__ = MagicMock(return_value=False)
 
     with (
-        patch("scripts.benchmark.run_suite") as mock_run_suite,
+        patch("scripts.eval._run_case", return_value=stub_result) as mock_run_case,
         patch("scripts.benchmark.build_clients", return_value=(MagicMock(), mock_browser)),
         patch("scripts.benchmark.aggregate_repeats") as mock_aggregate,
     ):
-        import json
-
-        results_file = tmp_path / "out.json"
-        results_file.write_text(
-            json.dumps(
-                {
-                    "run_at": "2026-04-28T00:00:00+00:00",
-                    "cases": [
-                        {
-                            "id": "fixture-single-test",
-                            "status": "succeeded",
-                            "steps": 1,
-                            "usd": 0.001,
-                            "l_tier_counts": {},
-                            "validators": [],
-                            "prompt_tokens": 10,
-                            "completion_tokens": 5,
-                            "latency_ms_total": 100,
-                            "latency_ms_per_step": [100],
-                            "step_breakdown": [],
-                        }
-                    ],
-                }
-            )
-        )
-        mock_run_suite.return_value = results_file
         rc = main([])
 
     assert rc == 0
     assert mock_aggregate.call_count == 0
+    assert mock_run_case.call_count >= 1
     data = json.loads((tmp_path / "benchmark" / "test-branch" / "results.json").read_text())
     case = data["cases"][0]
+    assert case["id"] == "fixture-single-test"
     assert "repeats" not in case
     assert "repeat_status" not in case
 
