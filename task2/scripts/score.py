@@ -139,13 +139,16 @@ def generate_scoreboard(data: dict, *, detail: bool = False) -> str:
         steps_data = case.get("step_breakdown") or []
         if is_failing and steps_data:
             table = _render_step_breakdown(steps_data)
+            lines.append("")
             if detail:
                 lines.append(table)
             else:
                 lines.append(
                     f"<details><summary>step breakdown ({len(steps_data)} steps)</summary>"
                 )
+                lines.append("")
                 lines.append(table)
+                lines.append("")
                 lines.append("</details>")
 
         if status != "skipped":
