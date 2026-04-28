@@ -17,20 +17,20 @@ The agent is exercised by two benchmark suites. The **basic benchmark** is a syn
 
 Cost and latency are split into passed vs. failed cases: a failing case bails out early, so a higher pass rate naturally raises totals. Compare the green (passed) and red (failed) series within a branch, not the totals across branches.
 
-#### Latest run — `task2-implement-loop-type-tool` (2026-04-28 11:48 UTC)
+#### Latest run — `task2-implement-fail-preflight-gate` (2026-04-28 20:41 UTC)
 
 | Case | Status | Steps | Latency | Tokens | USD |
 |---|---|---:|---:|---:|---:|
-| `canary-read-h1` | succeeded | 3 | 30.4 s | 4,894 | $0.0058 |
-| `correction-l1-miss-l2-hit` | succeeded | 4 | 21.3 s | 6,289 | $0.0069 |
-| `correction-replan` | succeeded | 3 | 21.4 s | 4,669 | $0.0053 |
-| `drift-submit-form-v1` | succeeded | 2 | 14.7 s | 2,852 | $0.0033 |
-| `drift-submit-form-v2` | succeeded | 4 | 21.9 s | 6,341 | $0.0070 |
-| `fixture-count` | succeeded | 3 | 24.5 s | 4,790 | $0.0055 |
-| `fixture-heading` | succeeded | 3 | 27.7 s | 4,753 | $0.0056 |
-| `maintenance-drift-rename-v1` | succeeded | 2 | 16.2 s | 2,896 | $0.0034 |
-| `maintenance-drift-rename-v2` | succeeded | 2 | 18.4 s | 2,985 | $0.0036 |
-| **Total (9 cases, 9 passed)** | | 26 | 196.3 s | 40,469 | $0.0463 |
+| `canary-read-h1` | succeeded | 1 | 6.8 s | 1,390 | $0.0015 |
+| `correction-l1-miss-l2-hit` | succeeded | 2 | 7.9 s | 2,634 | $0.0028 |
+| `correction-replan` | succeeded | 1 | 5.1 s | 1,341 | $0.0015 |
+| `drift-submit-form-v1` | succeeded | 2 | 6.3 s | 2,553 | $0.0027 |
+| `drift-submit-form-v2` | succeeded | 3 | 6.5 s | 3,901 | $0.0040 |
+| `fixture-count` | succeeded | 2 | 8.0 s | 2,755 | $0.0029 |
+| `fixture-heading` | succeeded | 1 | 5.4 s | 1,355 | $0.0015 |
+| `maintenance-drift-rename-v1` | succeeded | 2 | 6.1 s | 2,551 | $0.0027 |
+| `maintenance-drift-rename-v2` | succeeded | 2 | 5.9 s | 2,548 | $0.0027 |
+| **Total (9 cases, 9 passed)** | | 16 | 58.1 s | 21,028 | $0.0224 |
 <!-- TRENDS:END -->
 
 ### WebVoyager benchmark (live web)

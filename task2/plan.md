@@ -368,7 +368,6 @@ Urgency tags (advisory):
 ### P1 — observed bugs / type-narrowing gaps
 
 - **#61** — System prompt invites premature `fail`; tighten phrasing to gate `fail` to irrecoverable conditions only.
-- **#62** — Pre-flight `fail` validation gate in agent loop; reject step-≤1 `fail` with no prior interaction attempt.
 
 ### P2 — measurable improvements
 

@@ -32,6 +32,7 @@ if TYPE_CHECKING:
 RunStatus = Literal["succeeded", "unverified", "failed", "timeout"]
 ToolName = Literal["goto", "read", "click", "type", "done", "fail"]
 _CLICK_SUCCESS_OUTCOMES: frozenset[str] = frozenset({"ok", "nav"})
+_IRRECOVERABLE_REASONS: frozenset[str] = frozenset({"login wall", "captcha", "blocked"})
 
 STATE_MESSAGE_PREFIX = "Current state: "
 
@@ -719,6 +720,7 @@ def loop(
     step_num = 0
     last_actions: list[dict] = []
     active_plan: plan_module.Plan | None = None
+    _prior_act_outcomes: list[str] = []
 
     for _ in range(max_steps):
         step_num += 1
@@ -832,6 +834,34 @@ def loop(
                     step_breakdown=step_breakdown,
                 )
             if tool_call.name == "fail":
+                reason = args.get("reason", "")
+                is_irrecoverable = any(kw in reason.lower() for kw in _IRRECOVERABLE_REASONS)
+                is_premature = step_num <= 1 and not _prior_act_outcomes and not is_irrecoverable
+                if is_premature:
+                    use_writer = trace_writer is not None and run_id is not None
+                    sup_seq = trace_writer.next_seq(run_id) if use_writer else 0
+                    sup_event = SupervisorEvent(
+                        run_id=run_id if use_writer else "loop",
+                        seq=sup_seq,
+                        ts=datetime.now(UTC).isoformat() if use_writer else "",
+                        step_id=_step_id,
+                        trigger_event_seq=0,
+                        classified_as="premature_fail",
+                        policy="halt",
+                        attempt=1,
+                    )
+                    if use_writer:
+                        trace_writer.append_event(sup_event)
+                    elif events is not None:
+                        events.append(sup_event)
+                    nudge = (
+                        f"you have {max_steps - step_num} steps left and have not attempted "
+                        "to interact — try `click`/`type` first."
+                    )
+                    messages.append(
+                        {"role": "tool", "tool_call_id": tool_call.id, "content": nudge}
+                    )
+                    continue
                 _record_step(
                     step_num,
                     t0,
@@ -866,6 +896,8 @@ def loop(
             )
 
             is_error = tool_result.startswith("Error:")
+            if tool_call.name in {"click", "type"} and not is_error:
+                _prior_act_outcomes.append("ok")
             action: dict = {
                 "tool": tool_call.name,
                 "intent": str(args),
