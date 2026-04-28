@@ -106,9 +106,9 @@ def generate_scoreboard(data: dict, *, detail: bool = False) -> str:
 
     lines.append(
         "| Case | Status | Steps | Latency (ms) | USD | Tokens (P+C) "
-        "| Escalations | Replans | Cache Inv. | Failure class |"
+        "| Escalations | Replans | Cache Hits | Cache Misses | Cache Inv. | Failure class |"
     )
-    lines.append("|---|---|---|---|---|---|---|---|---|---|")
+    lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|")
 
     non_skipped = []
     total_usd = 0.0
@@ -126,12 +126,15 @@ def generate_scoreboard(data: dict, *, detail: bool = False) -> str:
         cid = case.get("id", "?")
         esc_count = len(case.get("escalations", []))
         replan_count = case.get("replans", 0)
+        cache_hits = case.get("cache_events", {}).get("hits", 0)
+        cache_misses = case.get("cache_events", {}).get("misses", 0)
         cache_inv = case.get("cache_events", {}).get("invalidations", 0)
         fc = case.get("failure_class") or "-"
 
         lines.append(
             f"| {cid} | {status} | {steps} | {lat} | ${usd:.4f} | {prompt}+{completion}"
-            f" | {esc_count} | {replan_count} | {cache_inv} | {fc} |"
+            f" | {esc_count} | {replan_count}"
+            f" | {cache_hits} | {cache_misses} | {cache_inv} | {fc} |"
         )
 
         raw_status = case.get("status", "unknown")
