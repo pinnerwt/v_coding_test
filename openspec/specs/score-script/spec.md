@@ -25,6 +25,15 @@ The scoreboard SHALL contain all of the following sections, in order:
 
 "Ran" for the category summary SHALL be defined as cases whose `status` is NOT `"skipped"`. "Passed" for the category summary SHALL be cases whose `status` is `"succeeded"` or `"unverified"`.
 
+**Per-case Status column rendering (added by implement-bench-repeats):**
+
+`generate_scoreboard` SHALL include a helper `_render_case_status(case: dict) -> str` that determines what to display in the `Status` column of the per-case table:
+
+- If `case.get("repeats", 1) > 1`: render `{passed_runs}/{repeats} ✓` when `passed_runs == repeats`, else `{passed_runs}/{repeats} ✗`.
+- Otherwise (repeats absent or `1`): render `case["status"]` as a plain string (preserving existing behavior).
+
+The helper SHALL be backward-compatible: results JSON files that do not contain `repeats` or `passed_runs` keys SHALL render using the existing plain-`status` path without raising exceptions.
+
 #### Scenario: score.py reads the fixture results file and produces non-empty markdown
 
 - **GIVEN** `tests/fixtures/results/sample_results.json` exists with at least two case entries (one succeeded, one failed) and non-zero metrics
@@ -85,6 +94,32 @@ The scoreboard SHALL contain all of the following sections, in order:
 - **GIVEN** `tests/fixtures/score_categories_results.json` with mixed suite cases
 - **WHEN** `generate_scoreboard(data)` is called
 - **THEN** the position of `Drift suite:` in the output string SHALL be less than the position of the first `|` character of the per-case table header row
+
+#### Scenario: Per-case Status column shows fractional rate when repeats > 1 and all pass
+
+- **GIVEN** a results file with one case entry containing `repeats=3`, `passed_runs=3`, `status="succeeded"`
+- **WHEN** `generate_scoreboard(data)` is called
+- **THEN** the per-case table row for that case SHALL contain `3/3 ✓` in the Status column
+
+#### Scenario: Per-case Status column shows fractional rate when repeats > 1 and partial pass
+
+- **GIVEN** a results file with one case entry containing `repeats=3`, `passed_runs=2`, `status="failed"`
+- **WHEN** `generate_scoreboard(data)` is called
+- **THEN** the per-case table row for that case SHALL contain `2/3 ✗` in the Status column
+
+#### Scenario: Per-case Status column renders plain status when repeats == 1 or absent
+
+- **GIVEN** a results file with case entries that have no `repeats` key
+- **WHEN** `generate_scoreboard(data)` is called
+- **THEN** the per-case table row SHALL render the `status` field as a plain string (e.g. `succeeded`, `failed`)
+- **AND** no exception SHALL be raised
+
+#### Scenario: _render_case_status is backward-compatible with missing passed_runs
+
+- **GIVEN** a case dict with `repeats=3` but no `passed_runs` key
+- **WHEN** `_render_case_status(case)` is called
+- **THEN** it SHALL NOT raise a `KeyError`
+- **AND** SHALL return a string (defaulting to plain status or `0/3 ✗`)
 
 ### Requirement: Suite-threshold config block
 
