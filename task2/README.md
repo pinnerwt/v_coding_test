@@ -33,14 +33,14 @@ Artifacts land at `task2/benchmark/<sanitized-branch>/webvoyager/<timestamp>.jso
 
 Each branch contributes its most recent WebVoyager run (`benchmark/<branch>/webvoyager/<timestamp>.json`). Pass-rate, latency, and cost are split into passed vs. failed cases; failure-class counts come from the `failure_class` field on each non-passed case.
 
-#### Latest run — `task2-benchmarks-readme-and-tier0` (2026-04-28 16:37 UTC)
+#### Latest run — `task2-implement-webvoyager-tier1` (2026-04-28 21:57 UTC)
 
 | Case | Status | Steps | Latency | Tokens | USD |
 |---|---|---:|---:|---:|---:|
 | `webvoyager-1` | failed | 0 | 0 ms | 0 | $0.0000 |
-| `webvoyager-2` | succeeded | 9 | 92.9 s | 112,679 | $0.1146 |
-| `webvoyager-3` | succeeded | 6 | 51.9 s | 39,567 | $0.0405 |
-| **Total (3 cases, 2 passed)** | | 15 | 144.8 s | 152,246 | $0.1551 |
+| `webvoyager-2` | succeeded | 7 | 93.1 s | 69,306 | $0.0709 |
+| `webvoyager-3` | succeeded | 5 | 50.6 s | 29,028 | $0.0299 |
+| **Total (3 cases, 2 passed)** | | 12 | 143.7 s | 98,334 | $0.1008 |
 <!-- WEBVOYAGER_TRENDS:END -->
 
 #### Tier-0 baseline (3 tasks, 2026-04-28)
@@ -52,6 +52,48 @@ Each branch contributes its most recent WebVoyager run (`benchmark/<branch>/webv
 | `webvoyager-3` | GitHub | succeeded | 6 | 51.9 s | $0.0405 |
 
 2/3 passed. Per-passing-task cost ≈ $0.08, latency ≈ 50–90 s. The Wikipedia failure is a `LLMError('http 400')` from the Qwen endpoint at step 0 (zero tokens billed) — likely transient endpoint state, not an agent bug. Persisted at `benchmark/task2-benchmarks-readme-and-tier0/webvoyager/baseline.json` for reference.
+
+#### Tier-0 vs Tier-1
+
+| | Tier-0 | Tier-1 |
+|---|---|---|
+| **Tasks** | 3 | 12 |
+| **Purpose** | Fast smoke test; runs in CI smoke gate | Per-branch regression signal; cheapest credible generalisation check |
+| **Location** | `tests/fixtures/benchmarks/webvoyager/tasks_sample.json` | `eval/bench/data/webvoyager/tier1.json` |
+| **CLI flag** | `--tier 0` (default) | `--tier 1` |
+
+Run Tier-1 from `task2/`:
+
+```bash
+BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+SAFE_BRANCH="${BRANCH//\//-}"
+EVAL_RESULTS_DIR="benchmark/${SAFE_BRANCH}/webvoyager" \
+  LLM_BASE_URL=http://localhost:8090 LLM_MODEL=qwen3.5-27b \
+  uv run python -m scripts.bench --suite webvoyager --tier 1 --live
+```
+
+#### Site-inclusion criteria
+
+Sites are included in both tiers only if they satisfy all four conditions:
+
+1. Stable layout — no frequent structural redesigns that break locators.
+2. No login required — anonymous access to the target page.
+3. No CAPTCHA — deterministic navigation without bot-detection gates.
+4. No location-aware widgets — prices, availability, or content must not vary by detected IP.
+
+**Included sites (Tier-1):** Wikipedia, arXiv, GitHub, HuggingFace, BBC News, Cambridge Dictionary, Wolfram Alpha.
+
+**Excluded sites and reasons:**
+
+| Site | Reason |
+|---|---|
+| Allrecipes | Cookie consent modal blocks navigation |
+| Apple | Geo-redirect changes page structure by region |
+| Coursera | Login wall before course content |
+| Google Search | CAPTCHA risk under headless automation |
+| Booking.com | Geo-pricing makes results non-deterministic |
+| Google Flights | Dynamic price widgets non-deterministic |
+| Amazon | Login walls and aggressive CAPTCHA |
 
 ### Archived: basic benchmark (do not run)
 

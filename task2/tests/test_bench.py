@@ -8,6 +8,7 @@ from agent.loop import RunResult
 
 _WEBVOYAGER_FIXTURE = Path(__file__).parent / "fixtures/benchmarks/webvoyager/tasks_sample.json"
 _BRIEF_PATH = Path(__file__).parents[2] / "prompts/task2/web-benchmarks.md"
+_TIER1_PATH = Path(__file__).parents[1] / "eval/bench/data/webvoyager/tier1.json"
 
 _CANNED_RESULT = RunResult(
     status="succeeded",
@@ -177,3 +178,91 @@ def test_runner_honors_llm_base_url(tmp_path, monkeypatch):
     assert call_kwargs.kwargs.get("base_url") == "http://custom:9999/v1" or (
         len(call_kwargs.args) > 0 and call_kwargs.args[0] == "http://custom:9999/v1"
     ), f"LLMClient not called with base_url=http://custom:9999/v1, got: {call_kwargs}"
+
+
+_EXCLUDED_DOMAINS = ["Allrecipes", "Apple", "Coursera", "Google", "Booking", "Amazon"]
+
+
+def test_tier1_fixture_exists():
+    assert _TIER1_PATH.exists(), f"Tier-1 fixture not found at {_TIER1_PATH}"
+
+
+def test_tier1_loader_returns_12_cases():
+    from eval.bench.webvoyager_loader import load_webvoyager
+
+    cases = load_webvoyager(str(_TIER1_PATH))
+    assert len(cases) == 12
+    for case in cases:
+        for key in ("task", "domain", "category", "id"):
+            assert key in case, f"case missing key: {key}"
+
+
+def test_tier1_no_excluded_domains():
+    from eval.bench.webvoyager_loader import load_webvoyager
+
+    cases = load_webvoyager(str(_TIER1_PATH))
+    for case in cases:
+        category = case["category"]
+        for excl in _EXCLUDED_DOMAINS:
+            assert excl not in category, f"excluded domain '{excl}' found in category '{category}'"
+
+
+def _make_mock_browser():
+    mock_browser = MagicMock()
+    mock_browser.__enter__ = MagicMock(return_value=mock_browser)
+    mock_browser.__exit__ = MagicMock(return_value=False)
+    return mock_browser
+
+
+def _capture_loader_paths(tmp_path, argv):
+    from scripts.bench import main
+
+    captured: list[str] = []
+
+    def fake_loader(path):
+        captured.append(path)
+        return []
+
+    result_file = tmp_path / "result.json"
+    result_file.write_text('{"cases": []}')
+
+    with (
+        patch("scripts.bench._LOADERS", {"webvoyager": fake_loader}),
+        patch("scripts.bench.build_clients") as mock_clients,
+        patch("scripts.bench.run_suite") as mock_suite,
+    ):
+        mock_clients.return_value = (MagicMock(), _make_mock_browser())
+        mock_suite.return_value = result_file
+        main(argv)
+
+    return captured
+
+
+def test_bench_tier_flag_default_selects_tier0(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVAL_RESULTS_DIR", str(tmp_path))
+    monkeypatch.delenv("WEBVOYAGER_TASKS", raising=False)
+
+    captured = _capture_loader_paths(tmp_path, ["--suite", "webvoyager"])
+
+    assert len(captured) == 1
+    assert captured[0].endswith("tasks_sample.json"), captured[0]
+
+
+def test_bench_tier1_flag_selects_tier1_path(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVAL_RESULTS_DIR", str(tmp_path))
+    monkeypatch.delenv("WEBVOYAGER_TASKS", raising=False)
+
+    captured = _capture_loader_paths(tmp_path, ["--suite", "webvoyager", "--tier", "1"])
+
+    assert len(captured) == 1
+    assert captured[0].endswith("tier1.json"), captured[0]
+
+
+def test_bench_webvoyager_tasks_env_overrides_tier1(tmp_path, monkeypatch):
+    custom_path = "/custom/path/my_tasks.json"
+    monkeypatch.setenv("EVAL_RESULTS_DIR", str(tmp_path))
+    monkeypatch.setenv("WEBVOYAGER_TASKS", custom_path)
+
+    captured = _capture_loader_paths(tmp_path, ["--suite", "webvoyager", "--tier", "1"])
+
+    assert captured == [custom_path]
