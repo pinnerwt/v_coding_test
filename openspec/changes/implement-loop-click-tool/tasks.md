@@ -1,10 +1,10 @@
 ## 1. Failing Tests (Red Phase)
 
-- [ ] 1.1 Write test `test_tools_list_includes_click` — assert `TOOLS` contains entry with `function.name == "click"`, `intent` in `parameters.properties`, and `intent` in `required`
-- [ ] 1.2 Write test `test_loop_click_to_done` — fixture page with a `<button>Submit</button>`, stub LLM emits `click(intent="Submit button")` then `done(...)`; assert `RunResult.status == "succeeded"` in ≤ 4 steps
-- [ ] 1.3 Write test `test_loop_click_outcome_nav` — fixture page with a button that navigates to a second URL on click; assert `ActEvent(outcome="nav")` is emitted in trace
-- [ ] 1.4 Write test `test_loop_click_l1_miss_supervisor_escalation` — fixture page with a non-semantic button (no ARIA role); assert `SupervisorEvent(policy="next_tier")` emitted and click is retried at L2
-- [ ] 1.5 Run `uv run pytest task2/tests/agent/test_loop.py -k "click"` — confirm all four new tests fail for the right reason (no `click` in `TOOLS` / `_dispatch`)
+- [x] 1.1 Write test `test_tools_list_includes_click` — assert `TOOLS` contains entry with `function.name == "click"`, `intent` in `parameters.properties`, and `intent` in `required`
+- [x] 1.2 Write test `test_loop_click_to_done` — fixture page with a `<button>Submit</button>`, stub LLM emits `click(intent="Submit button")` then `done(...)`; assert `RunResult.status == "succeeded"` in ≤ 4 steps
+- [x] 1.3 Write test `test_loop_click_outcome_nav` — fixture page with a button that navigates to a second URL on click; assert `ActEvent(outcome="nav")` is emitted in trace
+- [x] 1.4 Write test `test_loop_click_l1_miss_supervisor_escalation` — fixture page with a non-semantic button (no ARIA role); assert `SupervisorEvent(policy="next_tier")` emitted and click is retried at L2
+- [x] 1.5 Run `uv run pytest task2/tests/agent/test_loop.py -k "click"` — confirm all four new tests fail for the right reason (no `click` in `TOOLS` / `_dispatch`)
 
 ## 2. Production Code (Green Phase)
 

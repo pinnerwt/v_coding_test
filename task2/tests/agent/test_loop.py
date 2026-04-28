@@ -2447,3 +2447,156 @@ def test_real_loop_correction_l1_miss_produces_escalation(fixture_server, playwr
     )
     assert l2_locate is not None, "expected at least one LocateEvent(tier='L2_dom') in the trace"
     writer.close()
+
+
+# ---------------------------------------------------------------------------
+# Click tool: TOOLS list includes click entry
+# ---------------------------------------------------------------------------
+
+
+def test_tools_list_includes_click():
+    from agent.loop import TOOLS
+
+    click_entry = next((t for t in TOOLS if t["function"]["name"] == "click"), None)
+    assert click_entry is not None, "TOOLS must contain an entry with function.name == 'click'"
+    props = click_entry["function"]["parameters"]["properties"]
+    assert "intent" in props, "click entry must have 'intent' in parameters.properties"
+    assert props["intent"]["type"] == "string", "click 'intent' parameter must be type 'string'"
+    required = click_entry["function"]["parameters"]["required"]
+    assert "intent" in required, "'intent' must appear in click's parameters.required"
+
+
+# ---------------------------------------------------------------------------
+# Click tool: LLM calls click → ActEvent(outcome="ok") emitted, run succeeds
+# ---------------------------------------------------------------------------
+
+
+def test_loop_click_to_done(fixture_server, playwright_chromium):
+    fixture_url = f"{fixture_server}/loop_click_submit.html"
+
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+        _response_with_tool_call(
+            _tool_call("click", {"intent": "Submit button"}, call_id="tc-2")
+        ),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"clicked": True},
+                    "evidence": {"url": fixture_url, "text_snippet": "Submit"},
+                },
+                call_id="tc-3",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+
+    run_id = "test-click-to-done"
+    writer = _make_writer_with_run(run_id)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop("click Submit", browser, fake_llm, trace_writer=writer, run_id=run_id)
+
+    assert result.status == "succeeded"
+    assert result.steps <= 4
+
+    from agent.trace import ActEvent
+
+    events = list(writer.iter_events(run_id))
+    act_events = [e for e in events if isinstance(e, ActEvent)]
+    assert len(act_events) >= 1, "expected at least one ActEvent"
+    click_act = next((e for e in act_events if e.tool == "click"), None)
+    assert click_act is not None, "expected ActEvent with tool='click'"
+    assert click_act.outcome == "ok", f"expected outcome='ok', got {click_act.outcome!r}"
+    assert click_act.args == {"intent": "Submit button"}
+    writer.close()
+
+
+# ---------------------------------------------------------------------------
+# Click tool: navigation after click → ActEvent(outcome="nav")
+# ---------------------------------------------------------------------------
+
+
+def test_loop_click_outcome_nav(fixture_server, playwright_chromium):
+    fixture_url = f"{fixture_server}/loop_click_nav.html"
+    dest_url = f"{fixture_server}/loop_happy_path.html"
+
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+        _response_with_tool_call(
+            _tool_call("click", {"intent": "Go button"}, call_id="tc-2")
+        ),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"navigated": True},
+                    "evidence": {"url": dest_url, "text_snippet": "Hello"},
+                },
+                call_id="tc-3",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+
+    run_id = "test-click-nav"
+    writer = _make_writer_with_run(run_id)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop("click Go", browser, fake_llm, trace_writer=writer, run_id=run_id)
+
+    from agent.trace import ActEvent
+
+    events = list(writer.iter_events(run_id))
+    act_events = [e for e in events if isinstance(e, ActEvent) and e.tool == "click"]
+    assert len(act_events) >= 1, "expected at least one ActEvent with tool='click'"
+    assert act_events[0].outcome == "nav", (
+        f"expected outcome='nav' after navigation, got {act_events[0].outcome!r}"
+    )
+    assert result.status == "succeeded"
+    writer.close()
+
+
+# ---------------------------------------------------------------------------
+# Click tool: L1 miss → supervisor escalates to L2 → SupervisorEvent(policy="next_tier")
+# ---------------------------------------------------------------------------
+
+
+def test_loop_click_l1_miss_supervisor_escalation(fixture_server, playwright_chromium):
+    fixture_url = f"{fixture_server}/correction_l1_miss.html"
+
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+        _response_with_tool_call(
+            _tool_call("click", {"intent": "Submit button"}, call_id="tc-2")
+        ),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"clicked": True},
+                    "evidence": {"url": fixture_url, "text_snippet": "Submit"},
+                },
+                call_id="tc-3",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+
+    run_id = "test-click-l1-miss"
+    writer = _make_writer_with_run(run_id)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        loop("click the Submit button", browser, fake_llm, trace_writer=writer, run_id=run_id)
+
+    events = list(writer.iter_events(run_id))
+    supervisor_events = [e for e in events if isinstance(e, SupervisorEvent)]
+    assert len(supervisor_events) >= 1, "expected at least one SupervisorEvent"
+    next_tier_event = next(
+        (e for e in supervisor_events if e.policy == "next_tier"), None
+    )
+    assert next_tier_event is not None, (
+        f"expected SupervisorEvent(policy='next_tier'), got policies={[e.policy for e in supervisor_events]}"
+    )
+    writer.close()
