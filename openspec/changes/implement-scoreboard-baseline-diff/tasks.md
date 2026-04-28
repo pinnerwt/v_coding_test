@@ -43,7 +43,7 @@
 
 ## 6. Linting and final green bar
 
-- [ ] 6.1 Run `uv run ruff check task2/scripts/baseline_diff.py task2/scripts/benchmark.py task2/scripts/score.py` — fix any lint errors.
-- [ ] 6.2 Run `uv run ruff format task2/scripts/baseline_diff.py task2/scripts/benchmark.py task2/scripts/score.py`.
-- [ ] 6.3 Run full test suite `uv run pytest task2/tests/ -x` — confirm all tests pass.
-- [ ] 6.4 Verify `task2/benchmark/master/results.json` exists (pre-condition for real diff on any non-master branch).
+- [x] 6.1 Run `uv run ruff check task2/scripts/baseline_diff.py task2/scripts/benchmark.py task2/scripts/score.py` — fix any lint errors.
+- [x] 6.2 Run `uv run ruff format task2/scripts/baseline_diff.py task2/scripts/benchmark.py task2/scripts/score.py`.
+- [x] 6.3 Run full test suite `uv run pytest task2/tests/ -x` — confirm all tests pass.
+- [x] 6.4 Verify `task2/benchmark/master/results.json` exists (pre-condition for real diff on any non-master branch).
