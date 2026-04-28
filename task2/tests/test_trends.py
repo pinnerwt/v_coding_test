@@ -370,3 +370,199 @@ def test_write_trends_updates_readme_block(tmp_path):
     assert "pass_rate.svg" in text
     assert "latency.svg" in text
     assert "cost.svg" in text
+
+
+def _make_run(branch: str, run_at_iso: str, pass_rate: float):
+    from datetime import datetime
+
+    from scripts.trends import Run
+
+    total = 4
+    passed = round(pass_rate * total)
+    return Run(
+        branch=branch,
+        run_at=datetime.fromisoformat(run_at_iso),
+        pass_rate=pass_rate,
+        total_usd=0.0,
+        p50_ms=0,
+        p95_ms=0,
+        total_tokens=0,
+        total_cases=total,
+        passed_count=passed,
+        failed_count=total - passed,
+    )
+
+
+def test_flag_regression_returns_true_for_degrading_series():
+    from scripts.trends import flag_regression
+
+    runs = [
+        _make_run("b1", "2026-04-26T01:00:00+00:00", 1.0),
+        _make_run("b2", "2026-04-26T02:00:00+00:00", 0.5),
+        _make_run("b3", "2026-04-26T03:00:00+00:00", 0.0),
+    ]
+    assert flag_regression(runs) is True
+
+
+def test_flag_regression_returns_false_for_stable_series():
+    from scripts.trends import flag_regression
+
+    runs = [
+        _make_run("b1", "2026-04-26T01:00:00+00:00", 0.5),
+        _make_run("b2", "2026-04-26T02:00:00+00:00", 0.55),
+        _make_run("b3", "2026-04-26T03:00:00+00:00", 0.6),
+    ]
+    assert flag_regression(runs) is False
+
+
+def test_flag_regression_returns_false_for_single_run():
+    from scripts.trends import flag_regression
+
+    runs = [_make_run("b1", "2026-04-26T01:00:00+00:00", 0.5)]
+    assert flag_regression(runs) is False
+
+
+def test_flag_regression_emits_warning_in_readme_block(tmp_path):
+    from scripts.trends import collect_runs, write_trends
+
+    _write_run(
+        tmp_path / "bench" / "b1" / "results.json",
+        "2026-04-26T01:00:00+00:00",
+        [_case(status="succeeded"), _case(cid="x", status="succeeded")],
+    )
+    _write_run(
+        tmp_path / "bench" / "b2" / "results.json",
+        "2026-04-26T02:00:00+00:00",
+        [_case(status="succeeded"), _case(cid="x", status="failed")],
+    )
+    _write_run(
+        tmp_path / "bench" / "b3" / "results.json",
+        "2026-04-26T03:00:00+00:00",
+        [_case(status="failed"), _case(cid="x", status="failed")],
+    )
+
+    readme = tmp_path / "README.md"
+    readme.write_text(
+        "# Title\n\n<!-- TRENDS:BEGIN -->\nold\n<!-- TRENDS:END -->\n\n## Other\nkeep\n"
+    )
+
+    runs = collect_runs(tmp_path / "bench")
+    write_trends(
+        runs,
+        out_dir=tmp_path / "bench" / "_trends",
+        readme_path=readme,
+        benchmark_root=tmp_path / "bench",
+    )
+
+    text = readme.read_text()
+    begin = text.index("<!-- TRENDS:BEGIN -->") + len("<!-- TRENDS:BEGIN -->")
+    end = text.index("<!-- TRENDS:END -->")
+    block = text[begin:end]
+
+    assert "⚠️" in block
+    assert "pass-rate regression detected" in block.lower()
+    assert "### Latest run" in block
+    assert block.index("⚠️") < block.index("### Latest run")
+
+
+def test_flag_regression_no_warning_for_stable(tmp_path):
+    from scripts.trends import collect_runs, write_trends
+
+    def _cases_for_rate(n_pass: int, n_total: int) -> list[dict]:
+        return [_case(cid=f"c{i}", status="succeeded") for i in range(n_pass)] + [
+            _case(cid=f"f{i}", status="failed") for i in range(n_total - n_pass)
+        ]
+
+    _write_run(
+        tmp_path / "bench" / "b1" / "results.json",
+        "2026-04-26T01:00:00+00:00",
+        _cases_for_rate(10, 20),
+    )
+    _write_run(
+        tmp_path / "bench" / "b2" / "results.json",
+        "2026-04-26T02:00:00+00:00",
+        _cases_for_rate(11, 20),
+    )
+    _write_run(
+        tmp_path / "bench" / "b3" / "results.json",
+        "2026-04-26T03:00:00+00:00",
+        _cases_for_rate(12, 20),
+    )
+
+    readme = tmp_path / "README.md"
+    readme.write_text(
+        "# Title\n\n<!-- TRENDS:BEGIN -->\nold\n<!-- TRENDS:END -->\n\n## Other\nkeep\n"
+    )
+
+    runs = collect_runs(tmp_path / "bench")
+    write_trends(
+        runs,
+        out_dir=tmp_path / "bench" / "_trends",
+        readme_path=readme,
+        benchmark_root=tmp_path / "bench",
+    )
+
+    text = readme.read_text()
+    begin = text.index("<!-- TRENDS:BEGIN -->") + len("<!-- TRENDS:BEGIN -->")
+    end = text.index("<!-- TRENDS:END -->")
+    block = text[begin:end]
+
+    assert "⚠️" not in block
+
+
+def test_flag_regression_returns_false_for_empty_list():
+    from scripts.trends import flag_regression
+
+    assert flag_regression([]) is False
+
+
+def test_flag_regression_returns_false_at_exactly_5pp_boundary():
+    from scripts.trends import flag_regression
+
+    runs = [
+        _make_run("b1", "2026-04-26T01:00:00+00:00", 0.6),
+        _make_run("b2", "2026-04-26T02:00:00+00:00", 0.5),
+        _make_run("b3", "2026-04-26T03:00:00+00:00", 0.45),
+    ]
+    assert flag_regression(runs) is False
+
+
+def test_flag_regression_returns_false_when_latest_above_median():
+    from scripts.trends import flag_regression
+
+    runs = [
+        _make_run("b1", "2026-04-26T01:00:00+00:00", 0.2),
+        _make_run("b2", "2026-04-26T02:00:00+00:00", 0.3),
+        _make_run("b3", "2026-04-26T03:00:00+00:00", 0.8),
+    ]
+    assert flag_regression(runs) is False
+
+
+def test_flag_regression_no_warning_for_single_run_in_readme(tmp_path):
+    from scripts.trends import collect_runs, write_trends
+
+    _write_run(
+        tmp_path / "bench" / "b1" / "results.json",
+        "2026-04-26T01:00:00+00:00",
+        [_case(status="succeeded")],
+    )
+
+    readme = tmp_path / "README.md"
+    readme.write_text(
+        "# Title\n\n<!-- TRENDS:BEGIN -->\nold\n<!-- TRENDS:END -->\n\n## Other\nkeep\n"
+    )
+
+    runs = collect_runs(tmp_path / "bench")
+    write_trends(
+        runs,
+        out_dir=tmp_path / "bench" / "_trends",
+        readme_path=readme,
+        benchmark_root=tmp_path / "bench",
+    )
+
+    text = readme.read_text()
+    begin = text.index("<!-- TRENDS:BEGIN -->") + len("<!-- TRENDS:BEGIN -->")
+    end = text.index("<!-- TRENDS:END -->")
+    block = text[begin:end]
+
+    assert "⚠️" not in block
