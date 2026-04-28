@@ -21,8 +21,8 @@
 
 ## 4. Lint and format
 
-- [ ] 4.1 Run `uv run ruff check --fix task2/scripts/bench.py task2/tests/test_bench.py` from repo root and resolve any issues.
-- [ ] 4.2 Run `uv run ruff format task2/scripts/bench.py task2/tests/test_bench.py` and confirm no diff.
+- [x] 4.1 Run `uv run ruff check --fix task2/scripts/bench.py task2/tests/test_bench.py` from repo root and resolve any issues.
+- [x] 4.2 Run `uv run ruff format task2/scripts/bench.py task2/tests/test_bench.py` and confirm no diff.
 
 ## 5. README documentation
 
