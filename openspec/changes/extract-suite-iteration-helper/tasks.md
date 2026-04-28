@@ -1,11 +1,11 @@
 ## 1. RED — Write failing tests
 
-- [ ] 1.1 Create `task2/tests/test_iter_runnable_subcases.py` with a parametrized fixture case having two variants and `shared_cache=True`; assert same `LocatorCache` instance is yielded for both sub-cases and `skip_reason` is `None` for both.
-- [ ] 1.2 Add test: live-only case (no `fixture: true`) with `live=False` yields one tuple with `skip_reason="live_disabled"` and `shared_cache=None`.
-- [ ] 1.3 Add test: case with `fixture: true` and `fixture_path` pointing to a non-existent path yields one tuple with `skip_reason="fixture_missing"` and `shared_cache=None`.
-- [ ] 1.4 Add test: non-variantized fixture case (no `variants`, no `fixture_path`) yields exactly one tuple with `skip_reason=None`, `shared_cache=None`, and the original case dict unchanged.
-- [ ] 1.5 Add test: case with `variants: ["v1", "v2"]`, `fixture: true`, and no `shared_cache` key yields two tuples both with `shared_cache=None` and `skip_reason=None`.
-- [ ] 1.6 Run `uv run pytest task2/tests/test_iter_runnable_subcases.py` and confirm all five tests FAIL with `ImportError` or `AttributeError` (function does not exist yet).
+- [x] 1.1 Create `task2/tests/test_iter_runnable_subcases.py` with a parametrized fixture case having two variants and `shared_cache=True`; assert same `LocatorCache` instance is yielded for both sub-cases and `skip_reason` is `None` for both.
+- [x] 1.2 Add test: live-only case (no `fixture: true`) with `live=False` yields one tuple with `skip_reason="live_disabled"` and `shared_cache=None`.
+- [x] 1.3 Add test: case with `fixture: true` and `fixture_path` pointing to a non-existent path yields one tuple with `skip_reason="fixture_missing"` and `shared_cache=None`.
+- [x] 1.4 Add test: non-variantized fixture case (no `variants`, no `fixture_path`) yields exactly one tuple with `skip_reason=None`, `shared_cache=None`, and the original case dict unchanged.
+- [x] 1.5 Add test: case with `variants: ["v1", "v2"]`, `fixture: true`, and no `shared_cache` key yields two tuples both with `shared_cache=None` and `skip_reason=None`.
+- [x] 1.6 Run `uv run pytest task2/tests/test_iter_runnable_subcases.py` and confirm all five tests FAIL with `ImportError` or `AttributeError` (function does not exist yet).
 
 ## 2. GREEN — Implement iter_runnable_subcases
 
