@@ -351,11 +351,13 @@ Candidate tickets, ordered roughly by impact-per-effort. Each is TDD-shaped so i
 
 ## Undone
 
-Tickets not yet merged, ordered by urgency. `/new_task2` step 1 selects from this list — pick the highest-urgency entry available; tie-break by lowest ticket number.
+Tickets not yet merged. `/new_task2` step 1 selects from this list by **expected benchmark-scoreboard impact** along three axes: **pass-rate** (red→green flips), **token usage** (prompt + completion tokens, total or per-step), and **p50/p95 latency**. Pick the candidate with the highest expected total improvement across those axes; tie-break by lowest ticket number. Urgency tags below are advisory tie-breakers, not the primary sort — a P3 ticket that meaningfully cuts p95 latency or per-step tokens beats a P0 that does not move any benchmark axis.
+
+While pass-rate is below the done bar (~80% on fixture eval, ~60% live), pass-rate-led tickets dominate; once pass-rate clears the bar, token- and latency-led tickets become co-equal. Tickets with 0 expected impact on all three axes (pure dev-experience, scoreboard hygiene, audit-only) drop to the bottom unless their absence currently blocks an impact estimate for another candidate.
 
 New tickets are appended here by `/new_task2` step 11 alongside the full text in `## TDD tickets` / `## Benchmark improvements`. When a ticket merges, the corresponding entry should be removed (currently a manual cleanup; track under a future skill update to `/done_pr`).
 
-Urgency tags:
+Urgency tags (advisory):
 - **P0** — unblocks other tickets or removes recurring debugging friction.
 - **P1** — observed bug or correctness gap blocking the brief's done bar.
 - **P2** — measurable improvement to the eval / scoreboard / mechanisms.

@@ -11,32 +11,35 @@ Automate the full development cycle for the next Task 2 TDD ticket: derive ticke
 
 ### 1. Identify the next ticket
 
-**Selection rule (benchmark-impact-first, per user directive 2026-04-28):** pick the candidate most likely to flip the most red benchmark cases to green on the next benchmark run. Implement, run benchmark, report the pass-rate delta. Stop the wrapping loop when pass-rate plateaus across consecutive iterations or demo time arrives.
+**Selection rule (benchmark-impact-first, per user directive 2026-04-28):** pick the candidate most likely to *move at least one of three scoreboard axes in the right direction*: **pass-rate** (red→green flips), **token usage** (prompt + completion tokens, total or per-step), or **p50/p95 latency**. These are the three numbers the demo is judged on; everything else is hygiene. Implement, run benchmark, report the deltas across all three axes. Stop the wrapping loop when none of pass-rate / tokens / latency improves across consecutive iterations or demo time arrives.
 
 How to apply, in order:
 
-1. **Read the latest benchmark scoreboard** to know what is red and why.
+1. **Read the latest benchmark scoreboard** to know the current state of all three axes.
    ```bash
    ls -t task2/benchmark/*/results.json | head -3
    cat task2/benchmark/master/scoreboard.md  # or the most recent per-branch scoreboard
    ```
-   Note each failing case and its `failure_class` / step pattern. The "Failure histogram" block at the top of `scoreboard.md` (added in ticket #42) is the fastest summary.
+   Capture both:
+   - **What is red and why.** Each failing case and its `failure_class` / step pattern. The "Failure histogram" block at the top of `scoreboard.md` (added in ticket #42) is the fastest summary.
+   - **The headline aggregate numbers**: pass-rate (e.g. `5/9`), total USD / total tokens (or mean per-case tokens), p50 latency, p95 latency. These are the targets each candidate is judged against — write them down before scoring candidates.
 
 2. **Read the `## Undone` rubric in `task2/plan.md`** (between `## Benchmark improvements (candidates)` and `## Honest risks / tradeoffs`) and the long-form `## Benchmark improvements (candidates)` and `## TDD tickets` sections. Cross-check against `openspec/changes/archive/` for stale entries (archived directories carry a date prefix; strip it when matching). Skip the `### In flight` subsection.
 
-3. **Estimate red→green flips per candidate.** For each candidate ticket, write one line: `ticket #N: flips ~K cases — case A (failure_class=X), case B (...)`. The estimate is judgment, not arithmetic — but it must reference *currently red* cases by name. Examples:
-   - A ticket that fixes a specific `IntentParseError` (e.g. #56 fixes `fixture-count`) flips 1 case if that's the only red case with that failure mode.
-   - A ticket that fixes the supervisor `next_tier` policy plumbing (e.g. #32) plausibly flips 5 cases (every red case with `failure_class=no_done_emitted` and step pattern "read → fail").
-   - A pure refactor / dev-experience ticket (e.g. #49 was) flips 0.
-   - A ticket that improves *diagnosis without fixing the underlying bug* (e.g. failure-class enrichment, scoreboard traffic lights) flips 0; pick those only when their absence currently blocks an estimate for another candidate.
+3. **Estimate per-axis impact per candidate.** For each candidate ticket, write one line capturing all three axes: `ticket #N: flips ~K cases (case A, case B, ...); tokens ~ΔT% (why); latency ~ΔL% (why)`. The estimate is judgment, not arithmetic — but each axis must be grounded in the scoreboard or in the ticket's acceptance criteria. Examples:
+   - A new-tool ticket (e.g. #59 `click(intent)`) → flips ~5 red cases (every read→fail drift/correction case); tokens ~unchanged (same path length per step); latency ~unchanged. **Score: pass-rate-led.**
+   - A CDP-session-reuse ticket (e.g. #23) → flips 0 cases; tokens ~unchanged; latency cuts ~30–50ms per step (one fewer CDP attach/detach round-trip per observation). **Score: latency-led.**
+   - A token-trimming ticket (e.g. tighter AX-tree node cap, smaller observation digest) → flips 0 cases; tokens cuts ~20–40% per step; latency cuts modestly (smaller payloads). **Score: tokens-led.**
+   - An audit / classification ticket (e.g. failure-class enrichment, scoreboard traffic lights) → 0 / 0 / 0 across all three axes; pick only when its absence *currently blocks an estimate* for another candidate.
+   - A pure refactor / dev-experience ticket → 0 / 0 / 0; drops to the bottom.
 
-4. **Pick the highest expected red→green count.** Tie-break by lowest ticket number. Tickets with 0 expected flips drop to the bottom unless every red case is gated on a 0-flip ticket landing first. The Undone rubric's P0/P1/P2/P3 urgency tags are *advisory* under this rule — a P3 ticket that flips 5 cases beats a P0 that flips 0.
+4. **Pick the highest expected total improvement across the three axes.** Weight each axis by distance from the done bar / visibility on the scoreboard (pass-rate dominates while it is below ~80%, since the brief's headline metrics live there; tokens and latency become co-equal once pass-rate clears the bar). Tie-break by lowest ticket number. Tickets with 0 expected impact on every axis drop to the bottom unless every red case is gated on one of them landing first. The Undone rubric's P0/P1/P2/P3 urgency tags are *advisory* under this rule — a P3 ticket that cuts p95 latency by 30% beats a P0 that does not move any benchmark axis.
 
-5. **State the chosen ticket** in one line: ticket number, title, urgency tag (still record it for the audit trail), derived change name, and the **expected red→green count** (e.g. `iteration 8 picks #56 (P2, expected flips: 1) → fix-fixture-count-intentparse`).
+5. **State the chosen ticket** in one line: ticket number, title, urgency tag (still record it for the audit trail), derived change name, and the **expected per-axis deltas** (e.g. `iteration 9 picks #59 (P1, expected: flips +5 / tokens ~0 / latency ~0) → implement-click-tool`, or `iteration 12 picks #23 (P3, expected: flips 0 / tokens ~0 / latency −30ms p50) → implement-cdp-session-reuse`).
 
-The urgency tag remains useful as a tie-breaker between equally-impactful candidates and as documentation of *why* a 0-flip ticket might still be picked (e.g. it unblocks several others). Do not drop it from the rubric or the per-iteration log.
+The urgency tag remains useful as a tie-breaker between equally-impactful candidates and as documentation of *why* a 0-impact ticket might still be picked (e.g. it unblocks several others). Do not drop it from the rubric or the per-iteration log.
 
-**Stop condition for the wrapping `/auto_task2` loop:** after `/done_pr` records the new benchmark, compute the pass-rate delta against the prior master baseline. If two consecutive iterations produce zero net pass-rate improvement (delta ≤ 0 each time), halt and surface to the user. The 8-iteration ceiling still applies as a hard cap.
+**Stop condition for the wrapping `/auto_task2` loop:** after `/done_pr` records the new benchmark, compute deltas against the prior master baseline on all three axes (pass-rate, total tokens, p50 + p95 latency). If two consecutive iterations produce zero net improvement on **every** axis (every delta ≤ 0 both times), halt and surface to the user — work has clearly become marginal. A single-axis improvement (e.g. tokens go down while pass-rate is flat) keeps the loop alive. The 8-iteration ceiling still applies as a hard cap.
 
 Cross-check the rubric against the filesystem to catch stale entries:
 ```bash
