@@ -130,9 +130,8 @@ def test_aggregate_latency_delta_negative():
         ],
     }
     out = generate_diff_markdown(master, branch)
-    assert "p50" in out
-    latency_lines = [ln for ln in out.splitlines() if "p50" in ln or "p95" in ln]
-    assert any("-" in ln for ln in latency_lines)
+    assert "Δ p50 latency: -500ms" in out
+    assert "Δ p95 latency: -500ms" in out
 
 
 def test_header_contains_run_at_timestamps():
