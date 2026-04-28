@@ -33,13 +33,13 @@
 
 ## 5. CI Workflow — PR comment step
 
-- [ ] 5.1 Add `pull-requests: write` to the workflow permissions block in `.github/workflows/task2-benchmark.yml`.
-- [ ] 5.2 Add a new step after `Verify benchmark recorded for branch` that:
+- [x] 5.1 Add `pull-requests: write` to the workflow permissions block in `.github/workflows/task2-benchmark.yml`.
+- [x] 5.2 Add a new step after `Verify benchmark recorded for branch` that:
   - is conditional on `github.event_name == 'pull_request'`
   - checks if `task2/benchmark/${{ github.head_ref }}/diff.md` exists
   - if absent, prints a notice and exits 0
   - if present, runs `gh pr comment --edit-last --body-file <path> 2>/dev/null || gh pr comment --body-file <path>`
-- [ ] 5.3 Verify workflow YAML is valid (`yamllint` or `actionlint` if available, or visual inspection).
+- [x] 5.3 Verify workflow YAML is valid (`yamllint` or `actionlint` if available, or visual inspection).
 
 ## 6. Linting and final green bar
 

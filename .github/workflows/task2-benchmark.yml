@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 concurrency:
   group: task2-benchmark-${{ github.head_ref }}
@@ -53,3 +54,20 @@ jobs:
           uv run python -m scripts.benchmark
           --branch "${{ github.head_ref }}"
           --verify "${{ steps.base.outputs.date }}"
+
+      - name: Post diff as PR comment
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          DIFF_FILE="${{ github.workspace }}/task2/benchmark/${{ github.head_ref }}/diff.md"
+          if [ ! -f "$DIFF_FILE" ] || [ ! -s "$DIFF_FILE" ]; then
+            echo "No diff.md found for branch ${{ github.head_ref }}; skipping PR comment"
+            exit 0
+          fi
+          gh pr comment "${{ github.event.pull_request.number }}" \
+            --edit-last --body-file "$DIFF_FILE" \
+            --repo "${{ github.repository }}" 2>/dev/null \
+          || gh pr comment "${{ github.event.pull_request.number }}" \
+            --body-file "$DIFF_FILE" \
+            --repo "${{ github.repository }}"
