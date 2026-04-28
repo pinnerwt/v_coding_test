@@ -8,7 +8,7 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 
@@ -86,7 +86,10 @@ class CaseResult:
     cache_events: dict = field(default_factory=dict)
     failure_class: str | None = None
     failure_detail: str | None = None
-    skip_reason: str | None = None
+    skip_reason: (
+        Literal["live_disabled", "infra_unavailable", "fixture_missing", "feature_not_implemented"]
+        | None
+    ) = None
 
     def __post_init__(self) -> None:
         if self.status == _SKIP_STATUS:
