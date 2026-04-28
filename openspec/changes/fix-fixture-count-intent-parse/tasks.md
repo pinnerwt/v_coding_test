@@ -19,8 +19,8 @@
 
 ## 4. Green — add canary: true to fixture-count.yaml
 
-- [ ] 4.1 Add `canary: true` to `task2/eval/cases/fixture-count.yaml`
-- [ ] 4.2 Run `cd task2 && uv run pytest tests/ -x` — confirm the full test suite remains green
+- [x] 4.1 Add `canary: true` to `task2/eval/cases/fixture-count.yaml`
+- [x] 4.2 Run `cd task2 && uv run pytest tests/ -x` — confirm the full test suite remains green
 
 ## 5. Lint and format
 

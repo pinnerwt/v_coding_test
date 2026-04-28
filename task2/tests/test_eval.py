@@ -211,6 +211,11 @@ def test_fixture_count_yaml_loads():
     assert cases[0]["fixture"] is True
 
 
+def test_fixture_count_yaml_is_canary():
+    cases = load_cases("eval/cases/fixture-count.yaml")
+    assert cases[0]["canary"] is True
+
+
 def test_canary_read_h1_yaml_loads_as_fixture_canary():
     cases = load_cases("eval/cases/canary-read-h1.yaml")
     assert len(cases) == 1

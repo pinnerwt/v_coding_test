@@ -13,3 +13,4 @@
     usd: 0.05
     seconds: 30
   fixture: true
+  canary: true
