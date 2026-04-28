@@ -366,8 +366,6 @@ Urgency tags:
 
 ### In flight
 
-- **#35** — N-run statistical bench mode (`--repeats N`) — PR #75.
-
 ## Honest risks / tradeoffs
 
 - **Local Qwen3.5 27B is weaker than frontier on long-horizon planning.** Mitigation: short bounded plans, constrained tool-call grammar, structured observations. Will measure and surface in README.
