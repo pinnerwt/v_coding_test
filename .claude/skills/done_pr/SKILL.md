@@ -76,10 +76,10 @@ Wraps up an OpenSpec-driven PR end-to-end: archive → commit → push → merge
 
    Skip entirely if step 1a was skipped. Step 1b catches failures with novel `failure_class` / `failure_detail` patterns; this step catches *aggregate* regressions that are silent on a per-case `[FAIL]` axis — e.g. a fix that converts a fast crash into a slow timeout (pass-rate stays flat, but cost and latency double). Without this step, those slip through because no individual case is "newly failing" — the case has just become more expensive to fail.
 
-   - Pick the comparison baseline. In priority order:
-     1. The most recent `task2/benchmark/master/webvoyager/*.json` (by `run_at`), if it exists.
-     2. Failing that, the chronologically-most-recent run *other than this branch's*, computed from `ls -t /home/pgi/vici/task2/benchmark/*/webvoyager/*.json | grep -v "/<sanitized-branch>/" | head -1`.
-     3. Failing that (first WebVoyager run ever recorded), skip this step and print `done_pr: no prior webvoyager baseline — skipping aggregate regression check`.
+   - Pick the comparison baseline. **WebVoyager JSONs are NOT filed under `task2/benchmark/master/webvoyager/`** — that directory holds only basic-suite artifacts. WebVoyager runs live exclusively under per-branch directories (`task2/benchmark/<sanitized-branch>/webvoyager/<timestamp>.json`), and `/done_pr` writes the new JSON *before* the merge, so the prior baseline IS whichever branch's WebVoyager file was newest immediately before this run. Rule:
+     1. Take the chronologically-most-recent run other than this branch's via mtime: `ls -t /home/pgi/vici/task2/benchmark/*/webvoyager/*.json | grep -v "/<sanitized-branch>/" | head -1`. This works because every WebVoyager run is merged to master through a feature-branch PR, so the newest non-self file on disk corresponds to the last `/done_pr` that landed.
+     2. If that command returns nothing (first WebVoyager run ever recorded), skip this step and print `done_pr: no prior webvoyager baseline — skipping aggregate regression check`.
+     **Do not** look under `task2/benchmark/master/` for WebVoyager — confirmed in PR #102's `/done_pr` follow-up on 2026-04-28: that path only contains basic-suite `results.json` / `scoreboard.md`, so a `master/webvoyager/` lookup would silently fall through and either compare against nothing or compare against the wrong file. The newest-non-self mtime rule is the only correct source.
    - Compute aggregates for both runs (this run's JSON is the one written in step 1a; the baseline is from above):
      ```python
      pass_rate = sum(1 for c in cases if c['status']=='succeeded') / len(cases)
