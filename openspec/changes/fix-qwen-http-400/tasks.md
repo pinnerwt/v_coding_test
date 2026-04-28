@@ -51,10 +51,10 @@
 
 ## Task 4 — Green: implement `_compact_messages`
 
-- [ ] 4.1 In `task2/agent/loop.py`, add a module-level constant:
+- [x] 4.1 In `task2/agent/loop.py`, add a module-level constant:
   `_DEFAULT_CONTEXT_CHAR_BUDGET: int = 80_000`
 
-- [ ] 4.2 Add a private function `_compact_messages(messages: list[dict], budget_chars: int) -> list[dict]`:
+- [x] 4.2 Add a private function `_compact_messages(messages: list[dict], budget_chars: int) -> list[dict]`:
   - Compute `total = sum(len(json.dumps(m)) for m in messages)`.
   - If `total <= budget_chars`, return `messages` unchanged.
   - Walk forward from `messages[1]` (skip system prompt at index 0). For each message:
@@ -63,13 +63,13 @@
   - Recompute total; if still over budget, repeat (iterative elision until under budget or no more elisions possible).
   - Return the modified list. `messages[0]` (system prompt) is never modified.
 
-- [ ] 4.3 In `loop()`, read the budget from environment: `_budget = int(os.environ.get("LLM_CONTEXT_CHAR_BUDGET", _DEFAULT_CONTEXT_CHAR_BUDGET))`. Call `messages = _compact_messages(messages, _budget)` immediately before `response = llm_client.chat(messages, tools=TOOLS)`.
+- [x] 4.3 In `loop()`, read the budget from environment: `_budget = int(os.environ.get("LLM_CONTEXT_CHAR_BUDGET", _DEFAULT_CONTEXT_CHAR_BUDGET))`. Call `messages = _compact_messages(messages, _budget)` immediately before `response = llm_client.chat(messages, tools=TOOLS)`.
 
-- [ ] 4.4 Run `uv run pytest tests/agent/test_loop.py::test_loop_compacts_message_history_under_token_budget -x` and confirm it passes.
+- [x] 4.4 Run `uv run pytest tests/agent/test_loop.py::test_loop_compacts_message_history_under_token_budget -x` and confirm it passes.
 
 ## Task 5 — Red: most-recent turn preserved after compaction
 
-- [ ] 5.1 In `task2/tests/agent/test_loop.py`, add test `test_loop_preserves_most_recent_observation_after_compaction`.
+- [x] 5.1 In `task2/tests/agent/test_loop.py`, add test `test_loop_preserves_most_recent_observation_after_compaction`.
 
   The test shall:
   - Use the same stub setup as Task 3 but inspect `last_messages` for the content of the last `user`-role message that starts with `"Current state: "`.
@@ -80,7 +80,7 @@
 
   Acceptance: `uv run pytest tests/agent/test_loop.py::test_loop_preserves_most_recent_observation_after_compaction -x` (from `task2/`).
 
-- [ ] 5.2 Run the test and confirm it fails before the compaction implementation is in place (or passes immediately if Task 4 already satisfies this invariant — in that case, record the green result and move on without additional code changes).
+- [x] 5.2 Run the test and confirm it fails before the compaction implementation is in place (or passes immediately if Task 4 already satisfies this invariant — in that case, record the green result and move on without additional code changes).
 
 ## Task 6 — Red: end-to-end regression
 
