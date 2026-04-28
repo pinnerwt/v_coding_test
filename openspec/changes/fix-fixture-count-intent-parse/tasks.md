@@ -30,5 +30,5 @@
 
 ## 6. Verify eval case end-to-end
 
-- [ ] 6.1 Run `cd task2 && uv run python -m scripts.eval --case fixture-count` and confirm `status` is in `{"succeeded", "unverified"}` (not `"failed"` with `failure_class="tool_error"`)
-- [ ] 6.2 Run `cd task2 && uv run python -m scripts.canary_gate --results benchmark/<branch>/results.json` (or a locally generated results file) and confirm the gate exits 0 with three canary cases recognized
+- [x] 6.1 Run `cd task2 && uv run python -m scripts.eval --case fixture-count` and confirm `status` is in `{"succeeded", "unverified"}` (not `"failed"` with `failure_class="tool_error"`)
+- [x] 6.2 Run `cd task2 && uv run python -m scripts.canary_gate --results benchmark/<branch>/results.json` (or a locally generated results file) and confirm the gate exits 0 with three canary cases recognized
