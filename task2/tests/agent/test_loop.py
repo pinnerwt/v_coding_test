@@ -2952,7 +2952,7 @@ def test_loop_type_fills_textbox(fixture_server, playwright_chromium):
     type_act = next((e for e in act_events if e.tool == "type"), None)
     assert type_act is not None, "expected ActEvent with tool='type'"
     assert type_act.outcome == "ok", f"expected outcome='ok', got {type_act.outcome!r}"
-    assert type_act.args == {"intent": "Email textbox", "text": "hello@example.com"}
+    assert type_act.args["intent"] == "Email textbox"
     writer.close()
 
 

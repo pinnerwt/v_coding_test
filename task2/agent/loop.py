@@ -30,7 +30,7 @@ if TYPE_CHECKING:
     from agent.locator_cache import LocatorCache
 
 RunStatus = Literal["succeeded", "unverified", "failed", "timeout"]
-ToolName = Literal["goto", "read", "click", "done", "fail"]
+ToolName = Literal["goto", "read", "click", "type", "done", "fail"]
 _CLICK_SUCCESS_OUTCOMES: frozenset[str] = frozenset({"ok", "nav"})
 
 STATE_MESSAGE_PREFIX = "Current state: "
@@ -120,6 +120,27 @@ TOOLS: list[dict] = [
                     }
                 },
                 "required": ["intent"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "type",
+            "description": "Fill a textbox described by intent with text.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "intent": {
+                        "type": "string",
+                        "description": "Describe the textbox to fill (e.g. 'the Email input').",
+                    },
+                    "text": {
+                        "type": "string",
+                        "description": "The text to fill into the textbox.",
+                    },
+                },
+                "required": ["intent", "text"],
             },
         },
     },
@@ -592,6 +613,52 @@ def _dispatch(
         if outcome in _CLICK_SUCCESS_OUTCOMES:
             return f"Clicked {intent_val!r} ({outcome})"
         return f"Error: click {outcome} for intent {intent_val!r}"
+    if tool_name == "type":
+        intent_val = args.get("intent")
+        text_val = args.get("text")
+        if not isinstance(intent_val, str) or not intent_val:
+            return "Error: type requires a non-empty 'intent' string argument"
+        if not isinstance(text_val, str) or not text_val:
+            return "Error: type requires a non-empty 'text' string argument"
+        page = browser._page
+        located = _locate_or_error_msg(
+            page,
+            intent_val,
+            supervisor,
+            cache=locator_cache,
+            trace_writer=trace_writer,
+            run_id=run_id,
+            step_id=step_id,
+        )
+        if isinstance(located, str):
+            return located
+        locate_result = located
+        t_fill = time.monotonic()
+        from playwright.sync_api import Error as PlaywrightError
+        from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+
+        fill_outcome: Literal["ok", "timeout", "error"]
+        try:
+            page.locator(locate_result.selector).fill(text_val, timeout=5000)
+        except PlaywrightTimeoutError:
+            fill_outcome = "timeout"
+        except PlaywrightError:
+            fill_outcome = "error"
+        else:
+            fill_outcome = "ok"
+        elapsed_ms = int((time.monotonic() - t_fill) * 1000)
+        _emit_act_event(
+            trace_writer=trace_writer,
+            run_id=run_id,
+            tool="type",
+            args={"intent": intent_val, "text": text_val},
+            outcome=fill_outcome,
+            ms=elapsed_ms,
+            step_id=step_id,
+        )
+        if fill_outcome == "ok":
+            return f"Typed into {intent_val!r} (ok)"
+        return f"Error: type {fill_outcome} for intent {intent_val!r}"
     return f"Error: unknown tool {tool_name!r}"
 
 
