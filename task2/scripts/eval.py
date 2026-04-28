@@ -198,7 +198,7 @@ def _classify_failure(
                 return "locator_miss", "locator exhausted all tiers without a hit"
 
     for ev in events:
-        if isinstance(ev, ActEvent) and ev.outcome == "error":
+        if isinstance(ev, ActEvent) and ev.outcome in ("error", "timeout"):
             detail = ev.diff.get("error", "unknown error")
             return "tool_error", str(detail)
 
