@@ -16,6 +16,7 @@ TBD - created by archiving change implement-quantitative-eval. Update Purpose af
 The scoreboard SHALL contain all of the following sections, in order:
 
 - **Category summary**: one line per suite in `SUITE_THRESHOLDS` insertion order, rendered BEFORE the per-case table. Each line SHALL follow the format: `<SuiteName>: <passed>/<ran> (<pct>%) [target <target>%] <glyph>` where `<glyph>` is ✅ when passed/ran >= target_pct and ran > 0, ❌ when passed/ran < target_pct and ran > 0, or ⏭️ when ran == 0. Cases not matching any suite prefix SHALL be omitted from the category summary (not shown as "other" row).
+- **Failure histogram**: a `**Failure histogram**` block listing `failure_class → count` for all failed cases with a non-None `failure_class`, sorted descending by count (ties alphabetical). Suppressed entirely when there are no failed cases with a classifiable `failure_class`. Rendered AFTER the category summary and BEFORE the per-case status table.
 - **Per-case status table**: columns `Case`, `Status`, `Steps`, `Latency (ms)`, `USD`, `Tokens (P+C)`, `Escalations`, `Replans`, `Cache Hits`, `Cache Misses`, `Cache Inv.`, `Failure class`
 - **Summary line**: `N/M succeeded (X%)` where N = passed (succeeded + unverified), M = total non-skipped.
 - **Latency percentiles**: `p50: Xms  p95: Xms` computed over `latency_ms_total` values of non-skipped cases.
@@ -105,6 +106,13 @@ The helper SHALL be backward-compatible: results JSON files that do not contain 
 - **WHEN** `generate_scoreboard(data)` is called
 - **THEN** the position of `Drift suite:` in the output string SHALL be less than the position of the first `|` character of the per-case table header row
 
+#### Scenario: Failure histogram appears after category summary and before per-case table
+
+- **GIVEN** a results file with at least one failed case that has a non-None `failure_class`
+- **WHEN** `generate_scoreboard(data)` is called
+- **THEN** the position of `**Failure histogram**` in the output SHALL be greater than the position of the category summary block
+- **AND** the position of `**Failure histogram**` SHALL be less than the position of the per-case table header row (the `| Case |` header)
+
 #### Scenario: Per-case Status column shows fractional rate when repeats > 1 and all pass
 
 - **GIVEN** a results file with one case entry containing `repeats=3`, `passed_runs=3`, `status="succeeded"`
@@ -152,6 +160,65 @@ The helper SHALL be backward-compatible: results JSON files that do not contain 
 - **GIVEN** a results file with a case that has no `cache_events` key
 - **WHEN** `generate_scoreboard(data)` is called
 - **THEN** the per-case table row SHALL show `0` for both `Cache Hits` and `Cache Misses`
+- **AND** no exception SHALL be raised
+
+### Requirement: Failure histogram block
+
+`generate_scoreboard(data)` SHALL emit a failure-histogram subsection after the category summary block and before the per-case table header row. The subsection SHALL render as:
+
+- A header line: `**Failure histogram** (N failed)` where N is the count of non-skipped cases whose `status` is `"failed"`, `"blocked"`, or `"timeout"`.
+- A blank line.
+- A two-column markdown table with header `| Failure class | Count |` and separator row `|---|---|`.
+- One row per distinct non-None `failure_class` value, sorted descending by count; ties broken alphabetically by class name.
+- Only classes with count >= 1 SHALL appear as rows.
+
+The block SHALL be suppressed entirely (no header, no table) when there are no failed cases or when the total count across all class rows is zero (i.e., all failed cases have `failure_class=None`).
+
+Cases with `failure_class=None` SHALL NOT appear as a `None` row in the histogram.
+
+`generate_scoreboard` SHALL NOT require any new parameters; it reads `failure_class` from each case dict using `case.get("failure_class")`.
+
+#### Scenario: Histogram block appears when at least one failed case has a non-None failure_class
+
+- **GIVEN** a results file with one failed case having `failure_class="supervisor_halt"`
+- **WHEN** `generate_scoreboard(data)` is called
+- **THEN** the output SHALL contain `**Failure histogram**`
+- **AND** the output SHALL contain `| Failure class | Count |`
+- **AND** the output SHALL contain a row `| supervisor_halt | 1 |`
+
+#### Scenario: Histogram counts are correct with multiple classes
+
+- **GIVEN** a results file with five failed cases: three with `failure_class="supervisor_halt"`, one with `failure_class="locator_miss"`, one with `failure_class="tool_error"`
+- **WHEN** `generate_scoreboard(data)` is called
+- **THEN** the output SHALL contain `| supervisor_halt | 3 |`
+- **AND** the output SHALL contain `| locator_miss | 1 |`
+- **AND** the output SHALL contain `| tool_error | 1 |`
+- **AND** `supervisor_halt` SHALL appear before `locator_miss` and `tool_error` in the output (higher count first)
+
+#### Scenario: Histogram sorts ties alphabetically
+
+- **GIVEN** a results file with two failed cases: one `failure_class="tool_error"` and one `failure_class="locator_miss"` (both count=1)
+- **WHEN** `generate_scoreboard(data)` is called
+- **THEN** `locator_miss` SHALL appear before `tool_error` in the histogram table (alphabetical order for tied counts)
+
+#### Scenario: Histogram block is omitted when no cases are failed
+
+- **GIVEN** a results file where all cases have `status="succeeded"` or `status="skipped"`
+- **WHEN** `generate_scoreboard(data)` is called
+- **THEN** the output SHALL NOT contain `**Failure histogram**`
+
+#### Scenario: Histogram block is omitted when all failed cases have failure_class=None
+
+- **GIVEN** a results file with one failed case having `failure_class=null` (None)
+- **WHEN** `generate_scoreboard(data)` is called
+- **THEN** the output SHALL NOT contain `**Failure histogram**`
+- **AND** no exception SHALL be raised
+
+#### Scenario: Histogram is backward-compatible with results lacking failure_class key
+
+- **GIVEN** a results file whose case dicts have no `failure_class` key
+- **WHEN** `generate_scoreboard(data)` is called
+- **THEN** the histogram block SHALL be omitted
 - **AND** no exception SHALL be raised
 
 ### Requirement: Suite-threshold config block
