@@ -86,6 +86,7 @@ def aggregate_repeats(case: dict, *, repeats: int, llm_client, browser) -> Aggre
     p95_lat = _percentile(latencies, 95) if latencies else 0
     stddev_usd = statistics.pstdev(usd_values) if len(usd_values) > 1 else 0.0
     avg_firings = sum(firings) / len(firings) if firings else 0.0
+    mean_replans = sum(r.replans for r in runs) / len(runs)
     median_steps = int(statistics.median(steps_values)) if steps_values else 0
     mean_usd = sum(usd_values) / len(usd_values) if usd_values else 0.0
 
@@ -108,7 +109,7 @@ def aggregate_repeats(case: dict, *, repeats: int, llm_client, browser) -> Aggre
         completion_tokens=sum(r.completion_tokens for r in runs),
         latency_ms_total=median_lat,
         escalations=rep_run.escalations,
-        replans=round(avg_firings - sum(len(r.escalations) for r in runs) / len(runs)),
+        replans=round(mean_replans),
         cache_events=rep_run.cache_events,
         failure_class=rep_run.failure_class if repeat_status != "all_pass" else None,
         skip_reason=rep_run.skip_reason if repeat_status == "skipped" else None,
