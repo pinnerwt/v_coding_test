@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 _SUPPORTED_ROLES: frozenset[str] = frozenset(
     {"button", "link", "textbox", "checkbox", "heading", "list", "listitem"}
 )
+_ROLE_ALIASES: dict[str, str] = {"items": "listitem", "lists": "list"}
 _ARTICLES: frozenset[str] = frozenset({"the", "a", "an"})
 
 LocatorMissReason = Literal["zero_matches", "ambiguous", "vision_miss"]
@@ -135,6 +136,7 @@ def parse_intent(intent: str) -> tuple[str, str | None]:
     if len(tokens) > 1 and tokens[0].lower() in _ARTICLES:
         tokens = tokens[1:]
     role = tokens[-1].lower()
+    role = _ROLE_ALIASES.get(role, role)
     if role not in _SUPPORTED_ROLES:
         raise IntentParseError(
             f"unknown role token {tokens[-1]!r} in intent {intent!r}; "

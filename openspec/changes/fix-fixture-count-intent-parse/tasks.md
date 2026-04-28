@@ -3,7 +3,8 @@
 - [x] 1.1 In `task2/tests/test_locate.py`, add a test asserting `parse_intent("list")` returns `("list", None)` and does NOT raise `IntentParseError`
 - [x] 1.2 In `task2/tests/test_locate.py`, add a test asserting `parse_intent("listitem")` returns `("listitem", None)` and does NOT raise `IntentParseError`
 - [x] 1.3 In `task2/tests/test_locate.py`, add a test asserting `parse_intent("Items listitem")` returns `("listitem", "Items")`
-- [x] 1.4 In `task2/tests/test_locate.py`, add a test asserting `parse_intent("items")` still raises `IntentParseError` with `"items"` in the message
+- [x] 1.4 In `task2/tests/test_locate.py`, add tests asserting `parse_intent("items")` returns `("listitem", None)`, `parse_intent("lists")` returns `("list", None)`, and `parse_intent("list items")` returns `("listitem", "list")` (production-LLM phrasing); plus `parse_intent("Submit widget")` still raises `IntentParseError`
+- [x] 1.6 In `task2/agent/locate.py`, add `_ROLE_ALIASES = {"items": "listitem", "lists": "list"}` and apply it in `parse_intent` after lowercasing the role token
 - [x] 1.5 Run `cd task2 && uv run pytest tests/test_locate.py -x` — confirm the new tests fail for the expected reason (`IntentParseError`)
 
 ## 2. Red — integration test for fixture-count with stubbed LLM
