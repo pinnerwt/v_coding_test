@@ -5,6 +5,13 @@ import json
 import sys
 from pathlib import Path
 
+_SKIP_REASON_ORDER = [
+    "live_disabled",
+    "infra_unavailable",
+    "fixture_missing",
+    "feature_not_implemented",
+]
+
 SUITE_THRESHOLDS: dict[str, dict] = {
     "drift": {
         "name": "Drift suite",
@@ -107,6 +114,22 @@ def generate_scoreboard(data: dict) -> str:
             tier_counts[tier] = tier_counts.get(tier, 0) + count
 
     lines.append("")
+
+    skip_reason_counts: dict[str, int] = {}
+    for case in cases:
+        reason = case.get("skip_reason")
+        if reason is not None:
+            skip_reason_counts[reason] = skip_reason_counts.get(reason, 0) + 1
+    if skip_reason_counts:
+        total_skipped = sum(skip_reason_counts.values())
+        lines.append(f"**Skipped** ({total_skipped} cases)")
+        lines.append("")
+        lines.append("| Skip reason | Count |")
+        lines.append("|---|---|")
+        for reason in _SKIP_REASON_ORDER:
+            if reason in skip_reason_counts:
+                lines.append(f"| {reason} | {skip_reason_counts[reason]} |")
+        lines.append("")
 
     passed = sum(1 for c in non_skipped if c.get("status") in ("succeeded", "unverified"))
     total = len(non_skipped)

@@ -333,15 +333,14 @@ Urgency tags:
 
 ### P0 — unblocks other work
 
-- **#45** — Surface tracebacks from `_run_agent`'s internal-error path [in PR #66; awaiting `/done_pr` archive + merge]. Will be removed from this rubric on archive.
+*(none currently)*
 
 ### P1 — observed bugs / type-narrowing gaps
 
-- **#47** — Tighten `EscalationDecision.policy` to `Literal[...]`; removes a `# type: ignore` and enforces SupervisorEvent contract end-to-end.
+*(none currently)*
 
 ### P2 — measurable improvements
 
-- **#34** — Skip-reason tagging.
 - **#35** — N-run statistical bench mode (`--repeats N`).
 - **#36** — Auto-diff scoreboard against master baseline.
 - **#37** — Canary suite: must-always-pass cases, hard-blocking on regression.
@@ -359,7 +358,7 @@ Urgency tags:
 
 ### In flight
 
-- **#32** — Audit mechanism-firing rates [in PR #62; awaiting `/done_pr` archive + merge]. Will be removed from this rubric on archive.
+*(none currently)*
 
 ## Honest risks / tradeoffs
 

@@ -557,3 +557,105 @@ def test_category_summary_buckets_correction_and_maintenance_drift_into_drift():
     }
     output = generate_scoreboard(data)
     assert "Drift suite: 2/2 (100%) [target 100%] ✅" in output
+
+
+# ---------------------------------------------------------------------------
+# implement-skip-reason-tagging: Skipped subsection in scoreboard (Red phase)
+# ---------------------------------------------------------------------------
+
+
+def _make_skipped_case(cid: str, skip_reason: str | None = None) -> dict:
+    base = {
+        "id": cid,
+        "status": "skipped",
+        "steps": 0,
+        "usd": 0.0,
+        "l_tier_counts": {},
+        "validators": [],
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "latency_ms_total": 0,
+        "latency_ms_per_step": [],
+        "step_breakdown": [],
+    }
+    if skip_reason is not None:
+        base["skip_reason"] = skip_reason
+    return base
+
+
+def test_skipped_subsection_appears():
+    from scripts.score import generate_scoreboard
+
+    data = {
+        "run_at": "2026-04-27T00:00:00+00:00",
+        "cases": [_make_skipped_case("live-foo", skip_reason="live_disabled")],
+    }
+    output = generate_scoreboard(data)
+    assert "**Skipped** (1 cases)" in output
+    assert "| live_disabled | 1 |" in output
+
+
+def test_skipped_subsection_omitted_when_no_skips():
+    from scripts.score import generate_scoreboard
+
+    data = {
+        "run_at": "2026-04-27T00:00:00+00:00",
+        "cases": [
+            {
+                "id": "fixture-heading",
+                "status": "succeeded",
+                "steps": 1,
+                "usd": 0.001,
+                "l_tier_counts": {},
+                "validators": [],
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "latency_ms_total": 100,
+                "latency_ms_per_step": [100],
+                "step_breakdown": [],
+            }
+        ],
+    }
+    output = generate_scoreboard(data)
+    assert "**Skipped**" not in output
+
+
+def test_skipped_subsection_old_results_no_skip_reason():
+    from scripts.score import generate_scoreboard
+
+    data = {
+        "run_at": "2026-04-27T00:00:00+00:00",
+        "cases": [_make_skipped_case("live-bar")],
+    }
+    output = generate_scoreboard(data)
+    assert "**Skipped**" not in output
+
+
+def test_skipped_subsection_multiple_reasons():
+    from scripts.score import generate_scoreboard
+
+    data = {
+        "run_at": "2026-04-27T00:00:00+00:00",
+        "cases": [
+            _make_skipped_case("c1", skip_reason="live_disabled"),
+            _make_skipped_case("c2", skip_reason="fixture_missing"),
+        ],
+    }
+    output = generate_scoreboard(data)
+    assert "**Skipped** (2 cases)" in output
+    assert "| live_disabled | 1 |" in output
+    assert "| fixture_missing | 1 |" in output
+
+
+def test_skipped_subsection_before_aggregate_summary():
+    from scripts.score import generate_scoreboard
+
+    data = {
+        "run_at": "2026-04-27T00:00:00+00:00",
+        "cases": [_make_skipped_case("c1", skip_reason="live_disabled")],
+    }
+    output = generate_scoreboard(data)
+    skipped_pos = output.index("**Skipped**")
+    # The aggregate summary line starts with "**0/0 succeeded" when all cases are skipped
+    summary_pos = output.index("**0/0 succeeded")
+    assert skipped_pos < summary_pos
