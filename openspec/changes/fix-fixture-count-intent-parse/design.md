@@ -41,7 +41,7 @@ Option (b) adds a parser mode that does not flow through `role`/`name` at all, r
 
   Note: `parse_intent('list items')` returns `('listitem', 'list')` because the role-alias map normalizes `items` → `listitem` after the article-stripping step. Unit tests cover both bare aliases (`'items'`, `'lists'`) and the production phrasing (`'list items'`).
 
-- Integration test: uses a fake LLM chat function; the `fixture-count` case runs against a stubbed agent that emits a locate call ending in `"listitem"` and a read/return step, asserting `status in PASS_STATUSES`.
+- Integration test: uses a fake LLM chat function; the `fixture-count` case runs against a stubbed agent that emits a `read` tool call with `intent="list items"` (the production-LLM phrasing routed through the alias map) and a `done` step, asserting `status in PASS_STATUSES`.
 
 ## Risks / Trade-offs
 
@@ -52,7 +52,7 @@ Option (b) adds a parser mode that does not flow through `role`/`name` at all, r
 ## Migration Plan
 
 1. Red: write unit test and integration test (failing).
-2. Green: add `"list"` and `"listitem"` to `_SUPPORTED_ROLES` and add `_ROLE_ALIASES = {"items": "listitem", "lists": "list"}` to `agent/locate.py`, applying the alias map in `parse_intent` after lowercasing the role token.
+2. Green: introduce `SupportedRole = Literal["button", "link", "textbox", "checkbox", "heading", "list", "listitem"]` in `agent/locate.py`, derive `_SUPPORTED_ROLES` via `frozenset(get_args(SupportedRole))` (mirroring the existing `LocatorMissReason / _VALID_REASONS` pattern in the same file), and add `_ROLE_ALIASES = {"items": "listitem", "lists": "list"}` applied in `parse_intent` after lowercasing the role token.
 3. Green: confirm both tests pass.
 4. Add `canary: true` to `fixture-count.yaml`.
 5. Update canary-gate spec comment to enumerate three canary cases.
