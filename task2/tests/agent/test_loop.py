@@ -2944,9 +2944,13 @@ def test_loop_type_fills_textbox(fixture_server, playwright_chromium):
 
     with Browser(playwright_browser=playwright_chromium) as browser:
         result = loop("fill email", browser, fake_llm, trace_writer=writer, run_id=run_id)
+        filled_value = browser._page.locator("#email").input_value()
 
     assert result.status == "succeeded"
     assert result.steps <= 4
+    assert filled_value == "hello@example.com", (
+        f"expected textbox to contain typed text, got {filled_value!r}"
+    )
 
     act_events = [e for e in writer.iter_events(run_id) if isinstance(e, ActEvent)]
     type_act = next((e for e in act_events if e.tool == "type"), None)
