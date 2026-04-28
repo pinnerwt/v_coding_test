@@ -33,14 +33,14 @@ Artifacts land at `task2/benchmark/<sanitized-branch>/webvoyager/<timestamp>.jso
 
 Each branch contributes its most recent WebVoyager run (`benchmark/<branch>/webvoyager/<timestamp>.json`). Pass-rate, latency, and cost are split into passed vs. failed cases; failure-class counts come from the `failure_class` field on each non-passed case.
 
-#### Latest run — `task2-implement-fail-prompt-tightening` (2026-04-28 22:33 UTC)
+#### Latest run — `task2-fix-qwen-http-400` (2026-04-28 23:35 UTC)
 
 | Case | Status | Steps | Latency | Tokens | USD |
 |---|---|---:|---:|---:|---:|
-| `webvoyager-1` | failed | 0 | 0 ms | 0 | $0.0000 |
-| `webvoyager-2` | failed | 0 | 0 ms | 0 | $0.0000 |
-| `webvoyager-3` | succeeded | 7 | 46.2 s | 43,875 | $0.0448 |
-| **Total (3 cases, 1 passed)** | | 7 | 46.2 s | 43,875 | $0.0448 |
+| `webvoyager-1` | timeout | 20 | 281.6 s | 304,042 | $0.3064 |
+| `webvoyager-2` | succeeded | 8 | 108.4 s | 93,978 | $0.0958 |
+| `webvoyager-3` | failed | 0 | 0 ms | 0 | $0.0000 |
+| **Total (3 cases, 1 passed)** | | 28 | 390.0 s | 398,020 | $0.4023 |
 <!-- WEBVOYAGER_TRENDS:END -->
 
 #### Tier-0 baseline (3 tasks, 2026-04-28)

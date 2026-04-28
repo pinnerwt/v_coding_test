@@ -1492,6 +1492,25 @@ def test_run_case_failure_class_tool_error_when_loop_raises():
     assert "kaboom" in result.failure_detail
 
 
+def test_run_case_non_llm_error_failure_detail_is_repr():
+    case = {
+        "id": "boom",
+        "task": "do something",
+        "budget": {"steps": 1, "usd": 1.0, "seconds": 30},
+        "expect": {},
+    }
+
+    def _raising_loop(*args, **kwargs):
+        raise RuntimeError("unexpected")
+
+    with patch("scripts.eval.loop", _raising_loop):
+        result = _run_case(case, llm_client=object(), browser=object())
+
+    assert result.failure_class == "tool_error"
+    assert result.failure_detail == repr(RuntimeError("unexpected"))
+    assert result.steps == 0
+
+
 # ---------------------------------------------------------------------------
 # implement-skip-reason-tagging (Red phase)
 # ---------------------------------------------------------------------------
@@ -1643,6 +1662,33 @@ def test_case_result_non_canary_serialized_as_false():
 # ---------------------------------------------------------------------------
 # Integration test: fixture-count with stubbed LLM emitting listitem intent
 # ---------------------------------------------------------------------------
+
+
+def test_run_case_failure_detail_includes_llm_error_body():
+    from agent.llm import LLMError
+
+    def _raise_llm_error(*args, **kwargs):
+        raise LLMError(
+            "http 400",
+            kind="http",
+            status=400,
+            body='{"error":{"type":"exceed_context_size_error","n_prompt_tokens":34074}}',
+        )
+
+    case = {
+        "id": "llm-error-case",
+        "task": "dummy",
+        "budget": {"steps": 1, "usd": 1.0, "seconds": 30},
+        "expect": {},
+    }
+    with patch("scripts.eval.loop", side_effect=_raise_llm_error):
+        result = _run_case(case, llm_client=MagicMock(), browser=MagicMock())
+
+    assert "status=400" in result.failure_detail
+    assert "exceed_context_size_error" in result.failure_detail
+    assert result.failure_class == "tool_error"
+    assert result.steps == 0
+    assert result.validators[0]["error"] == result.failure_detail
 
 
 def test_fixture_count_with_listitem_intent_stub_llm(playwright_chromium):

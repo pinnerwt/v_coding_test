@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -160,6 +161,58 @@ TOOLS: list[dict] = [
         },
     },
 ]
+
+
+_DEFAULT_CONTEXT_CHAR_BUDGET: int = 80_000
+_ELIDED_STATE_CONTENT = "Current state: <elided>"
+_ELIDED_TOOL_CONTENT = "<read tool result elided>"
+
+
+def _compact_messages(messages: list[dict], budget_chars: int) -> list[dict]:
+    def _is_state_msg(m: dict) -> bool:
+        return (
+            m.get("role") == "user"
+            and isinstance(m.get("content"), str)
+            and STATE_MESSAGE_PREFIX in m["content"]
+        )
+
+    total = sum(len(json.dumps(m)) for m in messages)
+    if total <= budget_chars:
+        return messages
+
+    last_state_idx: int | None = None
+    for i in range(len(messages) - 1, -1, -1):
+        if _is_state_msg(messages[i]):
+            last_state_idx = i
+            break
+
+    changed = True
+    while total > budget_chars and changed:
+        changed = False
+        for i in range(1, len(messages)):
+            m = messages[i]
+            replacement: str | None = None
+            if _is_state_msg(m) and i != last_state_idx and m["content"] != _ELIDED_STATE_CONTENT:
+                replacement = _ELIDED_STATE_CONTENT
+            elif (
+                m.get("role") == "tool"
+                and last_state_idx is not None
+                and i < last_state_idx
+                and m.get("content") != _ELIDED_TOOL_CONTENT
+            ):
+                replacement = _ELIDED_TOOL_CONTENT
+            if replacement is None:
+                continue
+            old_size = len(json.dumps(m))
+            new_msg = {**m, "content": replacement}
+            new_size = len(json.dumps(new_msg))
+            messages[i] = new_msg
+            total += new_size - old_size
+            changed = True
+            if total <= budget_chars:
+                break
+
+    return messages
 
 
 @dataclass(frozen=True)
@@ -725,6 +778,7 @@ def loop(
     last_actions: list[dict] = []
     active_plan: plan_module.Plan | None = None
     _prior_act_outcomes: list[str] = []
+    _budget = int(os.environ.get("LLM_CONTEXT_CHAR_BUDGET", _DEFAULT_CONTEXT_CHAR_BUDGET))
 
     for _ in range(max_steps):
         step_num += 1
@@ -761,6 +815,7 @@ def loop(
         if events is not None:
             events.append(_DecisionMarker())
 
+        messages = _compact_messages(messages, _budget)
         response = llm_client.chat(messages, tools=TOOLS)
 
         cum_prompt_tokens += response.usage.prompt_tokens
