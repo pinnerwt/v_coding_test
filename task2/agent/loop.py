@@ -227,7 +227,11 @@ def _build_system_prompt(task: str) -> str:
         "Use the tools provided to navigate the web and gather information. "
         "When you have completed the task, call the `done` tool with a structured result "
         "and evidence (including the current page URL and a text snippet confirming the result). "
-        "If you cannot complete the task, call `fail` with a reason."
+        "Call `fail` ONLY for irrecoverable conditions — login walls, captchas, "
+        "pages that don't exist, or required information genuinely absent from the page. "
+        "If a target element exists on the page but you don't know how to act on it, "
+        "attempt `click`/`type` with a natural-language `intent` first; "
+        "the locator pipeline will resolve it."
     )
 
 
