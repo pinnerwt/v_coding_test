@@ -214,17 +214,17 @@ def _make_mock_browser():
     return mock_browser
 
 
-def test_bench_tier_flag_default_selects_tier0(tmp_path, monkeypatch):
+def _capture_loader_paths(tmp_path, argv):
     from scripts.bench import main
 
-    monkeypatch.setenv("EVAL_RESULTS_DIR", str(tmp_path))
-    monkeypatch.delenv("WEBVOYAGER_TASKS", raising=False)
-
-    captured = []
+    captured: list[str] = []
 
     def fake_loader(path):
         captured.append(path)
         return []
+
+    result_file = tmp_path / "result.json"
+    result_file.write_text('{"cases": []}')
 
     with (
         patch("scripts.bench._LOADERS", {"webvoyager": fake_loader}),
@@ -232,74 +232,37 @@ def test_bench_tier_flag_default_selects_tier0(tmp_path, monkeypatch):
         patch("scripts.bench.run_suite") as mock_suite,
     ):
         mock_clients.return_value = (MagicMock(), _make_mock_browser())
-        result_file = tmp_path / "result.json"
-        result_file.write_text('{"cases": []}')
         mock_suite.return_value = result_file
+        main(argv)
 
-        main(["--suite", "webvoyager"])
+    return captured
+
+
+def test_bench_tier_flag_default_selects_tier0(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVAL_RESULTS_DIR", str(tmp_path))
+    monkeypatch.delenv("WEBVOYAGER_TASKS", raising=False)
+
+    captured = _capture_loader_paths(tmp_path, ["--suite", "webvoyager"])
 
     assert len(captured) == 1
-    assert captured[0].endswith("tasks_sample.json"), (
-        f"expected path ending in tasks_sample.json, got: {captured[0]}"
-    )
+    assert captured[0].endswith("tasks_sample.json"), captured[0]
 
 
 def test_bench_tier1_flag_selects_tier1_path(tmp_path, monkeypatch):
-    from scripts.bench import main
-
     monkeypatch.setenv("EVAL_RESULTS_DIR", str(tmp_path))
     monkeypatch.delenv("WEBVOYAGER_TASKS", raising=False)
 
-    captured = []
-
-    def fake_loader(path):
-        captured.append(path)
-        return []
-
-    with (
-        patch("scripts.bench._LOADERS", {"webvoyager": fake_loader}),
-        patch("scripts.bench.build_clients") as mock_clients,
-        patch("scripts.bench.run_suite") as mock_suite,
-    ):
-        mock_clients.return_value = (MagicMock(), _make_mock_browser())
-        result_file = tmp_path / "result.json"
-        result_file.write_text('{"cases": []}')
-        mock_suite.return_value = result_file
-
-        main(["--suite", "webvoyager", "--tier", "1"])
+    captured = _capture_loader_paths(tmp_path, ["--suite", "webvoyager", "--tier", "1"])
 
     assert len(captured) == 1
-    assert captured[0].endswith("tier1.json"), (
-        f"expected path ending in tier1.json, got: {captured[0]}"
-    )
+    assert captured[0].endswith("tier1.json"), captured[0]
 
 
 def test_bench_webvoyager_tasks_env_overrides_tier1(tmp_path, monkeypatch):
-    from scripts.bench import main
-
     custom_path = "/custom/path/my_tasks.json"
     monkeypatch.setenv("EVAL_RESULTS_DIR", str(tmp_path))
     monkeypatch.setenv("WEBVOYAGER_TASKS", custom_path)
 
-    captured = []
+    captured = _capture_loader_paths(tmp_path, ["--suite", "webvoyager", "--tier", "1"])
 
-    def fake_loader(path):
-        captured.append(path)
-        return []
-
-    with (
-        patch("scripts.bench._LOADERS", {"webvoyager": fake_loader}),
-        patch("scripts.bench.build_clients") as mock_clients,
-        patch("scripts.bench.run_suite") as mock_suite,
-    ):
-        mock_clients.return_value = (MagicMock(), _make_mock_browser())
-        result_file = tmp_path / "result.json"
-        result_file.write_text('{"cases": []}')
-        mock_suite.return_value = result_file
-
-        main(["--suite", "webvoyager", "--tier", "1"])
-
-    assert len(captured) == 1
-    assert captured[0] == custom_path, (
-        f"expected env-var path {custom_path!r}, got: {captured[0]!r}"
-    )
+    assert captured == [custom_path]
