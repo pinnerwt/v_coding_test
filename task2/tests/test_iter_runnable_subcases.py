@@ -80,3 +80,23 @@ def test_variants_without_shared_cache_yield_none_for_cache(tmp_path):
     for _c, cache, skip_reason in results:
         assert cache is None
         assert skip_reason is None
+
+
+def test_variant_fixture_urls_injected_per_variant():
+    case = {
+        **_BASE_CASE,
+        "fixture": True,
+        "variants": ["v1", "v2"],
+        "variant_fixture_urls": {
+            "v1": "data:text/html,<button>Submit</button>",
+            "v2": "data:text/html,<div class=btn>Submit</div>",
+        },
+    }
+    results = list(iter_runnable_subcases([case], live=False))
+    assert len(results) == 2
+    c1, _cache1, skip1 = results[0]
+    c2, _cache2, skip2 = results[1]
+    assert skip1 is None
+    assert skip2 is None
+    assert c1["fixture_url"] == "data:text/html,<button>Submit</button>"
+    assert c2["fixture_url"] == "data:text/html,<div class=btn>Submit</div>"

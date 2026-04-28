@@ -308,8 +308,20 @@ def iter_runnable_subcases(
             LocatorCache(path=":memory:") if use_shared_cache else None
         )
 
+        variant_fixture_urls: dict[str, str] = parent_case.get("variant_fixture_urls", {})
         if variants:
-            sub_cases = [{**parent_case, "id": f"{parent_case['id']}-{v}"} for v in variants]
+            sub_cases = [
+                {
+                    **parent_case,
+                    "id": f"{parent_case['id']}-{v}",
+                    **(
+                        {"fixture_url": variant_fixture_urls[v]}
+                        if v in variant_fixture_urls
+                        else {}
+                    ),
+                }
+                for v in variants
+            ]
         else:
             sub_cases = [parent_case]
 
