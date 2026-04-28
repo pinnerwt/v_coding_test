@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 
     from agent.locator_cache import LocatorCache
 
+SupportedRole = Literal["button", "link", "textbox", "checkbox", "heading", "list", "listitem"]
 _SUPPORTED_ROLES: frozenset[str] = frozenset(
     {"button", "link", "textbox", "checkbox", "heading", "list", "listitem"}
 )

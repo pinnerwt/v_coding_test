@@ -204,3 +204,12 @@ def test_parse_intent_unknown_role_still_raises():
     with pytest.raises(IntentParseError) as excinfo:
         parse_intent("Submit widget")
     assert "widget" in str(excinfo.value)
+
+
+def test_supported_role_literal_alias_exported():
+    from typing import get_args
+
+    from agent.locate import SupportedRole
+
+    args = get_args(SupportedRole)
+    assert set(args) == {"button", "link", "textbox", "checkbox", "heading", "list", "listitem"}
