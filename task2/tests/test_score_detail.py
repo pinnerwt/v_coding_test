@@ -93,3 +93,102 @@ def test_render_step_breakdown_single_step_contains_columns():
     result = _render_step_breakdown([step])
     assert _HEADER in result
     assert "| 1 | goto | 100 | 10 | 500 |" in result
+
+
+def test_detail_flag_no_table_when_step_breakdown_is_empty():
+    data = _make_data("failed", [])
+    output = generate_scoreboard(data, detail=True)
+    assert _HEADER not in output
+
+
+def test_detail_flag_forwarded_from_main():
+    from io import StringIO
+    from unittest.mock import patch
+
+    from scripts.score import main
+
+    case = {
+        "id": "test-fwd-v1",
+        "status": "failed",
+        "steps": 1,
+        "usd": 0.0,
+        "l_tier_counts": {},
+        "prompt_tokens": 10,
+        "completion_tokens": 5,
+        "latency_ms_total": 100,
+        "latency_ms_per_step": [100],
+        "step_breakdown": [_STEP1],
+        "escalations": [],
+        "replans": 0,
+        "cache_events": {"hits": 0, "invalidations": 0, "misses": 0},
+    }
+    data = {"run_at": "2026-04-28T00:00:00+00:00", "cases": [case]}
+
+    import json
+    import tempfile
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        json.dump(data, f)
+        tmp_path = f.name
+
+    captured = StringIO()
+    with patch("sys.stdout", captured):
+        main([tmp_path, "--detail"])
+
+    output = captured.getvalue()
+    assert _HEADER in output
+
+
+def test_tool_calls_list_comma_joined_in_tool_column():
+    step = {
+        "step": 1,
+        "tool_calls": ["click", "read"],
+        "prompt_tokens": 50,
+        "completion_tokens": 5,
+        "latency_ms": 200,
+    }
+    result = _render_step_breakdown([step])
+    assert "click, read" in result
+
+
+def test_empty_tool_calls_renders_as_dash():
+    step = {
+        "step": 1,
+        "tool_calls": [],
+        "prompt_tokens": 50,
+        "completion_tokens": 5,
+        "latency_ms": 200,
+    }
+    result = _render_step_breakdown([step])
+    assert "| 1 | - |" in result
+
+
+def test_default_mode_no_details_block_when_step_breakdown_absent():
+    data = {
+        "run_at": "2026-04-28T00:00:00+00:00",
+        "cases": [
+            {
+                "id": "test-no-breakdown-v1",
+                "status": "failed",
+                "steps": 1,
+                "usd": 0.001,
+                "l_tier_counts": {},
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "latency_ms_total": 100,
+                "latency_ms_per_step": [],
+                "escalations": [],
+                "replans": 0,
+                "cache_events": {"hits": 0, "invalidations": 0, "misses": 0},
+            }
+        ],
+    }
+    output = generate_scoreboard(data)
+    assert "<details>" not in output
+
+
+def test_collapsible_block_not_emitted_when_detail_active():
+    data = _make_data("failed", [_STEP1, _STEP2])
+    output = generate_scoreboard(data, detail=True)
+    assert "<details>" not in output
+    assert _HEADER in output
