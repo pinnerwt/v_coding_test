@@ -765,3 +765,27 @@ def test_main_repeats_shared_cache_forwarded_to_all_variants(tmp_path, monkeypat
     assert len(caches) == 4
     assert caches[0] is not None
     assert all(c is caches[0] for c in caches)
+
+
+def test_aggregate_repeats_mixed_pass_and_skip_classifies_as_partial():
+    from unittest.mock import MagicMock
+
+    from scripts.benchmark import aggregate_repeats
+
+    side_effects = [
+        _make_case_result("succeeded"),
+        _make_case_result("skipped", skip_reason="live_disabled"),
+        _make_case_result("skipped", skip_reason="live_disabled"),
+    ]
+    with patch("scripts.benchmark._run_case", side_effect=side_effects):
+        result = aggregate_repeats(
+            _SAMPLE_CASE,
+            repeats=3,
+            llm_client=MagicMock(),
+            browser=MagicMock(),
+            live=True,
+        )
+
+    assert result.repeat_status == "partial"
+    assert result.status == "failed"
+    assert result.passed_runs == 1

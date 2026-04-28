@@ -82,6 +82,10 @@ The rendering logic is a helper `_render_repeat_status(case: dict) -> str` in `s
 
 `escalations`, `cache_events`, and `failure_class` on `AggregatedCaseResult` are pulled from a single representative run (`rep_run`), chosen as the last failing run if any exist, otherwise the last run overall. This means a `partial` case (e.g. 2 passing + 1 failing run) shows escalation and cache stats from the failing run, not aggregated across all N runs. Aggregating these (sum of escalations, union of cache events) would be more honest but is out of scope here — the current scoreboard renders these as a representative sample, not as totals. Tracked behavior: a future ticket may revisit if `escalations` totals across repeats become load-bearing for the canary suite.
 
+Note that `replans` is computed differently: it is the per-run mean (rounded to int), not pulled from `rep_run`. This is a deliberate inconsistency with `escalations` — replans are a numeric count where averaging is well-defined, while escalations carry per-attempt structure (tier, intent, outcome) that does not aggregate cleanly. Within-row mixed semantics (mean replans + rep-run escalations) are tracked as part of #51 if cross-row consistency becomes load-bearing.
+
+Similarly, `derived_status="succeeded"` for an `all_pass` aggregate collapses any per-run `unverified` distinction (which is a member of `_PASS_STATUSES`) into the literal `"succeeded"`. This loses forensic detail vs `--repeats 1` mode, but the per-run trace data still records the original status. A future ticket can promote `derived_status` to `rep_run.status` if the unverified distinction becomes operationally important.
+
 **Alternative considered**: Summing `len(escalations)` across runs and taking a union of `cache_events` keys. Rejected for now to keep the dataclass shape stable and to avoid cache-event union semantics that would silently change scoreboard rows when run counts vary.
 
 ### Decision: `partial` repeats collapse to `derived_status="failed"`
