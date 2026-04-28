@@ -41,6 +41,6 @@
 
 ## 6. Full test suite green + ruff clean
 
-- [ ] 6.1 Run `uv run pytest task2/tests/ -x --ignore=task2/tests/test_live.py` (or equivalent fast subset) — confirm zero failures.
-- [ ] 6.2 Run `uv run ruff check task2/` — confirm zero issues.
-- [ ] 6.3 Run `uv run ruff format --check task2/` — confirm no formatting diffs.
+- [x] 6.1 Run `uv run pytest task2/tests/ -x --ignore=task2/tests/test_live.py` (or equivalent fast subset) — confirm zero failures.
+- [x] 6.2 Run `uv run ruff check task2/` — confirm zero issues.
+- [x] 6.3 Run `uv run ruff format --check task2/` — confirm no formatting diffs.
