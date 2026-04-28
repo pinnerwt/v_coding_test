@@ -30,7 +30,7 @@ def test_writes_regressions_section(tmp_path):
 
     from scripts.regression_onset import main
 
-    main(["--benchmark-root", str(root), "--output", str(out)])
+    assert main(["--benchmark-root", str(root), "--output", str(out)]) == 0
 
     text = out.read_text()
     assert "## Regressions" in text
@@ -74,7 +74,7 @@ def test_skips_underscore_dirs(tmp_path):
 
     from scripts.regression_onset import main
 
-    main(["--benchmark-root", str(root), "--output", str(out)])
+    assert main(["--benchmark-root", str(root), "--output", str(out)]) == 0
 
     text = out.read_text()
     assert "_trends" not in text
@@ -97,7 +97,7 @@ def test_never_passed_case_in_never_passed_section_not_regressions(tmp_path):
 
     from scripts.regression_onset import main
 
-    main(["--benchmark-root", str(root), "--output", str(out)])
+    assert main(["--benchmark-root", str(root), "--output", str(out)]) == 0
 
     text = out.read_text()
     regressions_section = text.split("## Never Passed")[0]
@@ -124,7 +124,7 @@ def test_total_runs_seen_includes_skipped_appearances(tmp_path):
 
     from scripts.regression_onset import main
 
-    main(["--benchmark-root", str(root), "--output", str(out)])
+    assert main(["--benchmark-root", str(root), "--output", str(out)]) == 0
 
     text = out.read_text()
     never_passed_section = text.split("## Never Passed")[1].split("## Stable")[0]
