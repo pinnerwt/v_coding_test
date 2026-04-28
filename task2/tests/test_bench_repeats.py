@@ -292,6 +292,7 @@ def test_results_json_with_repeats_1_has_no_aggregation_fields(tmp_path, monkeyp
     with (
         patch("scripts.benchmark.run_suite") as mock_run_suite,
         patch("scripts.benchmark.build_clients", return_value=(MagicMock(), mock_browser)),
+        patch("scripts.benchmark.aggregate_repeats") as mock_aggregate,
     ):
         import json
 
@@ -322,10 +323,68 @@ def test_results_json_with_repeats_1_has_no_aggregation_fields(tmp_path, monkeyp
         rc = main([])
 
     assert rc == 0
+    assert mock_aggregate.call_count == 0
     data = json.loads((tmp_path / "benchmark" / "test-branch" / "results.json").read_text())
     case = data["cases"][0]
     assert "repeats" not in case
     assert "repeat_status" not in case
+
+
+def test_results_json_with_repeats_2_does_call_aggregate_repeats(tmp_path, monkeypatch):
+    from unittest.mock import MagicMock
+
+    from scripts.benchmark import AggregatedCaseResult, main
+
+    cases_dir = tmp_path / "cases"
+    cases_dir.mkdir()
+    (cases_dir / "case.yaml").write_text(
+        "id: fixture-single-test\n"
+        "domain: example.com\n"
+        "category: fixture\n"
+        "task: do something\n"
+        "expect: {}\n"
+        "budget: {steps: 5, usd: 1.0, seconds: 30}\n"
+        "fixture: true\n"
+    )
+
+    monkeypatch.setenv("EVAL_CASES_DIR", str(cases_dir))
+    monkeypatch.setenv("GITHUB_HEAD_REF", "test-branch")
+    monkeypatch.chdir(tmp_path)
+
+    mock_browser = MagicMock()
+    mock_browser.__enter__ = MagicMock(return_value=mock_browser)
+    mock_browser.__exit__ = MagicMock(return_value=False)
+
+    stub_agg = AggregatedCaseResult(
+        id="fixture-single-test",
+        repeat_status="all_pass",
+        repeats=2,
+        passed_runs=2,
+        median_latency_ms=0,
+        p95_latency_ms=0,
+        stddev_usd=0.0,
+        avg_mechanism_firings=0.0,
+        status="succeeded",
+        steps=0,
+        usd=0.0,
+        prompt_tokens=0,
+        completion_tokens=0,
+        latency_ms_total=0,
+        escalations=[],
+        replans=0,
+        cache_events={},
+        failure_class=None,
+        skip_reason=None,
+    )
+
+    with (
+        patch("scripts.benchmark.build_clients", return_value=(MagicMock(), mock_browser)),
+        patch("scripts.benchmark.aggregate_repeats", return_value=stub_agg) as mock_aggregate,
+    ):
+        rc = main(["--repeats", "2"])
+
+    assert rc == 0
+    assert mock_aggregate.call_count == 1
 
 
 def test_generate_scoreboard_renders_fractional_all_pass():
@@ -505,6 +564,33 @@ def test_main_repeats_skips_live_disabled_without_running_n_times(tmp_path, monk
     data = json.loads((tmp_path / "benchmark" / "test-branch" / "results.json").read_text())
     assert data["cases"][0]["repeat_status"] == "skipped"
     assert data["cases"][0]["skip_reason"] == "live_disabled"
+
+
+def test_aggregated_case_result_rejects_unknown_derived_status():
+    from scripts.benchmark import AggregatedCaseResult
+
+    with pytest.raises(ValueError):
+        AggregatedCaseResult(
+            id="c1",
+            repeat_status="all_pass",
+            repeats=3,
+            passed_runs=3,
+            median_latency_ms=0,
+            p95_latency_ms=0,
+            stddev_usd=0.0,
+            avg_mechanism_firings=0.0,
+            status="bogus_status",
+            steps=0,
+            usd=0.0,
+            prompt_tokens=0,
+            completion_tokens=0,
+            latency_ms_total=0,
+            escalations=[],
+            replans=0,
+            cache_events={},
+            failure_class=None,
+            skip_reason=None,
+        )
 
 
 def test_generate_scoreboard_renders_fractional_partial():

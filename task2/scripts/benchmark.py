@@ -29,6 +29,9 @@ _DEFAULT_REPEATS = 1
 RepeatStatus = Literal["all_pass", "partial", "all_fail", "skipped"]
 _VALID_REPEAT_STATUSES: frozenset[str] = frozenset(get_args(RepeatStatus))
 
+DerivedStatus = Literal["succeeded", "failed", "skipped"]
+_VALID_DERIVED_STATUSES: frozenset[str] = frozenset(get_args(DerivedStatus))
+
 
 @dataclass(frozen=True)
 class AggregatedCaseResult:
@@ -40,7 +43,7 @@ class AggregatedCaseResult:
     p95_latency_ms: int
     stddev_usd: float
     avg_mechanism_firings: float
-    status: str
+    status: DerivedStatus
     steps: int
     usd: float
     prompt_tokens: int
@@ -57,6 +60,8 @@ class AggregatedCaseResult:
             raise ValueError(
                 f"repeat_status {self.repeat_status!r} not in {sorted(_VALID_REPEAT_STATUSES)}"
             )
+        if self.status not in _VALID_DERIVED_STATUSES:
+            raise ValueError(f"status {self.status!r} not in {sorted(_VALID_DERIVED_STATUSES)}")
 
 
 def _pre_run_skip_reason(case: dict, *, live: bool) -> str | None:
@@ -120,7 +125,7 @@ def aggregate_repeats(
     else:
         repeat_status = "partial"
 
-    status_map = {
+    status_map: dict[RepeatStatus, DerivedStatus] = {
         "all_pass": "succeeded",
         "partial": "failed",
         "all_fail": "failed",

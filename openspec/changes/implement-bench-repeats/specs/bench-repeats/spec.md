@@ -50,7 +50,7 @@ _VALID_REPEAT_STATUSES: frozenset[str] = frozenset(get_args(RepeatStatus))
 - `usd: float` — mean USD across all N runs.
 - `prompt_tokens: int` — sum of `prompt_tokens` across all N runs.
 - `completion_tokens: int` — sum of `completion_tokens` across all N runs.
-- `latency_ms_total: int` — alias for `median_latency_ms`.
+- `latency_ms_total: int` — sum of `latency_ms_total` values across all N runs.
 - `escalations: list[dict]` — escalations from the first (or last) representative run.
 - `replans: int` — mean replans (rounded to nearest int).
 - `cache_events: dict` — cache events from the representative run.

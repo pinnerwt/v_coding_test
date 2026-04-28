@@ -78,6 +78,16 @@ When `repeats > 1`: render `{passed_runs}/{repeats} ✓` if `passed_runs == repe
 When `repeats == 1` (or field absent): render `status` string as before.
 The rendering logic is a helper `_render_repeat_status(case: dict) -> str` in `score.py`.
 
+### Decision: Representative-run bias for non-aggregated fields
+
+`escalations`, `cache_events`, and `failure_class` on `AggregatedCaseResult` are pulled from a single representative run (`rep_run`), chosen as the last failing run if any exist, otherwise the last run overall. This means a `partial` case (e.g. 2 passing + 1 failing run) shows escalation and cache stats from the failing run, not aggregated across all N runs. Aggregating these (sum of escalations, union of cache events) would be more honest but is out of scope here — the current scoreboard renders these as a representative sample, not as totals. Tracked behavior: a future ticket may revisit if `escalations` totals across repeats become load-bearing for the canary suite.
+
+**Alternative considered**: Summing `len(escalations)` across runs and taking a union of `cache_events` keys. Rejected for now to keep the dataclass shape stable and to avoid cache-event union semantics that would silently change scoreboard rows when run counts vary.
+
+### Decision: `partial` repeats collapse to `derived_status="failed"`
+
+When `repeat_status == "partial"` (1+ pass and 1+ fail), the derived `status` is `"failed"` and `compute_exit_code` returns non-zero. This treats any flake as a hard CI failure rather than as a soft warning. The motivation in the proposal is "make flakiness *visible*" via the `M/N` rendering — but visibility plus advisory-only would defeat the canary suite's role as a merge gate. A future `near_budget`-style soft annotation (ticket #40) could revisit if "advisory flake" becomes useful, but for now `partial` is treated identically to `all_fail` for exit-code purposes, while the scoreboard still distinguishes them visually via `M/N ✗`.
+
 ## Risks / Trade-offs
 
 - [Risk] Sequential N runs multiply wall-clock time N×. → Mitigated by keeping default `--repeats 1`; CI only uses 3 for canary/drift suites.
