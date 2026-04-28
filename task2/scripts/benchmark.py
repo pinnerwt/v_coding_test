@@ -112,7 +112,10 @@ def aggregate_repeats(
     if skip_reason is not None:
         return _skipped_aggregate(case, repeats=repeats, reason=skip_reason)
 
-    runs = [_run_case(case, llm_client, browser, cache=cache) for _ in range(repeats)]
+    canary = case.get("canary", False)
+    runs = [
+        _run_case(case, llm_client, browser, cache=cache, canary=canary) for _ in range(repeats)
+    ]
 
     all_skipped = all(r.status == _SKIP_STATUS for r in runs)
     passed_runs = sum(1 for r in runs if r.status in PASS_STATUSES)
@@ -170,7 +173,7 @@ def aggregate_repeats(
         cache_events=rep_run.cache_events,
         failure_class=rep_run.failure_class,
         skip_reason=rep_run.skip_reason if repeat_status == "skipped" else None,
-        canary=case.get("canary", False),
+        canary=canary,
     )
 
 

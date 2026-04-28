@@ -5,9 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from scripts.eval import PASS_STATUSES
-
-_WARN_STATUSES = frozenset({"failed", "blocked", "timeout"})
+from scripts.eval import FAIL_STATUSES, PASS_STATUSES
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -25,14 +23,12 @@ def main(argv: list[str] | None = None) -> None:
 
     failing_canaries = [c for c in canary_cases if c.get("status") not in PASS_STATUSES]
     if failing_canaries:
-        ids = ", ".join(c["id"] for c in failing_canaries)
         statuses = ", ".join(f"{c['id']}={c.get('status')}" for c in failing_canaries)
         print(f"canary-gate: FAILED — canary regressions detected: {statuses}")
-        print(f"failing canary cases: {ids}")
         sys.exit(1)
 
     non_canary_failing = [
-        c for c in cases if not c.get("canary", False) and c.get("status") in _WARN_STATUSES
+        c for c in cases if not c.get("canary", False) and c.get("status") in FAIL_STATUSES
     ]
     if non_canary_failing:
         ids = ", ".join(c["id"] for c in non_canary_failing)

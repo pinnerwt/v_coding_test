@@ -30,7 +30,7 @@ from agent.trace import (
 
 _REQUIRED_FIELDS = ("id", "domain", "category", "task", "expect", "budget")
 PASS_STATUSES = frozenset({"succeeded", "unverified"})
-_FAIL_STATUSES = frozenset({"failed", "blocked", "timeout"})
+FAIL_STATUSES = frozenset({"failed", "blocked", "timeout"})
 _SKIP_STATUS = "skipped"
 
 SkipReason = Literal[
@@ -343,7 +343,7 @@ def run_suite(
 
 
 def compute_exit_code(cases: list[dict]) -> int:
-    return 1 if any(c["status"] in _FAIL_STATUSES for c in cases) else 0
+    return 1 if any(c["status"] in FAIL_STATUSES for c in cases) else 0
 
 
 def build_clients():
