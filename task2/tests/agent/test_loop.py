@@ -2887,3 +2887,228 @@ def test_loop_click_playwright_error_yields_outcome_error(monkeypatch):
     assert result_str.startswith("Error: click error"), (
         f"expected tool result to start with 'Error: click error', got {result_str!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Type tool: TOOLS list includes type entry with intent and text parameters
+# ---------------------------------------------------------------------------
+
+
+def test_tools_list_includes_type():
+    from agent.loop import TOOLS
+
+    type_entry = next((t for t in TOOLS if t["function"]["name"] == "type"), None)
+    assert type_entry is not None, "TOOLS must contain an entry with function.name == 'type'"
+    props = type_entry["function"]["parameters"]["properties"]
+    assert "intent" in props, "type entry must have 'intent' in parameters.properties"
+    assert props["intent"]["type"] == "string", "type 'intent' parameter must be type 'string'"
+    assert "text" in props, "type entry must have 'text' in parameters.properties"
+    assert props["text"]["type"] == "string", "type 'text' parameter must be type 'string'"
+    required = type_entry["function"]["parameters"]["required"]
+    assert "intent" in required, "'intent' must appear in type's parameters.required"
+    assert "text" in required, "'text' must appear in type's parameters.required"
+
+
+# ---------------------------------------------------------------------------
+# Type tool: LLM calls type → ActEvent(outcome="ok") emitted, run succeeds
+# ---------------------------------------------------------------------------
+
+
+def test_loop_type_fills_textbox(fixture_server, playwright_chromium):
+    fixture_url = f"{fixture_server}/loop_type_textbox.html"
+
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+        _response_with_tool_call(
+            _tool_call(
+                "type",
+                {"intent": "Email textbox", "text": "hello@example.com"},
+                call_id="tc-2",
+            )
+        ),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"typed": True},
+                    "evidence": {"url": fixture_url, "text_snippet": "Type Textbox"},
+                },
+                call_id="tc-3",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+
+    run_id = "test-type-fills-textbox"
+    writer = _make_writer_with_run(run_id)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop("fill email", browser, fake_llm, trace_writer=writer, run_id=run_id)
+
+    assert result.status == "succeeded"
+    assert result.steps <= 4
+
+    act_events = [e for e in writer.iter_events(run_id) if isinstance(e, ActEvent)]
+    type_act = next((e for e in act_events if e.tool == "type"), None)
+    assert type_act is not None, "expected ActEvent with tool='type'"
+    assert type_act.outcome == "ok", f"expected outcome='ok', got {type_act.outcome!r}"
+    assert type_act.args == {"intent": "Email textbox", "text": "hello@example.com"}
+    writer.close()
+
+
+# ---------------------------------------------------------------------------
+# Type tool: L1 miss (all tiers miss) → tool error returned, loop continues
+# ---------------------------------------------------------------------------
+
+
+def test_loop_type_l1_miss_returns_tool_error_loop_continues(fixture_server, playwright_chromium):
+    fixture_url = f"{fixture_server}/loop_type_textbox.html"
+
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+        _response_with_tool_call(
+            _tool_call(
+                "type",
+                {"intent": "Nonexistent textbox", "text": "foo"},
+                call_id="tc-2",
+            )
+        ),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"done": True},
+                    "evidence": {"url": fixture_url, "text_snippet": "Type Textbox"},
+                },
+                call_id="tc-3",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop("fill nonexistent", browser, fake_llm, max_steps=10)
+
+    assert result.status == "succeeded", (
+        f"expected loop to continue past type miss and reach done, got {result.status!r}"
+    )
+    assert result.steps <= 4
+
+
+# ---------------------------------------------------------------------------
+# Type tool: Locator.fill raises TimeoutError → outcome=timeout, loop continues
+# ---------------------------------------------------------------------------
+
+
+def _make_fake_browser_for_type(
+    selector: str,
+    fill_raises: Exception | None = None,
+):
+    import types
+
+    from agent.locate import LocateResult
+
+    locate_result = LocateResult(
+        tier="L2_dom",
+        role="textbox",
+        name="Email",
+        selector=selector,
+        ax_fingerprint="fp-stub",
+        confidence=1.0,
+        coords=None,
+    )
+
+    class _StubLocator:
+        def fill(self, text, *, timeout):
+            if fill_raises is not None:
+                raise fill_raises
+
+    class _StubPage:
+        @property
+        def url(self):
+            return "http://example.com/"
+
+        def locator(self, sel):
+            return _StubLocator()
+
+    fake_page = _StubPage()
+    fake_browser = types.SimpleNamespace(_page=fake_page)
+    return fake_browser, locate_result
+
+
+def test_loop_type_playwright_timeout_yields_outcome_timeout(monkeypatch):
+    import playwright.sync_api as pw_api
+
+    from agent.loop import _dispatch
+    from agent.supervisor import Supervisor
+
+    selector = "input#email"
+    fill_err = pw_api.TimeoutError("fill timed out")
+    fake_browser, locate_result = _make_fake_browser_for_type(selector, fill_raises=fill_err)
+
+    monkeypatch.setattr(
+        "agent.loop._locate_or_error_msg",
+        lambda *_args, **_kwargs: locate_result,
+    )
+
+    run_id = "unit-type-timeout"
+    writer = _open_click_writer(run_id)
+
+    result_str = _dispatch(
+        "type",
+        {"intent": "Email textbox", "text": "foo"},
+        fake_browser,
+        Supervisor(),
+        trace_writer=writer,
+        run_id=run_id,
+        step_id=f"{run_id}:step-1",
+    )
+
+    act_events = [e for e in writer.iter_events(run_id) if isinstance(e, ActEvent)]
+    assert len(act_events) == 1
+    assert act_events[0].outcome == "timeout", (
+        f"expected outcome=timeout, got {act_events[0].outcome!r}"
+    )
+    assert result_str.startswith("Error: type timeout"), (
+        f"expected tool result to start with 'Error: type timeout', got {result_str!r}"
+    )
+    writer.close()
+
+
+def test_loop_type_playwright_error_yields_outcome_error(monkeypatch):
+    import playwright.sync_api as pw_api
+
+    from agent.loop import _dispatch
+    from agent.supervisor import Supervisor
+
+    selector = "input#email"
+    fill_err = pw_api.Error("element is not an HTMLInputElement")
+    fake_browser, locate_result = _make_fake_browser_for_type(selector, fill_raises=fill_err)
+
+    monkeypatch.setattr(
+        "agent.loop._locate_or_error_msg",
+        lambda *_args, **_kwargs: locate_result,
+    )
+
+    run_id = "unit-type-error"
+    writer = _open_click_writer(run_id)
+
+    result_str = _dispatch(
+        "type",
+        {"intent": "Email textbox", "text": "foo"},
+        fake_browser,
+        Supervisor(),
+        trace_writer=writer,
+        run_id=run_id,
+        step_id=f"{run_id}:step-1",
+    )
+
+    act_events = [e for e in writer.iter_events(run_id) if isinstance(e, ActEvent)]
+    assert len(act_events) == 1
+    assert act_events[0].outcome == "error", (
+        f"expected outcome=error, got {act_events[0].outcome!r}"
+    )
+    assert result_str.startswith("Error: type error"), (
+        f"expected tool result to start with 'Error: type error', got {result_str!r}"
+    )
+    writer.close()
