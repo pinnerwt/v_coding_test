@@ -78,7 +78,14 @@ class SupervisorEvent(EventBase):
     kind: Literal["supervisor"] = "supervisor"
     trigger_event_seq: int
     classified_as: Literal[
-        "LocatorMiss", "Ambiguous", "NoEffect", "FormError", "NavDrift", "Blocked", "Timeout"
+        "LocatorMiss",
+        "Ambiguous",
+        "NoEffect",
+        "FormError",
+        "NavDrift",
+        "Blocked",
+        "Timeout",
+        "premature_fail",
     ]
     policy: EscalationPolicy
     attempt: int
