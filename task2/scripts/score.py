@@ -51,6 +51,17 @@ def _bucket_cases_by_suite(cases: list[dict]) -> dict[str, list[dict]]:
     return buckets
 
 
+def _render_case_status(case: dict) -> str:
+    if case.get("repeat_status") == "skipped":
+        return case.get("status", "skipped")
+    repeats = case.get("repeats", 1)
+    if repeats > 1:
+        passed_runs = case.get("passed_runs", 0)
+        glyph = "✓" if passed_runs == repeats else "✗"
+        return f"{passed_runs}/{repeats} {glyph}"
+    return case.get("status", "unknown")
+
+
 def generate_scoreboard(data: dict) -> str:
     cases = data.get("cases", [])
     run_at = data.get("run_at", "unknown")
@@ -87,7 +98,7 @@ def generate_scoreboard(data: dict) -> str:
     tier_counts: dict[str, int] = {}
 
     for case in cases:
-        status = case.get("status", "unknown")
+        status = _render_case_status(case)
         steps = case.get("steps", 0)
         lat = case.get("latency_ms_total", 0)
         usd = case.get("usd", 0.0)
