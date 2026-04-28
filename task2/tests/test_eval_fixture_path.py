@@ -44,6 +44,25 @@ def test_iter_runnable_subcases_fixture_existence_check_is_repo_root_anchored(
     )
 
 
+def test_iter_runnable_subcases_missing_variant_fixture_path_yields_fixture_missing():
+    case = {
+        **_BASE_CASE,
+        "id": "missing-variant",
+        "fixture": True,
+        "variants": ["v1"],
+        "variant_fixture_paths": {
+            "v1": "task2/tests/fixtures/does/not/exist.html",
+        },
+    }
+    results = list(iter_runnable_subcases([case], live=False))
+    assert len(results) == 1
+    _sub_case, _cache, skip_reason = results[0]
+    assert skip_reason == "fixture_missing", (
+        "expected variant fixture path to be checked for existence; "
+        f"got skip_reason={skip_reason!r}"
+    )
+
+
 def test_iter_runnable_subcases_resolves_variant_fixture_paths():
     case = {
         **_BASE_CASE,

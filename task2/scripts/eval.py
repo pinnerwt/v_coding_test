@@ -326,6 +326,7 @@ def iter_runnable_subcases(
                 if v in variant_fixture_urls:
                     extra["fixture_url"] = variant_fixture_urls[v]
                 elif v in variant_fixture_paths:
+                    extra["fixture_path"] = variant_fixture_paths[v]
                     extra["fixture_url"] = _resolve_fixture_url(variant_fixture_paths[v])
                 sub_cases.append({**parent_case, "id": f"{parent_case['id']}-{v}", **extra})
         else:
