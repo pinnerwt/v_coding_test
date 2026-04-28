@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import statistics
 import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+
+REGRESSION_THRESHOLD_PP: int = 5
 
 _BENCHMARK_ROOT = Path("benchmark")
 _TRENDS_SUBDIR = "_trends"
@@ -94,6 +97,13 @@ def collect_runs(benchmark_root: Path) -> list[Run]:
             continue
     runs.sort(key=lambda r: r.run_at)
     return runs
+
+
+def flag_regression(runs: list[Run]) -> bool:
+    if len(runs) <= 1:
+        return False
+    median = statistics.median(r.pass_rate for r in runs)
+    return runs[-1].pass_rate < median - REGRESSION_THRESHOLD_PP / 100
 
 
 # ---------------------------- SVG rendering ---------------------------- #
@@ -517,7 +527,7 @@ def _latest_run_data(bench_root: Path) -> tuple[str, dict] | None:
     return latest[1], latest[2]
 
 
-def _render_readme_block(latest: tuple[str, dict] | None) -> str:
+def _render_readme_block(latest: tuple[str, dict] | None, runs: list[Run]) -> str:
     body = [
         "## Benchmark trends",
         "",
@@ -536,6 +546,14 @@ def _render_readme_block(latest: tuple[str, dict] | None) -> str:
     ]
     if latest is not None:
         branch, data = latest
+        if flag_regression(runs):
+            _warn = (
+                "> ⚠️ **Pass-rate regression detected**"
+                " — latest run is >5 pp below the historical median."
+                " See `benchmark/_trends/regression_onset.md`"
+                " for per-case onset branches."
+            )
+            body.extend(["", _warn])
         body.extend(["", render_latest_run_table(branch, data)])
     return "\n".join(body)
 
@@ -566,7 +584,7 @@ def write_trends(
 
     if readme_path is not None:
         latest = _latest_run_data(benchmark_root) if benchmark_root is not None else None
-        _update_readme(readme_path, _render_readme_block(latest))
+        _update_readme(readme_path, _render_readme_block(latest, runs))
 
 
 def main(argv: list[str] | None = None) -> int:

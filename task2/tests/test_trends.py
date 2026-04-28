@@ -443,11 +443,7 @@ def test_flag_regression_emits_warning_in_readme_block(tmp_path):
 
     readme = tmp_path / "README.md"
     readme.write_text(
-        "# Title\n\n"
-        "<!-- TRENDS:BEGIN -->\n"
-        "old\n"
-        "<!-- TRENDS:END -->\n\n"
-        "## Other\nkeep\n"
+        "# Title\n\n<!-- TRENDS:BEGIN -->\nold\n<!-- TRENDS:END -->\n\n## Other\nkeep\n"
     )
 
     runs = collect_runs(tmp_path / "bench")
@@ -489,11 +485,7 @@ def test_flag_regression_no_warning_for_stable(tmp_path):
 
     readme = tmp_path / "README.md"
     readme.write_text(
-        "# Title\n\n"
-        "<!-- TRENDS:BEGIN -->\n"
-        "old\n"
-        "<!-- TRENDS:END -->\n\n"
-        "## Other\nkeep\n"
+        "# Title\n\n<!-- TRENDS:BEGIN -->\nold\n<!-- TRENDS:END -->\n\n## Other\nkeep\n"
     )
 
     runs = collect_runs(tmp_path / "bench")
