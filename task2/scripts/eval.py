@@ -34,7 +34,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _resolve_fixture_url(fixture_path: str) -> str:
-    return f"file://{REPO_ROOT}/{fixture_path}"
+    return (REPO_ROOT / fixture_path).as_uri()
 
 
 _REQUIRED_FIELDS = ("id", "domain", "category", "task", "expect", "budget")

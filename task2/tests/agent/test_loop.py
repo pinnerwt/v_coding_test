@@ -2704,10 +2704,6 @@ def _make_fake_browser_for_click(
                 raise click_raises
             _url_holder[0] = url_after
 
-        def wait_for_load_state(self, state, *, timeout):
-            if wait_raises is not None:
-                raise wait_raises
-
     class _StubPage:
         @property
         def url(self):
@@ -2725,12 +2721,31 @@ def _make_fake_browser_for_click(
     return fake_browser, locate_result
 
 
+def _open_click_writer(run_id: str) -> TraceWriter:
+    writer = TraceWriter(":memory:")
+    writer.open_run(
+        Run(
+            run_id=run_id,
+            task="t",
+            expect_schema=None,
+            budget=RunBudget(steps=5, usd=1.0, seconds=60),
+            llm=RunLLM(base_url="", model="", temperature=0.0, seed=None),
+            agent_version="test",
+            started_at="2024-01-01T00:00:00Z",
+            ended_at=None,
+            status=None,
+            final=None,
+            totals=None,
+        )
+    )
+    return writer
+
+
 def test_loop_click_slow_nav_wait_load_timeout_still_classifies_as_nav_or_ok(monkeypatch):
     import playwright.sync_api as pw_api
 
     from agent.loop import _dispatch
     from agent.supervisor import Supervisor
-    from agent.trace import TraceWriter
 
     selector = "button[type=submit]"
     url_before = "http://example.com/form"
@@ -2747,24 +2762,7 @@ def test_loop_click_slow_nav_wait_load_timeout_still_classifies_as_nav_or_ok(mon
     )
 
     run_id = "unit-slow-nav"
-    writer = TraceWriter(":memory:")
-    from agent.trace import Run, RunBudget, RunLLM
-
-    writer.open_run(
-        Run(
-            run_id=run_id,
-            task="t",
-            expect_schema=None,
-            budget=RunBudget(steps=5, usd=1.0, seconds=60),
-            llm=RunLLM(base_url="", model="", temperature=0.0, seed=None),
-            agent_version="test",
-            started_at="2024-01-01T00:00:00Z",
-            ended_at=None,
-            status=None,
-            final=None,
-            totals=None,
-        )
-    )
+    writer = _open_click_writer(run_id)
 
     result_str = _dispatch(
         "click",
@@ -2799,7 +2797,6 @@ def test_loop_click_playwright_timeout_yields_outcome_timeout(monkeypatch):
 
     from agent.loop import _dispatch
     from agent.supervisor import Supervisor
-    from agent.trace import Run, RunBudget, RunLLM, TraceWriter
 
     selector = "button[type=submit]"
     click_err = pw_api.TimeoutError("click timed out")
@@ -2813,22 +2810,7 @@ def test_loop_click_playwright_timeout_yields_outcome_timeout(monkeypatch):
     )
 
     run_id = "unit-timeout"
-    writer = TraceWriter(":memory:")
-    writer.open_run(
-        Run(
-            run_id=run_id,
-            task="t",
-            expect_schema=None,
-            budget=RunBudget(steps=5, usd=1.0, seconds=60),
-            llm=RunLLM(base_url="", model="", temperature=0.0, seed=None),
-            agent_version="test",
-            started_at="2024-01-01T00:00:00Z",
-            ended_at=None,
-            status=None,
-            final=None,
-            totals=None,
-        )
-    )
+    writer = _open_click_writer(run_id)
 
     result_str = _dispatch(
         "click",
@@ -2857,7 +2839,6 @@ def test_loop_click_playwright_error_yields_outcome_error(monkeypatch):
 
     from agent.loop import _dispatch
     from agent.supervisor import Supervisor
-    from agent.trace import Run, RunBudget, RunLLM, TraceWriter
 
     selector = "button[type=submit]"
     click_err = pw_api.Error("element not interactable")
@@ -2871,22 +2852,7 @@ def test_loop_click_playwright_error_yields_outcome_error(monkeypatch):
     )
 
     run_id = "unit-error"
-    writer = TraceWriter(":memory:")
-    writer.open_run(
-        Run(
-            run_id=run_id,
-            task="t",
-            expect_schema=None,
-            budget=RunBudget(steps=5, usd=1.0, seconds=60),
-            llm=RunLLM(base_url="", model="", temperature=0.0, seed=None),
-            agent_version="test",
-            started_at="2024-01-01T00:00:00Z",
-            ended_at=None,
-            status=None,
-            final=None,
-            totals=None,
-        )
-    )
+    writer = _open_click_writer(run_id)
 
     result_str = _dispatch(
         "click",
