@@ -9,7 +9,16 @@ import pytest
 from agent.browser import Browser
 from agent.llm import ChatResponse, ToolCall, Usage
 from agent.loop import RunResult, loop
-from agent.trace import LocateEvent, PlanEvent, Run, RunBudget, RunLLM, SupervisorEvent, TraceWriter
+from agent.trace import (
+    ActEvent,
+    LocateEvent,
+    PlanEvent,
+    Run,
+    RunBudget,
+    RunLLM,
+    SupervisorEvent,
+    TraceWriter,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -2774,15 +2783,14 @@ def test_loop_click_slow_nav_wait_load_timeout_still_classifies_as_nav_or_ok(mon
         step_id=f"{run_id}:step-1",
     )
 
-    rows = writer._conn.execute("SELECT payload FROM traces_events ORDER BY seq").fetchall()
-    act_rows = [json.loads(r[0]) for r in rows if json.loads(r[0]).get("kind") == "act"]
-    assert len(act_rows) == 1
-    assert act_rows[0]["outcome"] in {"nav", "ok"}, (
-        f"expected nav (URL changed) or ok, got {act_rows[0]['outcome']!r}; result={result_str!r}"
+    act_events = [e for e in writer.iter_events(run_id) if isinstance(e, ActEvent)]
+    assert len(act_events) == 1
+    assert act_events[0].outcome in {"nav", "ok"}, (
+        f"expected nav (URL changed) or ok, got {act_events[0].outcome!r}; result={result_str!r}"
     )
-    assert act_rows[0]["outcome"] == "nav", (
+    assert act_events[0].outcome == "nav", (
         f"URL changed from {url_before!r} to {url_after!r} — expected outcome=nav, "
-        f"got {act_rows[0]['outcome']!r}"
+        f"got {act_events[0].outcome!r}"
     )
     writer.close()
 
@@ -2822,11 +2830,10 @@ def test_loop_click_playwright_timeout_yields_outcome_timeout(monkeypatch):
         step_id=f"{run_id}:step-1",
     )
 
-    rows = writer._conn.execute("SELECT payload FROM traces_events ORDER BY seq").fetchall()
-    act_rows = [json.loads(r[0]) for r in rows if json.loads(r[0]).get("kind") == "act"]
-    assert len(act_rows) == 1
-    assert act_rows[0]["outcome"] == "timeout", (
-        f"expected outcome=timeout, got {act_rows[0]['outcome']!r}"
+    act_events = [e for e in writer.iter_events(run_id) if isinstance(e, ActEvent)]
+    assert len(act_events) == 1
+    assert act_events[0].outcome == "timeout", (
+        f"expected outcome=timeout, got {act_events[0].outcome!r}"
     )
     assert result_str.startswith("Error: click timeout"), (
         f"expected tool result to start with 'Error: click timeout', got {result_str!r}"
@@ -2864,11 +2871,10 @@ def test_loop_click_playwright_error_yields_outcome_error(monkeypatch):
         step_id=f"{run_id}:step-1",
     )
 
-    rows = writer._conn.execute("SELECT payload FROM traces_events ORDER BY seq").fetchall()
-    act_rows = [json.loads(r[0]) for r in rows if json.loads(r[0]).get("kind") == "act"]
-    assert len(act_rows) == 1
-    assert act_rows[0]["outcome"] == "error", (
-        f"expected outcome=error, got {act_rows[0]['outcome']!r}"
+    act_events = [e for e in writer.iter_events(run_id) if isinstance(e, ActEvent)]
+    assert len(act_events) == 1
+    assert act_events[0].outcome == "error", (
+        f"expected outcome=error, got {act_events[0].outcome!r}"
     )
     assert result_str.startswith("Error: click error"), (
         f"expected tool result to start with 'Error: click error', got {result_str!r}"

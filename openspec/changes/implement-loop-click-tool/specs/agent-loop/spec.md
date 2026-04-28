@@ -122,7 +122,7 @@ The loop SHALL handle `tool_call.name == "click"` in `_dispatch`. The dispatch c
 5. If `playwright.sync_api.TimeoutError` raised → `outcome="timeout"`.
 6. If any other `playwright.sync_api.Error` raised → `outcome="error"`.
 7. Emit `ActEvent(tool="click", args={"intent": intent}, outcome=<outcome>, diff={}, ms=<elapsed_ms>)`.
-8. Return a string summarising the outcome to the LLM (e.g. `"Clicked 'Submit button' (ok)"` or `"Error: click timed out for intent 'Submit button'"`).
+8. Return a string summarising the outcome to the LLM (e.g. `"Clicked 'Submit button' (ok)"` or `"Error: click timeout for intent 'Submit button'"`).
 9. On `LocatorMiss` from `_locate_with_supervisor` (all tiers exhausted): return an error string and continue (do NOT terminate the run).
 
 The `ToolName` literal in `loop.py` SHALL be updated to include `"click"`.
