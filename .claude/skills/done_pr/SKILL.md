@@ -72,6 +72,44 @@ Wraps up an OpenSpec-driven PR end-to-end: archive → commit → push → merge
    - **No new tickets case:** if every failure maps to an existing entry or is judged environmental flake, skip the commit and print one line: `done_pr: webvoyager failures all map to existing tickets / flake — no new follow-ups filed.`
    - This step does NOT block the merge in step 4, even if the analysis surfaces something concerning. The merge proceeds; the new tickets are picked up by future `/new_task2` runs.
 
+1b'. **Compare aggregate benchmark axes against the prior baseline and file tickets on regression (if task2 was touched).**
+
+   Skip entirely if step 1a was skipped. Step 1b catches failures with novel `failure_class` / `failure_detail` patterns; this step catches *aggregate* regressions that are silent on a per-case `[FAIL]` axis — e.g. a fix that converts a fast crash into a slow timeout (pass-rate stays flat, but cost and latency double). Without this step, those slip through because no individual case is "newly failing" — the case has just become more expensive to fail.
+
+   - Pick the comparison baseline. In priority order:
+     1. The most recent `task2/benchmark/master/webvoyager/*.json` (by `run_at`), if it exists.
+     2. Failing that, the chronologically-most-recent run *other than this branch's*, computed from `ls -t /home/pgi/vici/task2/benchmark/*/webvoyager/*.json | grep -v "/<sanitized-branch>/" | head -1`.
+     3. Failing that (first WebVoyager run ever recorded), skip this step and print `done_pr: no prior webvoyager baseline — skipping aggregate regression check`.
+   - Compute aggregates for both runs (this run's JSON is the one written in step 1a; the baseline is from above):
+     ```python
+     pass_rate = sum(1 for c in cases if c['status']=='succeeded') / len(cases)
+     total_usd  = sum(c.get('usd', 0.0) for c in cases)
+     total_pt   = sum(c.get('prompt_tokens', 0) for c in cases)
+     total_ct   = sum(c.get('completion_tokens', 0) for c in cases)
+     total_lat  = sum(c.get('latency_ms_total', 0) for c in cases)
+     ```
+   - Compute deltas as percentages (`(this - baseline) / baseline`, with a `1e-9` guard for divide-by-zero on baselines that legitimately scored 0). For pass-rate, also compute the absolute count change (`Δ_cases = this_pass_count - baseline_pass_count`).
+   - **Regression thresholds** (any one trips the check):
+     - `Δ_pass_rate < 0` (pass-rate went down at all — even by one case in a 3-case suite is meaningful).
+     - `Δ_total_usd > +25%` AND absolute Δ ≥ $0.05 (filters out noise on tiny baselines).
+     - `Δ_total_pt + Δ_total_ct > +25%` AND absolute Δ ≥ 10K tokens.
+     - `Δ_total_lat > +25%` AND absolute Δ ≥ 30s.
+     The `+25%` floor is empirical — WebVoyager's small N (3 cases) makes single-case timing noise easily ±10%, so anything under 25% is plausibly noise. The absolute-floor co-condition prevents flagging on baselines so small (e.g. $0.01 total) that any change crosses 25%.
+   - **No regression** → print one line: `done_pr: aggregate webvoyager axes within tolerance vs <baseline-branch> (pass=<X/N>→<Y/N>, cost <ΔUSD%>, tokens <ΔPT+ΔCT%>, latency <Δlat%>)` and continue.
+   - **Regression detected** → for each case whose individual axis numbers got worse vs the baseline's same case (matched by `case_id`), identify the *causal pattern*. Common causes seen in practice:
+     - **Fast-fail → slow-timeout**: case status flipped from `failed (steps=0)` to `timeout (steps=max_steps)`. Cause: a recent fix removed a crash but the loop has no early-termination heuristic. *Fix shape:* stuck-state detector in `agent/loop.py` (e.g. K consecutive identical tool calls → `failed/stuck_repeat`).
+     - **Transient nav error**: case status flipped from `succeeded` to `failed (tool_error)` with `failure_detail` matching `net::ERR_NETWORK_CHANGED|ERR_NETWORK_IO_SUSPENDED|ERR_INTERNET_DISCONNECTED|Page.goto.*Timeout`. Cause: Chromium / network flap. *Fix shape:* one-shot retry on the matching error class in `agent/browser.py:Browser.goto`.
+     - **Per-case cost/token bloat without status change**: same case still passes but uses 2-3× more tokens/steps. Cause: a prompt or observation change made the agent take a longer path. *Fix shape:* needs a per-case trace investigation ticket — file a "diagnose `<case-id>` token regression at SHA `<merge_sha>`" ticket pointing at the new run JSON and the baseline JSON.
+     - **Aggregate slowdown without per-case localization**: every case got marginally slower (typical of an LLM-side change or a prompt size increase). *Fix shape:* file an audit ticket pointing at `agent/loop.py` (prompt size growth?) and `agent/llm.py` (sampling change?), with the per-case diff included as evidence.
+   - For each distinct causal pattern, append a new entry to `## Benchmark improvements (candidates)` in `task2/plan.md` (continuing numbering from the highest existing ticket — be sure to grep both the long-form section AND the `### P0/P1/P2/P3` rubric tags so a duplicate doesn't get filed under a fresh number). Each entry MUST be self-contained per the same rules as step 1b: bold lead, one-sentence symptom, TDD-shaped acceptance criterion, *Why useful* tied to the specific axis regression observed (cite the exact `task2/benchmark/<branch>/webvoyager/<timestamp>.json` paths and the % deltas), and a *Trigger:* line naming `/done_pr`'s aggregate-regression check on `<date>`. Also append a one-line entry under the appropriate `### P0/P1/P2/P3` rubric subheader so `/new_task2`'s selection sees it.
+   - Stage `task2/plan.md` and commit:
+     ```
+     docs(task2): record webvoyager aggregate regression tickets from <branch>
+     ```
+     with the standard `Co-Authored-By` trailer. **Combining with the step-1b commit is allowed** when both surface in the same `/done_pr` run and target the same `task2/plan.md` edits — squash into one `docs(task2): record webvoyager benchmark failure tickets from <branch>` commit whose body lists both failure-class tickets AND aggregate-axis tickets, separated by a blank line. (One commit per `task2/plan.md` rewrite is the convention; two adjacent commits force a needless rebase if conflicts surface.) Confirmed pattern: PR #101's `/done_pr` run on 2026-04-28 filed #70 (stuck-state termination) and #71 (transient nav retry) in a single commit because they both fell out of the same regression analysis.
+   - **No-op duplicate guard:** before filing, grep `task2/plan.md` for an existing ticket whose lead matches the causal pattern (e.g. `grep -nE "stuck.state.*early.termination|stuck_repeat" task2/plan.md`). If found, do not duplicate; instead reference the existing ticket number in the iteration summary and skip the commit.
+   - This step also does NOT block the merge in step 4. The new tickets are picked up by `/new_task2`'s three-axis selection on the next iteration, which is exactly the rubric needed for "performance regression" tickets.
+
 1c. **Scrub the just-archived ticket from `task2/plan.md`'s Undone rubric (if task2 was touched).**
 
    Skip entirely if step 1a was skipped (no task2 changes) or if the change does not map to a numbered ticket. Otherwise:
