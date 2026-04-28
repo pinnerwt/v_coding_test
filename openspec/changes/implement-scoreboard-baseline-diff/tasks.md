@@ -26,10 +26,10 @@
 
 ## 4. score.py --diff flag
 
-- [ ] 4.1 Add `--diff` optional argument to `scripts/score.py` argparser (metavar `BASELINE_RESULTS_JSON`).
-- [ ] 4.2 When `--diff` is provided and file exists: load baseline JSON, call `generate_diff_markdown(baseline, branch_data)`, append `\n---\n` + diff output to scoreboard.
-- [ ] 4.3 When `--diff` path does not exist: print error to stderr, exit with code 1.
-- [ ] 4.4 Run `uv run pytest task2/tests/test_score.py -x` — confirm `--diff` tests pass.
+- [x] 4.1 Add `--diff` optional argument to `scripts/score.py` argparser (metavar `BASELINE_RESULTS_JSON`).
+- [x] 4.2 When `--diff` is provided and file exists: load baseline JSON, call `generate_diff_markdown(baseline, branch_data)`, append `\n---\n` + diff output to scoreboard.
+- [x] 4.3 When `--diff` path does not exist: print error to stderr, exit with code 1.
+- [x] 4.4 Run `uv run pytest task2/tests/test_score.py -x` — confirm `--diff` tests pass.
 
 ## 5. CI Workflow — PR comment step
 
