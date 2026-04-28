@@ -14,7 +14,7 @@ The system SHALL provide a module-level function `_classify_failure(events: list
 2. Inspects `events` and `validators` in the following priority order to determine `failure_class`:
    a. `"supervisor_halt"` — when a `SupervisorEvent(policy="halt")` is present in `events`.
    b. `"locator_miss"` — when a `SupervisorEvent(policy="next_tier")` is present in `events` AND the subsequent `LocateEvent` in the same `step_id` block has `outcome != "hit"` (all tiers exhausted without resolution).
-   c. `"tool_error"` — when an `ActEvent(outcome="error")` is present in `events`.
+   c. `"tool_error"` — when an `ActEvent` with `outcome` in `{"error", "timeout"}` is present in `events`.
    d. `"validator_fail"` — when a `DoneEvent` is present in `events` AND at least one dict in `validators` has `ok=False` AND the validator name does not equal `"exception"`. The `DoneEvent` requirement matches the design intent ("the agent reached `done` but the output was wrong"); without it, `_run_case` calls `run_validators` against `{}`, which spuriously trips most validators and would mis-classify a no-done case. Exception-path validators (`name="exception"`) are skipped here; the case is classified by subsequent rules in this list (typically `tool_error` from `_run_case`'s except path setting `failure_class` directly, or `other` if the trace happens to be otherwise empty).
    e. `"schema_error"` — when a `DoneEvent` is present in `events` AND `event.verifier.get("ok") is False`.
    f. `"no_done_emitted"` — when no `DoneEvent` is present in `events`.
@@ -58,6 +58,13 @@ The function is pure — it does not access `TraceWriter`, the file system, or a
 - **WHEN** `_classify_failure(events, validators=[], status="failed")` is called
 - **THEN** the first element of the result SHALL equal `"tool_error"`
 - **AND** the second element SHALL reference the error detail
+
+#### Scenario: tool_error classified when ActEvent outcome=timeout present
+
+- **GIVEN** `events` contains an `ActEvent(outcome="timeout", diff={"error": "TimeoutError on selector X"})` and no `SupervisorEvent`
+- **WHEN** `_classify_failure(events, validators=[], status="failed")` is called
+- **THEN** the first element of the result SHALL equal `"tool_error"`
+- **AND** the second element SHALL be a non-empty string derived from the `diff` field of the `ActEvent`
 
 #### Scenario: validator_fail classified when at least one validator is not ok
 
