@@ -14,7 +14,7 @@ from typing import Any, Literal, get_args
 import yaml
 
 from agent.browser import Browser
-from agent.llm import _DEFAULT_LLM_MODEL, LLMClient
+from agent.llm import _DEFAULT_LLM_MODEL, LLMClient, LLMError
 from agent.locator_cache import LocatorCache
 from agent.loop import RunResult, loop
 from agent.trace import (
@@ -254,6 +254,13 @@ def _run_case(
                 locator_cache=cache,
             )
         except Exception as exc:
+            if isinstance(exc, LLMError):
+                body_snippet = (exc.body or "")[:512]
+                failure_detail = (
+                    f"LLMError(kind={exc.kind!r}, status={exc.status}, body={body_snippet!r})"
+                )
+            else:
+                failure_detail = repr(exc)
             return CaseResult(
                 id=case["id"],
                 status="failed",
@@ -262,7 +269,7 @@ def _run_case(
                 l_tier_counts={},
                 validators=[{"name": "exception", "ok": False, "error": repr(exc)}],
                 failure_class="tool_error",
-                failure_detail=repr(exc),
+                failure_detail=failure_detail,
                 canary=canary,
             )
         events, escalations, replans, cache_events = _aggregate_diagnostics(writer, run_id)

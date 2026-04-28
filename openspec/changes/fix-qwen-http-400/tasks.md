@@ -1,6 +1,6 @@
 ## Task 1 — Red: `failure_detail` enrichment for `LLMError`
 
-- [ ] 1.1 In `task2/tests/test_eval.py`, add test `test_run_case_failure_detail_includes_llm_error_body`.
+- [x] 1.1 In `task2/tests/test_eval.py`, add test `test_run_case_failure_detail_includes_llm_error_body`.
 
   The test shall:
   - Import `LLMError` from `agent.llm`.
@@ -14,20 +14,20 @@
 
   Acceptance: `uv run pytest tests/test_eval.py::test_run_case_failure_detail_includes_llm_error_body -x` (from `task2/`).
 
-- [ ] 1.2 Run the test and confirm it fails with `AssertionError` because `repr(exc)` gives `"LLMError('http 400')"` which does not contain `"status=400"`.
+- [x] 1.2 Run the test and confirm it fails with `AssertionError` because `repr(exc)` gives `"LLMError('http 400')"` which does not contain `"status=400"`.
 
 ## Task 2 — Green: enrich `_run_case` exception handler
 
-- [ ] 2.1 In `task2/scripts/eval.py`, in `_run_case`'s `except Exception as exc:` block (currently at lines 256–267), add an `isinstance` branch:
+- [x] 2.1 In `task2/scripts/eval.py`, in `_run_case`'s `except Exception as exc:` block (currently at lines 256–267), add an `isinstance` branch:
   - `from agent.llm import LLMError` (add the import at the top of the module if not already present).
   - When `isinstance(exc, LLMError)`, build `failure_detail` as:
     `f"LLMError(kind={exc.kind!r}, status={exc.status}, body={(exc.body or '')[:512]!r})"`.
   - When not `isinstance(exc, LLMError)`, keep `failure_detail=repr(exc)` as before.
   - Keep `steps=0` (step count from inside `loop()` is not accessible in the exception path; this is accepted per design Decision 4).
 
-- [ ] 2.2 Run `uv run pytest tests/test_eval.py::test_run_case_failure_detail_includes_llm_error_body -x` and confirm it passes.
+- [x] 2.2 Run `uv run pytest tests/test_eval.py::test_run_case_failure_detail_includes_llm_error_body -x` and confirm it passes.
 
-- [ ] 2.3 Run `uv run pytest tests/test_eval.py -x` and confirm no regressions.
+- [x] 2.3 Run `uv run pytest tests/test_eval.py -x` and confirm no regressions.
 
 ## Task 3 — Red: compaction keeps total chars under budget
 

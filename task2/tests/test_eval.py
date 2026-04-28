@@ -1645,6 +1645,31 @@ def test_case_result_non_canary_serialized_as_false():
 # ---------------------------------------------------------------------------
 
 
+def test_run_case_failure_detail_includes_llm_error_body():
+    from agent.llm import LLMError
+
+    def _raise_llm_error(*args, **kwargs):
+        raise LLMError(
+            "http 400",
+            kind="http",
+            status=400,
+            body='{"error":{"type":"exceed_context_size_error","n_prompt_tokens":34074}}',
+        )
+
+    case = {
+        "id": "llm-error-case",
+        "task": "dummy",
+        "budget": {"steps": 1, "usd": 1.0, "seconds": 30},
+        "expect": {},
+    }
+    with patch("scripts.eval.loop", side_effect=_raise_llm_error):
+        result = _run_case(case, llm_client=MagicMock(), browser=MagicMock())
+
+    assert "status=400" in result.failure_detail
+    assert "exceed_context_size_error" in result.failure_detail
+    assert result.failure_class == "tool_error"
+
+
 def test_fixture_count_with_listitem_intent_stub_llm(playwright_chromium):
     from agent.browser import Browser
     from agent.llm import ChatResponse, ToolCall, Usage
