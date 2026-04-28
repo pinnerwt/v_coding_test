@@ -17,8 +17,8 @@ Excluded domains (MUST NOT appear in the Tier-1 file): Allrecipes, Apple, Course
 - **THEN** each entry has keys `id`, `web_name`, `ques`, `web`
 
 #### Scenario: No excluded domains appear in Tier-1
-- **WHEN** reading all `web_name` values from `tier1.json`
-- **THEN** none of `["Allrecipes", "Apple", "Coursera", "Google", "Booking", "Amazon"]` appear
+- **WHEN** reading all `category` values from the cases produced by `load_webvoyager` on `tier1.json`
+- **THEN** none of `["Allrecipes", "Apple", "Coursera", "Google", "Booking", "Amazon"]` appear as substrings of any `category`
 
 ### Requirement: load_webvoyager deserialises Tier-1 file into 12 valid Case dicts
 Calling `load_webvoyager("task2/eval/bench/data/webvoyager/tier1.json")` SHALL return a list of exactly 12 dicts, each with `task`, `domain`, `category`, and `id` keys (the data-driven fields populated from the JSON entry). The `load_webvoyager` function's implementation SHALL NOT be modified; this requirement validates the dataset conforms to the existing loader contract.
@@ -40,7 +40,6 @@ The `task2/README.md` file SHALL contain a "WebVoyager benchmark" section (or su
 - The distinction between Tier-0 (3 tasks, smoke-test fixture) and Tier-1 (12 tasks, per-branch regression signal).
 - The criteria for site inclusion: stable layout, no login required, no CAPTCHA, no location-aware widgets.
 - The list of excluded domains and the reason for each exclusion.
-- A reference to the Tier-0 baseline artifact path (`task2/benchmark/task2-benchmarks-readme-and-tier0/webvoyager/baseline.json`) where the recorded baseline metrics live.
 
 #### Scenario: README contains WebVoyager benchmark section
 - **WHEN** `task2/README.md` is read
