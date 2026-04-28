@@ -2601,6 +2601,14 @@ def test_loop_click_l1_miss_supervisor_escalation(fixture_server, playwright_chr
     assert next_tier_event is not None, (
         f"expected SupervisorEvent(policy='next_tier'), got policies={policies}"
     )
+    act_events = [e for e in events if isinstance(e, ActEvent) and e.tool == "click"]
+    assert len(act_events) == 1, (
+        f"expected exactly one click ActEvent after L2 escalation, got {len(act_events)}"
+    )
+    outcome = act_events[0].outcome
+    assert outcome in {"ok", "nav"}, (
+        f"expected click ActEvent.outcome in {{ok, nav}} after escalation, got {outcome!r}"
+    )
     writer.close()
 
 
