@@ -165,7 +165,7 @@ def aggregate_repeats(
         escalations=rep_run.escalations,
         replans=round(mean_replans),
         cache_events=rep_run.cache_events,
-        failure_class=rep_run.failure_class if repeat_status != "all_pass" else None,
+        failure_class=rep_run.failure_class,
         skip_reason=rep_run.skip_reason if repeat_status == "skipped" else None,
     )
 

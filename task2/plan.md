@@ -323,6 +323,8 @@ Candidate tickets, ordered roughly by impact-per-effort. Each is TDD-shaped so i
 
 50. **Per-repeat cache semantics when `shared_cache=True and variants and --repeats > 1`.** `task2/scripts/benchmark.py::aggregate_repeats` shares a single `LocatorCache` across all N repeats of each variant when `parent_case.shared_cache=True`. Combined with the variant loop, that means a fixture like `eval/cases/maintenance-drift-rename.yaml` (the only current `shared_cache: true` case) runs `len(variants) × N` times against a single warm cache, biasing latency and USD downward versus the `--repeats 1` contract (where the cache is shared across variants but each variant runs once cold). Decision needed: (a) reset the cache between repeats (cold-start each repeat for the same variant), (b) document the warm-cache choice as intentional and add a test fixing the semantics, or (c) parametrize with a `--cold-cache` flag. Tests: an `aggregate_repeats(case_with_shared_cache, repeats=3, cache=<spy>, ...)` call records the chosen semantics (e.g. spy is reset 3 times for option (a), once for option (b)). *Why useful:* current behavior makes flake-detection less reliable for the only `shared_cache` case, which is exactly the maintenance-drift case the canary suite (#37) will likely include. *Trigger:* surfaced by review subagent on PR #75 (iteration 1).
 
+51. **Aggregation-aware scoreboard rollups when `--repeats > 1`.** `task2/scripts/score.py::generate_scoreboard` rolls up per-case fields with simple sums: `total_usd = sum(case.usd ...)`, `p50 / p95 = _percentile([case.latency_ms_total for case ...], P)`. With `--repeats > 1` the per-case `usd` is the mean across N runs (per current spec) while `latency_ms_total` is the sum across N runs — so the "Total USD" line under-reports actual cost by ~1/N, and the latency percentile is computed over per-case-summed values rather than per-run values. Decision needed: (a) flip `AggregatedCaseResult.usd` to the SUM convention (matching `prompt_tokens` / `completion_tokens` / `latency_ms_total`) and update the spec, (b) make `score.py` multiply `usd × repeats` when rolling up, or (c) add explicit aggregation-aware accessors. Tests: a 3-repeat synthetic scoreboard with known per-run usd correctly reports total cost; the same with known per-run latencies reports a meaningful p50/p95 (most naturally over `median_latency_ms`). *Why useful:* the canary suite (#37) and the auto-diff vs master (#36) both depend on these rollup numbers being comparable across `--repeats N` and `--repeats 1` runs. *Trigger:* surfaced by review subagent on PR #75 (iteration 3).
+
 ## Undone
 
 Tickets not yet merged, ordered by urgency. `/new_task2` step 1 selects from this list — pick the highest-urgency entry available; tie-break by lowest ticket number.
@@ -353,6 +355,7 @@ Urgency tags:
 - **#43** — `tool_error` should also classify `ActEvent(outcome="timeout")`.
 - **#49** — Extract shared variant + skip + shared-cache iteration helper into eval.py (consumed by both run_suite and aggregate_repeats caller).
 - **#50** — Per-repeat warm-cache bias when shared_cache + variants + --repeats > 1; needs decision on cold-start vs warm.
+- **#51** — Aggregation-aware scoreboard rollups (Total USD / p50 / p95) when --repeats > 1; current code mixes mean/sum semantics across fields.
 
 ### P3 — nice-to-have
 

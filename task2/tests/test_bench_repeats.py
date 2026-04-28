@@ -624,3 +624,79 @@ def test_generate_scoreboard_renders_fractional_partial():
     }
     out = generate_scoreboard(data)
     assert "2/3 ✗" in out
+
+
+def test_aggregate_repeats_p95_with_three_runs_uses_max_run():
+    from unittest.mock import MagicMock
+
+    from scripts.benchmark import aggregate_repeats
+
+    latencies = [100, 200, 300]
+    side_effects = [_make_case_result("succeeded", latency_ms_total=lat) for lat in latencies]
+    with patch("scripts.benchmark._run_case", side_effect=side_effects):
+        result = aggregate_repeats(
+            _SAMPLE_CASE,
+            repeats=3,
+            llm_client=MagicMock(),
+            browser=MagicMock(),
+            live=True,
+        )
+
+    assert result.p95_latency_ms == 300
+    assert result.median_latency_ms == 200
+
+
+def test_main_repeats_3_calls_run_case_three_times_per_case(tmp_path, monkeypatch):
+    from unittest.mock import MagicMock
+
+    from scripts.benchmark import main
+    from scripts.eval import CaseResult
+
+    cases_dir = tmp_path / "cases"
+    cases_dir.mkdir()
+    (cases_dir / "case.yaml").write_text(
+        "id: fixture-callcount-test\n"
+        "domain: example.com\n"
+        "category: fixture\n"
+        "task: do something\n"
+        "expect: {}\n"
+        "budget: {steps: 5, usd: 1.0, seconds: 30}\n"
+        "fixture: true\n"
+    )
+
+    monkeypatch.setenv("EVAL_CASES_DIR", str(cases_dir))
+    monkeypatch.setenv("GITHUB_HEAD_REF", "test-branch")
+    monkeypatch.chdir(tmp_path)
+
+    stub_result = CaseResult(
+        id="fixture-callcount-test",
+        status="succeeded",
+        steps=1,
+        usd=0.001,
+        l_tier_counts={},
+        validators=[],
+        prompt_tokens=10,
+        completion_tokens=5,
+        latency_ms_total=100,
+        latency_ms_per_step=[100],
+        step_breakdown=[],
+        escalations=[],
+        replans=0,
+        cache_events={"hits": 0, "invalidations": 0, "misses": 0},
+        failure_class=None,
+        failure_detail=None,
+        skip_reason=None,
+    )
+
+    mock_browser = MagicMock()
+    mock_browser.__enter__ = MagicMock(return_value=mock_browser)
+    mock_browser.__exit__ = MagicMock(return_value=False)
+
+    with (
+        patch("scripts.benchmark.build_clients", return_value=(MagicMock(), mock_browser)),
+        patch("scripts.benchmark._run_case", return_value=stub_result) as mock_run_case,
+    ):
+        rc = main(["--repeats", "3"])
+
+    assert mock_run_case.call_count == 3
+    assert rc == 0
