@@ -5,6 +5,13 @@ import json
 import sys
 from pathlib import Path
 
+_SKIP_REASON_ORDER = [
+    "live_disabled",
+    "infra_unavailable",
+    "fixture_missing",
+    "feature_not_implemented",
+]
+
 SUITE_THRESHOLDS: dict[str, dict] = {
     "drift": {
         "name": "Drift suite",
@@ -108,12 +115,6 @@ def generate_scoreboard(data: dict) -> str:
 
     lines.append("")
 
-    _SKIP_REASON_ORDER = [
-        "live_disabled",
-        "infra_unavailable",
-        "fixture_missing",
-        "feature_not_implemented",
-    ]
     skip_reason_counts: dict[str, int] = {}
     for case in cases:
         reason = case.get("skip_reason")
