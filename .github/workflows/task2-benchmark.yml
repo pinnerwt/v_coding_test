@@ -54,6 +54,7 @@ jobs:
           HEAD_REF: ${{ github.head_ref }}
           BASE_DATE: ${{ steps.base.outputs.date }}
         run: |
+          set -euo pipefail
           uv run python -m scripts.benchmark --branch "$HEAD_REF" --verify "$BASE_DATE"
 
       - name: Post diff as PR comment
@@ -65,6 +66,7 @@ jobs:
           REPO: ${{ github.repository }}
           WORKSPACE: ${{ github.workspace }}
         run: |
+          set -euo pipefail
           SAFE_BRANCH=$(uv run python -c "import sys; from scripts.benchmark import sanitize_branch; print(sanitize_branch(sys.argv[1]))" "$HEAD_REF")
           DIFF_FILE="$WORKSPACE/task2/benchmark/${SAFE_BRANCH}/diff.md"
           if [ ! -f "$DIFF_FILE" ] || [ ! -s "$DIFF_FILE" ]; then

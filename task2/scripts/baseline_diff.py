@@ -56,16 +56,16 @@ def generate_diff_markdown(master: dict, branch: dict) -> str:
     for cid in all_ids:
         mc = master_cases.get(cid)
         bc = branch_cases.get(cid)
-        ms = mc["status"] if mc else "—"
-        bs = bc["status"] if bc else "—"
-        delta = _classify(ms if mc else None, bs if bc else None)
+        ms = mc["status"] if mc else None
+        bs = bc["status"] if bc else None
+        delta = _classify(ms, bs)
         if delta == "regression":
             delta_cell = "⚠️ REGRESSION"
         elif delta == "improvement":
             delta_cell = "✅ IMPROVEMENT"
         else:
             delta_cell = delta
-        lines.append(f"| {cid} | {ms} | {bs} | {delta_cell} |")
+        lines.append(f"| {cid} | {ms or '—'} | {bs or '—'} | {delta_cell} |")
 
     lines.append("")
 
