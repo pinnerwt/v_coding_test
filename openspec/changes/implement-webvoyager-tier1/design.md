@@ -28,7 +28,7 @@ Alternatives considered:
 - A second script `bench_tier1.py` — duplicates all runner wiring for no gain.
 - An env var only — less ergonomic for ad-hoc runs; `--tier` is more discoverable.
 
-Chosen: extend the existing `bench.py` with `--tier {0,1}` (argparse `int`, choices `[0,1]`, default `0`). The flag maps to a path dictionary keyed on `(suite, tier)`. This keeps a single runner entry point and preserves the existing env-var override path.
+Chosen: extend the existing `bench.py` with `--tier {0,1}` (argparse `int`, choices `[0,1]`, default `0`). As-built, `_DEFAULT_TASK_PATHS` is a two-level dict (`{suite: {tier: path}}`) — equivalent semantically to `(suite, tier)` keying but cleaner to extend per-suite. This keeps a single runner entry point and preserves the existing env-var override path.
 
 ### Decision 2: Tier-1 dataset location — `task2/eval/bench/data/webvoyager/tier1.json`
 

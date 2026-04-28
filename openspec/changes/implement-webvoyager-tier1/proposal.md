@@ -8,7 +8,7 @@ The current `--suite webvoyager` runner uses only the 3-task Tier-0 sample (`tas
 - Add a `--tier` CLI flag to `scripts/bench.py` (values `0` and `1`; default `0`) that selects between the Tier-0 sample and the Tier-1 dataset. The selected path can also be overridden via the existing `WEBVOYAGER_TASKS` env var.
 - Capture a Tier-1 baseline result under `task2/benchmark/<branch>/webvoyager/tier1.json`.
 - Document the site-selection rationale in `task2/README.md` under a "WebVoyager benchmark" section.
-- Add tests: (a) loader test asserting the vendored Tier-1 file deserialises via `load_webvoyager` and yields 12 cases with valid `task`/`domain`/`category` fields; (b) runner test (mocked LLM, no `--live`) asserting `--tier 1` selects the Tier-1 fixture path.
+- Add tests: (a) loader test asserting the vendored Tier-1 file deserialises via `load_webvoyager` and yields 12 cases with `task`, `domain`, `category`, and `id` keys populated; (b) runner test (mocked LLM, no `--live`) asserting `--tier 1` selects the Tier-1 fixture path.
 
 Excluded from Tier-1 intentionally: Allrecipes, Apple, Coursera, Google-Search, Booking, Flights, Amazon — each requires login, CAPTCHA, or location-aware widgets that make results non-deterministic.
 

@@ -10,7 +10,7 @@
 ## 2. Green — Tier-1 dataset
 
 - [x] 2.1 Create directory `task2/eval/bench/data/webvoyager/` (add `__init__.py` if needed for Python packaging — check if `eval/bench/data/` needs it).
-- [x] 2.2 Author `task2/eval/bench/data/webvoyager/tier1.json` with exactly 12 entries across the approved domains: Wikipedia (×2), arXiv (×2), GitHub (×2), HuggingFace (×2), BBC News (×2), Cambridge Dictionary (×1), Wolfram Alpha (×1). Each entry must have `id`, `web_name`, `ques`, `web` fields. Use unique integer `id` values starting from 101 (to avoid collision with Tier-0 IDs 1–3).
+- [x] 2.2 Author `task2/eval/bench/data/webvoyager/tier1.json` with exactly 12 entries across the approved domains: Wikipedia (×2), arXiv (×2), GitHub (×2), HuggingFace (×2), BBC News (×2), Cambridge Dictionary (×1), Wolfram Alpha (×1). Each entry must have `id`, `web_name`, `ques`, `web` fields. Use unique string `id` values `"101"`–`"112"` (to avoid collision with Tier-0 IDs `"1"`–`"3"`).
 - [x] 2.3 Run `uv run pytest tests/test_bench.py::test_tier1_fixture_exists tests/test_bench.py::test_tier1_loader_returns_12_cases tests/test_bench.py::test_tier1_no_excluded_domains -x` from `task2/` and confirm all three pass.
 
 ## 3. Green — --tier flag in bench runner
