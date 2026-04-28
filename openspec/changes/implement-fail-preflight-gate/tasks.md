@@ -36,6 +36,6 @@
 
 ## 4. Benchmark Verification
 
-- [ ] 4.1 Run `uv run python -m score` (or equivalent) to measure benchmark pass rate.
-- [ ] 4.2 Confirm at least one of the 5 `read→fail` benchmark cases flips from red to green.
-- [ ] 4.3 Confirm no previously-green benchmark cases regressed.
+- [x] 4.1 Run `uv run python -m score` (or equivalent) to measure benchmark pass rate.
+- [x] 4.2 Confirm at least one of the 5 `read→fail` benchmark cases flips from red to green.
+- [x] 4.3 Confirm no previously-green benchmark cases regressed.
