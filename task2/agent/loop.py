@@ -34,11 +34,6 @@ ToolName = Literal["goto", "read", "click", "type", "done", "fail"]
 _CLICK_SUCCESS_OUTCOMES: frozenset[str] = frozenset({"ok", "nav"})
 _IRRECOVERABLE_REASONS: frozenset[str] = frozenset({"login wall", "captcha", "blocked"})
 
-
-def _has_actionable_outcome(outcome: str) -> bool:
-    return outcome in {"ok", "nav"}
-
-
 STATE_MESSAGE_PREFIX = "Current state: "
 
 _BODY_TEXT_JS = "() => document.body.innerText"
@@ -841,11 +836,7 @@ def loop(
             if tool_call.name == "fail":
                 reason = args.get("reason", "")
                 is_irrecoverable = any(kw in reason.lower() for kw in _IRRECOVERABLE_REASONS)
-                is_premature = (
-                    step_num <= 1
-                    and not any(_has_actionable_outcome(o) for o in _prior_act_outcomes)
-                    and not is_irrecoverable
-                )
+                is_premature = step_num <= 1 and not _prior_act_outcomes and not is_irrecoverable
                 if is_premature:
                     use_writer = trace_writer is not None and run_id is not None
                     sup_seq = trace_writer.next_seq(run_id) if use_writer else 0
