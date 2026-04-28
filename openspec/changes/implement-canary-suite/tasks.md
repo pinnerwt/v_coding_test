@@ -1,7 +1,7 @@
 ## 1. Red — failing tests first (TDD)
 
-- [ ] 1.1 Write `task2/tests/test_canary_gate.py` with Tests A–E (all five synthetic-JSON test cases from spec). Run `uv run pytest tests/test_canary_gate.py` and confirm they all fail with `ModuleNotFoundError` or `ImportError` (module does not exist yet).
-- [ ] 1.2 Confirm `uv run ruff check .` is clean before touching production code.
+- [x] 1.1 Write `task2/tests/test_canary_gate.py` with Tests A–E (all five synthetic-JSON test cases from spec). Run `uv run pytest tests/test_canary_gate.py` and confirm they all fail with `ModuleNotFoundError` or `ImportError` (module does not exist yet).
+- [x] 1.2 Confirm `uv run ruff check .` is clean before touching production code.
 
 ## 2. Schema changes — add `canary` field to CaseResult and AggregatedCaseResult
 
