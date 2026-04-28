@@ -24,9 +24,9 @@
 
 ## 5. Lint and format
 
-- [ ] 5.1 Run `cd task2 && uv run ruff check .` — fix any lint errors
-- [ ] 5.2 Run `cd task2 && uv run ruff format .` — apply formatting
-- [ ] 5.3 Re-run `cd task2 && uv run pytest tests/ -x` — confirm tests still pass after formatting
+- [x] 5.1 Run `cd task2 && uv run ruff check .` — fix any lint errors
+- [x] 5.2 Run `cd task2 && uv run ruff format .` — apply formatting
+- [x] 5.3 Re-run `cd task2 && uv run pytest tests/ -x` — confirm tests still pass after formatting
 
 ## 6. Verify eval case end-to-end
 

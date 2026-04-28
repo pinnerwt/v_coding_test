@@ -15,7 +15,9 @@ if TYPE_CHECKING:
 
     from agent.locator_cache import LocatorCache
 
-_SUPPORTED_ROLES: frozenset[str] = frozenset({"button", "link", "textbox", "checkbox", "heading", "list", "listitem"})
+_SUPPORTED_ROLES: frozenset[str] = frozenset(
+    {"button", "link", "textbox", "checkbox", "heading", "list", "listitem"}
+)
 _ARTICLES: frozenset[str] = frozenset({"the", "a", "an"})
 
 LocatorMissReason = Literal["zero_matches", "ambiguous", "vision_miss"]
