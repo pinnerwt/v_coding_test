@@ -3029,6 +3029,9 @@ def _make_fake_browser_for_type(
             return "http://example.com/"
 
         def locator(self, sel):
+            assert sel == locate_result.selector, (
+                f"expected page.locator({locate_result.selector!r}), got {sel!r}"
+            )
             return _StubLocator()
 
     fake_page = _StubPage()
@@ -3069,6 +3072,8 @@ def test_loop_type_playwright_timeout_yields_outcome_timeout(monkeypatch):
     assert act_events[0].outcome == "timeout", (
         f"expected outcome=timeout, got {act_events[0].outcome!r}"
     )
+    assert act_events[0].tool == "type"
+    assert act_events[0].args["intent"] == "Email textbox"
     assert result_str.startswith("Error: type timeout"), (
         f"expected tool result to start with 'Error: type timeout', got {result_str!r}"
     )
@@ -3108,7 +3113,92 @@ def test_loop_type_playwright_error_yields_outcome_error(monkeypatch):
     assert act_events[0].outcome == "error", (
         f"expected outcome=error, got {act_events[0].outcome!r}"
     )
+    assert act_events[0].tool == "type"
+    assert act_events[0].args["intent"] == "Email textbox"
     assert result_str.startswith("Error: type error"), (
         f"expected tool result to start with 'Error: type error', got {result_str!r}"
     )
+    writer.close()
+
+
+# ---------------------------------------------------------------------------
+# Type tool: validation guard — missing/empty intent or text → error, no ActEvent
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "args,expected_field",
+    [
+        ({"text": "foo"}, "intent"),
+        ({"intent": "", "text": "foo"}, "intent"),
+        ({"intent": "Email textbox"}, "text"),
+        ({"intent": "Email textbox", "text": ""}, "text"),
+    ],
+    ids=["missing-intent", "empty-intent", "missing-text", "empty-text"],
+)
+def test_loop_type_validation_guard_returns_error_without_locating(args, expected_field):
+    import types
+
+    from agent.loop import _dispatch
+    from agent.supervisor import Supervisor
+
+    fake_browser = types.SimpleNamespace(_page=None)
+    run_id = f"unit-type-guard-{expected_field}-{len(args)}"
+    writer = _open_click_writer(run_id)
+
+    result_str = _dispatch(
+        "type",
+        args,
+        fake_browser,
+        Supervisor(),
+        trace_writer=writer,
+        run_id=run_id,
+        step_id=f"{run_id}:step-1",
+    )
+
+    act_events = [e for e in writer.iter_events(run_id) if isinstance(e, ActEvent)]
+    assert result_str.startswith("Error: type requires"), (
+        f"expected error string, got {result_str!r}"
+    )
+    assert expected_field in result_str
+    assert len(act_events) == 0, f"locate must not run when {expected_field} guard fires"
+    writer.close()
+
+
+# ---------------------------------------------------------------------------
+# Type tool: success path → _dispatch returns spec-mandated "Typed into" string
+# ---------------------------------------------------------------------------
+
+
+def test_loop_type_dispatch_ok_returns_typed_into_string(monkeypatch):
+    from agent.loop import _dispatch
+    from agent.supervisor import Supervisor
+
+    selector = "input#email"
+    fake_browser, locate_result = _make_fake_browser_for_type(selector)
+
+    monkeypatch.setattr(
+        "agent.loop._locate_or_error_msg",
+        lambda *_a, **_kw: locate_result,
+    )
+
+    run_id = "unit-type-ok"
+    writer = _open_click_writer(run_id)
+
+    result_str = _dispatch(
+        "type",
+        {"intent": "Email textbox", "text": "hello"},
+        fake_browser,
+        Supervisor(),
+        trace_writer=writer,
+        run_id=run_id,
+        step_id=f"{run_id}:step-1",
+    )
+
+    act_events = [e for e in writer.iter_events(run_id) if isinstance(e, ActEvent)]
+    assert result_str == "Typed into 'Email textbox' (ok)", (
+        f"expected spec-mandated success string, got {result_str!r}"
+    )
+    assert act_events[0].outcome == "ok"
+    assert act_events[0].tool == "type"
     writer.close()
