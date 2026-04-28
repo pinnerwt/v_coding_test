@@ -24,5 +24,5 @@
 
 ## 4. Benchmark Verification
 
-- [ ] 4.1 Run `uv run python -m score` (or equivalent) to measure benchmark pass rate improvement
-- [ ] 4.2 Confirm `correction-l1-miss-l2-hit`, `drift-submit-form-v1`, `drift-submit-form-v2`, `maintenance-drift-rename-v1`, `maintenance-drift-rename-v2` all flip from red to green
+- [x] 4.1 Run `uv run python -m score` (or equivalent) to measure benchmark pass rate improvement
+- [x] 4.2 Confirm `correction-l1-miss-l2-hit`, `drift-submit-form-v1`, `drift-submit-form-v2`, `maintenance-drift-rename-v1`, `maintenance-drift-rename-v2` all flip from red to green
