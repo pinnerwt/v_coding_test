@@ -30,7 +30,7 @@ from agent.trace import (
 
 _REQUIRED_FIELDS = ("id", "domain", "category", "task", "expect", "budget")
 PASS_STATUSES = frozenset({"succeeded", "unverified"})
-_FAIL_STATUSES = frozenset({"failed", "blocked", "timeout"})
+FAIL_STATUSES = frozenset({"failed", "blocked", "timeout"})
 _SKIP_STATUS = "skipped"
 
 SkipReason = Literal[
@@ -89,6 +89,7 @@ class CaseResult:
     failure_class: str | None = None
     failure_detail: str | None = None
     skip_reason: SkipReason | None = None
+    canary: bool = False
 
     def __post_init__(self) -> None:
         if self.status == _SKIP_STATUS:
@@ -222,11 +223,16 @@ def _classify_failure(
     return "no_done_emitted", "no DoneEvent in trace"
 
 
-def _run_case(case: dict[str, Any], llm_client: Any, browser: Any, cache: Any = None) -> CaseResult:
+def _run_case(
+    case: dict[str, Any], llm_client: Any, browser: Any, cache: Any = None, canary: bool = False
+) -> CaseResult:
     run_id = str(uuid.uuid4())
+    fixture_url = case.get("fixture_url")
     with TraceWriter(path=":memory:") as writer:
         _open_trace_run(writer, run_id, case)
         try:
+            if fixture_url:
+                browser.goto(fixture_url)
             run_result: RunResult = loop(
                 case["task"],
                 browser,
@@ -246,6 +252,7 @@ def _run_case(case: dict[str, Any], llm_client: Any, browser: Any, cache: Any = 
                 validators=[{"name": "exception", "ok": False, "error": repr(exc)}],
                 failure_class="tool_error",
                 failure_detail=repr(exc),
+                canary=canary,
             )
         events, escalations, replans, cache_events = _aggregate_diagnostics(writer, run_id)
     validator_results = run_validators(
@@ -270,6 +277,7 @@ def _run_case(case: dict[str, Any], llm_client: Any, browser: Any, cache: Any = 
         cache_events=cache_events,
         failure_class=failure_class,
         failure_detail=failure_detail,
+        canary=canary,
     )
 
 
@@ -282,6 +290,7 @@ def _skipped_result(case: dict, reason: SkipReason) -> CaseResult:
         l_tier_counts={},
         validators=[],
         skip_reason=reason,
+        canary=case.get("canary", False),
     )
 
 
@@ -317,7 +326,13 @@ def run_suite(
             elif not live and not case.get("fixture", False):
                 r = _skipped_result(case, "live_disabled")
             else:
-                r = _run_case(case, llm_client, browser, cache=shared_cache)
+                r = _run_case(
+                    case,
+                    llm_client,
+                    browser,
+                    cache=shared_cache,
+                    canary=case.get("canary", False),
+                )
             case_results.append(r)
             print(f"[{_label(r.status)}] {r.id} ({r.steps} steps, ${r.usd:.4f})", flush=True)
 
@@ -331,7 +346,7 @@ def run_suite(
 
 
 def compute_exit_code(cases: list[dict]) -> int:
-    return 1 if any(c["status"] in _FAIL_STATUSES for c in cases) else 0
+    return 1 if any(c["status"] in FAIL_STATUSES for c in cases) else 0
 
 
 def build_clients():

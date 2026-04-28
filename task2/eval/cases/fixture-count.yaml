@@ -1,7 +1,8 @@
 - id: fixture-count
   domain: fixture
   category: search-and-extract
-  task: "Read all list items on the page and return them as items"
+  task: "Read all list items on the page and return them as a list of strings in the items field."
+  fixture_url: "data:text/html,<!DOCTYPE html><html><body><ul><li>Item One</li><li>Item Two</li><li>Item Three</li></ul></body></html>"
   expect:
     schema:
       items: "list[str]"

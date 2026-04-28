@@ -57,8 +57,16 @@ jobs:
           set -euo pipefail
           uv run python -m scripts.benchmark --branch "$HEAD_REF" --verify "$BASE_DATE"
 
+      - name: Canary gate
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          SAFE_BRANCH=$(uv run python -c "import sys; from scripts.benchmark import sanitize_branch; print(sanitize_branch(sys.argv[1]))" "$HEAD_REF")
+          uv run python -m scripts.canary_gate --results "benchmark/${SAFE_BRANCH}/results.json"
+
       - name: Post diff as PR comment
-        if: github.event_name == 'pull_request'
+        if: always() && github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
           HEAD_REF: ${{ github.head_ref }}

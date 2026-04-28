@@ -64,6 +64,29 @@ _CANNED_RESULT_2 = RunResult(
 )
 
 
+def test_run_case_navigates_to_fixture_url_before_loop():
+    case = {**_FIXTURE_CASE, "fixture_url": "data:text/html,<h1>Hi</h1>"}
+    browser = MagicMock()
+    goto_called_before_loop = False
+
+    def _loop_spy(*args, **kwargs):
+        nonlocal goto_called_before_loop
+        goto_called_before_loop = browser.goto.called
+        return _CANNED_RESULT
+
+    with patch("scripts.eval.loop", side_effect=_loop_spy):
+        _run_case(case, llm_client=MagicMock(), browser=browser)
+    browser.goto.assert_called_once_with("data:text/html,<h1>Hi</h1>")
+    assert goto_called_before_loop
+
+
+def test_run_case_skips_navigation_when_no_fixture_url():
+    browser = MagicMock()
+    with patch("scripts.eval.loop", return_value=_CANNED_RESULT):
+        _run_case(_FIXTURE_CASE, llm_client=MagicMock(), browser=browser)
+    browser.goto.assert_not_called()
+
+
 def test_run_case_captures_exception_as_failed(tmp_path):
     def _boom(*args, **kwargs):
         raise RuntimeError("boom")
@@ -72,6 +95,17 @@ def test_run_case_captures_exception_as_failed(tmp_path):
         result = _run_case(_FIXTURE_CASE, llm_client=MagicMock(), browser=MagicMock())
     assert result.status == "failed"
     assert result.id == "fixture-heading"
+
+
+def test_run_case_captures_goto_exception_as_failed():
+    browser = MagicMock()
+    browser.goto.side_effect = RuntimeError("nav fail")
+    case = {**_FIXTURE_CASE, "fixture_url": "data:text/html,<h1>x</h1>"}
+    with patch("scripts.eval.loop", return_value=_CANNED_RESULT):
+        result = _run_case(case, llm_client=MagicMock(), browser=browser)
+    assert result.status == "failed"
+    assert result.failure_class == "tool_error"
+    assert "nav fail" in result.failure_detail
 
 
 def test_results_json_shape(tmp_path):
@@ -165,11 +199,49 @@ def test_fixture_heading_yaml_loads():
     assert cases[0]["fixture"] is True
 
 
+def test_fixture_heading_yaml_is_canary():
+    cases = load_cases("eval/cases/fixture-heading.yaml")
+    assert cases[0]["canary"] is True
+
+
 def test_fixture_count_yaml_loads():
     cases = load_cases("eval/cases/fixture-count.yaml")
     assert len(cases) == 1
     assert cases[0]["id"] == "fixture-count"
     assert cases[0]["fixture"] is True
+
+
+def test_canary_read_h1_yaml_loads_as_fixture_canary():
+    cases = load_cases("eval/cases/canary-read-h1.yaml")
+    assert len(cases) == 1
+    c = cases[0]
+    assert c["id"] == "canary-read-h1"
+    assert c["canary"] is True
+    assert c["fixture"] is True
+    assert c["budget"]["steps"] == 5
+    assert c["fixture_url"].startswith("data:text/html,")
+
+
+def test_load_cases_accepts_canary_field(tmp_path):
+    p = tmp_path / "case.yaml"
+    p.write_text(
+        yaml.dump(
+            [
+                {
+                    "id": "canary-case",
+                    "domain": "fixture",
+                    "category": "read-and-summarize",
+                    "task": "Read the H1",
+                    "canary": True,
+                    "expect": {"schema": {"title": "str"}, "validators": ["title.nonempty"]},
+                    "budget": {"steps": 1, "usd": 0.02, "seconds": 15},
+                }
+            ]
+        )
+    )
+    cases = load_cases(p)
+    assert len(cases) == 1
+    assert cases[0]["canary"] is True
 
 
 def test_validator_nonempty_passes():
@@ -829,9 +901,9 @@ def _capture_run_case_caches():
     received: list = []
     original = eval_mod._run_case
 
-    def capture(case, llm_client, browser, cache=None):
+    def capture(case, llm_client, browser, cache=None, canary=False):
         received.append(cache)
-        return original(case, llm_client, browser, cache=cache)
+        return original(case, llm_client, browser, cache=cache, canary=canary)
 
     return received, capture
 
@@ -1492,3 +1564,54 @@ def test_pass_statuses_is_public_module_attribute():
     from scripts.eval import PASS_STATUSES
 
     assert PASS_STATUSES == frozenset({"succeeded", "unverified"})
+
+
+def test_fail_statuses_is_public_module_attribute():
+    from scripts.eval import FAIL_STATUSES, PASS_STATUSES
+
+    assert isinstance(FAIL_STATUSES, frozenset)
+    assert FAIL_STATUSES == frozenset({"failed", "blocked", "timeout"})
+    assert not FAIL_STATUSES & PASS_STATUSES
+
+
+# canary field on CaseResult (eval-runner canary spec)
+
+
+def test_case_result_canary_defaults_to_false():
+    cr = CaseResult(id="x", status="succeeded", steps=0, usd=0.0, l_tier_counts={}, validators=[])
+    assert cr.canary is False
+
+
+def test_case_result_canary_true_accepted():
+    cr = CaseResult(
+        id="x",
+        status="succeeded",
+        steps=0,
+        usd=0.0,
+        l_tier_counts={},
+        validators=[],
+        canary=True,
+    )
+    assert cr.canary is True
+
+
+def test_case_result_canary_serialized_in_json():
+    cr = CaseResult(
+        id="fixture-heading",
+        status="succeeded",
+        steps=0,
+        usd=0.0,
+        l_tier_counts={},
+        validators=[],
+        canary=True,
+    )
+    data = json.loads(json.dumps(asdict(cr)))
+    assert data["canary"] is True
+
+
+def test_case_result_non_canary_serialized_as_false():
+    cr = CaseResult(
+        id="live-x", status="succeeded", steps=0, usd=0.0, l_tier_counts={}, validators=[]
+    )
+    data = json.loads(json.dumps(asdict(cr)))
+    assert data["canary"] is False
