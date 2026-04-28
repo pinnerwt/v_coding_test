@@ -699,3 +699,108 @@ def test_omitting_diff_leaves_output_unchanged():
     assert result_without.returncode == 0
     assert "Δ vs master" not in result_without.stdout
     assert result_without.stdout in result_with.stdout
+
+
+# ---------------------------------------------------------------------------
+# implement-cache-hit-visibility: Cache Hits and Cache Misses columns (Red)
+# ---------------------------------------------------------------------------
+
+
+def test_cache_hits_misses_columns_in_header():
+    from scripts.score import generate_scoreboard
+
+    data = {
+        "run_at": "2026-04-28T00:00:00+00:00",
+        "cases": [
+            {
+                "id": "fixture-any",
+                "status": "succeeded",
+                "steps": 1,
+                "usd": 0.001,
+                "l_tier_counts": {},
+                "validators": [],
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "latency_ms_total": 100,
+                "latency_ms_per_step": [100],
+                "step_breakdown": [],
+                "cache_events": {"hits": 0, "misses": 0, "invalidations": 0},
+            }
+        ],
+    }
+    output = generate_scoreboard(data)
+    header_line = next(ln for ln in output.splitlines() if ln.startswith("| Case"))
+    assert "Cache Hits" in header_line
+    assert "Cache Misses" in header_line
+    hits_pos = header_line.index("Cache Hits")
+    misses_pos = header_line.index("Cache Misses")
+    inv_pos = header_line.index("Cache Inv.")
+    assert hits_pos < inv_pos
+    assert misses_pos < inv_pos
+
+
+def test_cache_hits_misses_populated_from_cache_events():
+    from scripts.score import generate_scoreboard
+
+    data = {
+        "run_at": "2026-04-28T00:00:00+00:00",
+        "cases": [
+            {
+                "id": "fixture-twostep",
+                "status": "succeeded",
+                "steps": 2,
+                "usd": 0.001,
+                "l_tier_counts": {},
+                "validators": [],
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "latency_ms_total": 100,
+                "latency_ms_per_step": [50, 50],
+                "step_breakdown": [],
+                "cache_events": {"hits": 1, "misses": 1, "invalidations": 0},
+            }
+        ],
+    }
+    output = generate_scoreboard(data)
+    case_row = next(ln for ln in output.splitlines() if "fixture-twostep" in ln)
+    cols = [c.strip() for c in case_row.split("|")]
+    header_line = next(ln for ln in output.splitlines() if ln.startswith("| Case"))
+    headers = [h.strip() for h in header_line.split("|")]
+    hits_idx = headers.index("Cache Hits")
+    misses_idx = headers.index("Cache Misses")
+    inv_idx = headers.index("Cache Inv.")
+    assert cols[hits_idx] == "1"
+    assert cols[misses_idx] == "1"
+    assert cols[inv_idx] == "0"
+
+
+def test_cache_hits_misses_default_zero_when_absent():
+    from scripts.score import generate_scoreboard
+
+    data = {
+        "run_at": "2026-04-28T00:00:00+00:00",
+        "cases": [
+            {
+                "id": "fixture-nocache",
+                "status": "succeeded",
+                "steps": 1,
+                "usd": 0.001,
+                "l_tier_counts": {},
+                "validators": [],
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "latency_ms_total": 100,
+                "latency_ms_per_step": [100],
+                "step_breakdown": [],
+            }
+        ],
+    }
+    output = generate_scoreboard(data)
+    case_row = next(ln for ln in output.splitlines() if "fixture-nocache" in ln)
+    cols = [c.strip() for c in case_row.split("|")]
+    header_line = next(ln for ln in output.splitlines() if ln.startswith("| Case"))
+    headers = [h.strip() for h in header_line.split("|")]
+    hits_idx = headers.index("Cache Hits")
+    misses_idx = headers.index("Cache Misses")
+    assert cols[hits_idx] == "0"
+    assert cols[misses_idx] == "0"
