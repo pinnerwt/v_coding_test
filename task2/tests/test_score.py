@@ -887,3 +887,17 @@ def test_failure_histogram_placement():
     case_header_pos = output.index("| Case |")
     assert category_pos < histogram_pos
     assert histogram_pos < case_header_pos
+
+
+def test_failure_histogram_n_failed_counts_all_failed_cases():
+    from scripts.score import generate_scoreboard
+
+    data = {
+        "run_at": _make_run_at(),
+        "cases": [
+            _make_case("c1", "failed", failure_class="supervisor_halt"),
+            _make_case("c2", "failed", failure_class=None),
+        ],
+    }
+    output = generate_scoreboard(data)
+    assert "**Failure histogram** (2 failed)" in output

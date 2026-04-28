@@ -712,6 +712,30 @@ def test_flag_regression_returns_false_when_latest_above_median():
     assert flag_regression(runs) is False
 
 
+def test_write_trends_writes_failure_classes_svg_when_benchmark_root_none(tmp_path):
+    from datetime import UTC, datetime
+
+    from scripts.trends import Run, write_trends
+
+    runs = [
+        Run(
+            branch="b1",
+            run_at=datetime(2026, 4, 26, 1, tzinfo=UTC),
+            pass_rate=0.5,
+            total_usd=0.0,
+            p50_ms=0,
+            p95_ms=0,
+            total_tokens=0,
+            total_cases=2,
+        )
+    ]
+    out_dir = tmp_path / "out"
+    write_trends(runs, out_dir=out_dir, benchmark_root=None)
+    svg_path = out_dir / "failure_classes.svg"
+    assert svg_path.exists()
+    assert svg_path.read_text().startswith("<svg")
+
+
 def test_flag_regression_no_warning_for_single_run_in_readme(tmp_path):
     from scripts.trends import collect_runs, write_trends
 
