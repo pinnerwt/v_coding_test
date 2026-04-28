@@ -35,7 +35,7 @@
 
 ## 6. Spec delta — update bench-repeats forward reference
 
-- [ ] 6.1 Confirm `openspec/changes/implement-canary-suite/specs/bench-repeats/spec.md` contains the MODIFIED requirement with the forward reference to "canary suites" removed (it mentions drift suite only). This was already authored in the spec artifact above — verify the wording is correct.
+- [x] 6.1 Confirm `openspec/changes/implement-canary-suite/specs/bench-repeats/spec.md` contains the MODIFIED requirement with the forward reference to "canary suites" removed (it mentions drift suite only). This was already authored in the spec artifact above — verify the wording is correct.
 
 ## 7. Full green bar verification
 
