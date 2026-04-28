@@ -84,9 +84,9 @@
 
 ## Task 6 — Red: end-to-end regression
 
-- [ ] 6.1 Create `task2/tests/scripts/__init__.py` if it does not exist.
+- [x] 6.1 Create `task2/tests/scripts/__init__.py` if it does not exist.
 
-- [ ] 6.2 Create `task2/tests/scripts/test_bench_qwen_400_regression.py` with test `test_no_llm_error_after_25_steps`.
+- [x] 6.2 Create `task2/tests/scripts/test_bench_qwen_400_regression.py` with test `test_no_llm_error_after_25_steps`.
 
   The test shall:
   - Define a stub `LLMClient` that records each `messages` argument and always returns a `ChatResponse` with a `goto` tool call (without using real `httpx`).
@@ -98,13 +98,13 @@
 
   Acceptance: `uv run pytest tests/scripts/test_bench_qwen_400_regression.py::test_no_llm_error_after_25_steps -x` (from `task2/`).
 
-- [ ] 6.3 Run the test and confirm it fails before Task 4 is implemented (or passes if Task 4 is already done — in that case record the green result).
+- [x] 6.3 Run the test and confirm it fails before Task 4 is implemented (or passes if Task 4 is already done — in that case record the green result).
 
 ## Task 7 — Lint and full green bar
 
-- [ ] 7.1 Run `uv run ruff format .` from `task2/` and confirm no diff.
-- [ ] 7.2 Run `uv run ruff check .` from `task2/` and fix any lint errors.
-- [ ] 7.3 Run `uv run pytest` from `task2/` and confirm the full suite passes.
+- [x] 7.1 Run `uv run ruff format .` from `task2/` and confirm no diff.
+- [x] 7.2 Run `uv run ruff check .` from `task2/` and fix any lint errors.
+- [x] 7.3 Run `uv run pytest` from `task2/` and confirm the full suite passes.
 
 ---
 
