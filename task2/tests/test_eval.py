@@ -1492,6 +1492,24 @@ def test_run_case_failure_class_tool_error_when_loop_raises():
     assert "kaboom" in result.failure_detail
 
 
+def test_run_case_non_llm_error_failure_detail_is_repr():
+    case = {
+        "id": "boom",
+        "task": "do something",
+        "budget": {"steps": 1, "usd": 1.0, "seconds": 30},
+        "expect": {},
+    }
+
+    def _raising_loop(*args, **kwargs):
+        raise RuntimeError("unexpected")
+
+    with patch("scripts.eval.loop", _raising_loop):
+        result = _run_case(case, llm_client=object(), browser=object())
+
+    assert result.failure_class == "tool_error"
+    assert result.failure_detail == repr(RuntimeError("unexpected"))
+
+
 # ---------------------------------------------------------------------------
 # implement-skip-reason-tagging (Red phase)
 # ---------------------------------------------------------------------------

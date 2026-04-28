@@ -3319,6 +3319,20 @@ def test_loop_compacts_message_history_under_token_budget():
     assert last_messages[0]["role"] == "system"
 
 
+def test_compact_messages_no_op_when_under_budget():
+    from agent.loop import _compact_messages
+
+    messages = [
+        {"role": "system", "content": "sys"},
+        {"role": "user", "content": "Current state: small"},
+        {"role": "assistant", "content": "ok"},
+    ]
+    snapshot = [dict(m) for m in messages]
+    out = _compact_messages(messages, budget_chars=10_000)
+    assert out is messages
+    assert messages == snapshot
+
+
 def test_loop_preserves_most_recent_observation_after_compaction():
     stub_llm = _RecordingLLMClient()
     stub_browser = _StubBrowserForCompaction()
