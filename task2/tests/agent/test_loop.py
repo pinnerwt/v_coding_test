@@ -2990,13 +2990,26 @@ def test_loop_type_l1_miss_returns_tool_error_loop_continues(fixture_server, pla
     ]
     fake_llm = _FakeLLMClient(responses)
 
+    run_id = "test-type-l1-miss"
+    writer = _make_writer_with_run(run_id)
+
     with Browser(playwright_browser=playwright_chromium) as browser:
-        result = loop("fill nonexistent", browser, fake_llm, max_steps=10)
+        result = loop(
+            "fill nonexistent", browser, fake_llm, max_steps=10, trace_writer=writer, run_id=run_id
+        )
 
     assert result.status == "succeeded", (
         f"expected loop to continue past type miss and reach done, got {result.status!r}"
     )
     assert result.steps <= 4
+
+    events = list(writer.iter_events(run_id))
+    type_act_events = [e for e in events if isinstance(e, ActEvent) and e.tool == "type"]
+    assert len(type_act_events) == 0, (
+        f"expected zero type ActEvents (locate-miss path returns before emit), "
+        f"got {[(e.tool, e.outcome) for e in type_act_events]}"
+    )
+    writer.close()
 
 
 # ---------------------------------------------------------------------------
