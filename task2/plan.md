@@ -361,7 +361,6 @@ Urgency tags:
 
 ### P0 — unblocks other work
 
-- **#59** — Wire `click(intent)` tool into `agent/loop.py`; projected to flip 5 red benchmark cases to green.
 - **#60** — Wire `type(intent, text)` tool into `agent/loop.py`; unblocks form-fill class of cases after #59.
 
 ### P1 — observed bugs / type-narrowing gaps
