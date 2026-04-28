@@ -227,6 +227,9 @@ def _run_case(
     case: dict[str, Any], llm_client: Any, browser: Any, cache: Any = None, canary: bool = False
 ) -> CaseResult:
     run_id = str(uuid.uuid4())
+    fixture_url = case.get("fixture_url")
+    if fixture_url:
+        browser.goto(fixture_url)
     with TraceWriter(path=":memory:") as writer:
         _open_trace_run(writer, run_id, case)
         try:

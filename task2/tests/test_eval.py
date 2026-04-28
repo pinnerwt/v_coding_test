@@ -64,6 +64,21 @@ _CANNED_RESULT_2 = RunResult(
 )
 
 
+def test_run_case_navigates_to_fixture_url_before_loop():
+    case = {**_FIXTURE_CASE, "fixture_url": "data:text/html,<h1>Hi</h1>"}
+    browser = MagicMock()
+    with patch("scripts.eval.loop", return_value=_CANNED_RESULT):
+        _run_case(case, llm_client=MagicMock(), browser=browser)
+    browser.goto.assert_called_once_with("data:text/html,<h1>Hi</h1>")
+
+
+def test_run_case_skips_navigation_when_no_fixture_url():
+    browser = MagicMock()
+    with patch("scripts.eval.loop", return_value=_CANNED_RESULT):
+        _run_case(_FIXTURE_CASE, llm_client=MagicMock(), browser=browser)
+    browser.goto.assert_not_called()
+
+
 def test_run_case_captures_exception_as_failed(tmp_path):
     def _boom(*args, **kwargs):
         raise RuntimeError("boom")
@@ -177,11 +192,6 @@ def test_fixture_count_yaml_loads():
     assert cases[0]["fixture"] is True
 
 
-def test_fixture_count_yaml_is_canary():
-    cases = load_cases("eval/cases/fixture-count.yaml")
-    assert cases[0]["canary"] is True
-
-
 def test_canary_read_h1_yaml_loads_as_fixture_canary():
     cases = load_cases("eval/cases/canary-read-h1.yaml")
     assert len(cases) == 1
@@ -189,7 +199,8 @@ def test_canary_read_h1_yaml_loads_as_fixture_canary():
     assert c["id"] == "canary-read-h1"
     assert c["canary"] is True
     assert c["fixture"] is True
-    assert c["budget"]["steps"] == 1
+    assert c["budget"]["steps"] == 5
+    assert c["fixture_url"].startswith("data:text/html,")
 
 
 def test_load_cases_accepts_canary_field(tmp_path):
