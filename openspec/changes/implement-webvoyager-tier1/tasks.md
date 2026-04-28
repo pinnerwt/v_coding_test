@@ -31,10 +31,10 @@
 
 ## 6. Baseline capture (manual, not committed)
 
-- [ ] 6.1 After implementation is merged, run `uv run python -m scripts.bench --suite webvoyager --tier 1 --live` from `task2/` with the local Qwen endpoint available. Copy the resulting `eval/results/<ts>.json` to `task2/benchmark/<branch>/webvoyager/tier1.json` and commit it as the Tier-1 baseline.
+- [ ] 6.1 After implementation is merged, run `uv run python -m scripts.bench --suite webvoyager --tier 1 --live` from `task2/` with the local Qwen endpoint available. Copy the resulting `eval/results/<ts>.json` to `task2/benchmark/<branch>/webvoyager/tier1.json` and commit it as the Tier-1 baseline. (Deferred: manual post-merge step, per spec "not committed here".)
 
 ## 7. Final verification
 
-- [ ] 7.1 Run `uv run pytest task2/ -x` from repo root and confirm the full task2 test suite is green.
-- [ ] 7.2 Run `git status --porcelain` and confirm only expected files are modified (no accidental changes outside `task2/`).
-- [ ] 7.3 Run `openspec validate implement-webvoyager-tier1 --strict` and confirm it exits 0.
+- [x] 7.1 Run `uv run pytest task2/ -x` from repo root and confirm the full task2 test suite is green.
+- [x] 7.2 Run `git status --porcelain` and confirm only expected files are modified (no accidental changes outside `task2/`).
+- [x] 7.3 Run `openspec validate implement-webvoyager-tier1 --strict` and confirm it exits 0.
