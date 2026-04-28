@@ -39,7 +39,7 @@
 
 ## 7. Full green bar verification
 
-- [ ] 7.1 Run the full test suite: `uv run pytest tests/` from `task2/` — all tests green.
-- [ ] 7.2 Run `uv run ruff check .` — no lint errors.
-- [ ] 7.3 Smoke-test the gate manually: write a synthetic `results.json` to a temp file with one canary-failed case and run `uv run python -m scripts.canary_gate --results <tmpfile>` — confirm exit code 1.
-- [ ] 7.4 Smoke-test the gate with all-canary-pass + one non-canary-fail — confirm exit code 0 and `WARNING` in output.
+- [x] 7.1 Run the full test suite: `uv run pytest tests/` from `task2/` — all tests green.
+- [x] 7.2 Run `uv run ruff check .` — no lint errors.
+- [x] 7.3 Smoke-test the gate manually: write a synthetic `results.json` to a temp file with one canary-failed case and run `uv run python -m scripts.canary_gate --results <tmpfile>` — confirm exit code 1.
+- [x] 7.4 Smoke-test the gate with all-canary-pass + one non-canary-fail — confirm exit code 0 and `WARNING` in output.
