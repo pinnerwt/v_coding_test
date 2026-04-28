@@ -18,9 +18,9 @@
 
 ## 3. Red — Failing test for regression_onset.py
 
-- [ ] 3.1 Create `task2/tests/test_regression_onset.py`. Add `test_writes_regressions_section`: build a `tmp_path` benchmark root with two runs — `run_a` where `fixture-heading` passes, `run_b` where it fails — call `scripts.regression_onset.main(["--benchmark-root", str(root), "--output", str(out)])`, read the output file, assert `## Regressions` is present and `fixture-heading` appears in the table. Run and confirm red (`ModuleNotFoundError`).
-- [ ] 3.2 Add `test_handles_empty_benchmark_root`: call `main` on an empty directory, assert exit code 0 and `## Regressions` heading present in output. Run and confirm red.
-- [ ] 3.3 Add `test_skips_underscore_dirs`: add `_trends/results.json` alongside `master/results.json`, assert `_trends` does not appear in the output. Run and confirm red.
+- [x] 3.1 Create `task2/tests/test_regression_onset.py`. Add `test_writes_regressions_section`: build a `tmp_path` benchmark root with two runs — `run_a` where `fixture-heading` passes, `run_b` where it fails — call `scripts.regression_onset.main(["--benchmark-root", str(root), "--output", str(out)])`, read the output file, assert `## Regressions` is present and `fixture-heading` appears in the table. Run and confirm red (`ModuleNotFoundError`).
+- [x] 3.2 Add `test_handles_empty_benchmark_root`: call `main` on an empty directory, assert exit code 0 and `## Regressions` heading present in output. Run and confirm red.
+- [x] 3.3 Add `test_skips_underscore_dirs`: add `_trends/results.json` alongside `master/results.json`, assert `_trends` does not appear in the output. Run and confirm red.
 
 ## 4. Green — Implement regression_onset.py
 
