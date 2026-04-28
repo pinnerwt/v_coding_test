@@ -375,8 +375,6 @@ Urgency tags (advisory):
 
 ### P1 — observed bugs / type-narrowing gaps
 
-- **#61** — System prompt invites premature `fail`; tighten phrasing to gate `fail` to irrecoverable conditions only.
-
 ### P2 — measurable improvements
 
 - **#50** — Per-repeat warm-cache bias when shared_cache + variants + --repeats > 1; needs decision on cold-start vs warm.
