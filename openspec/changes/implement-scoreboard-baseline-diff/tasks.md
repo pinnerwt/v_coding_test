@@ -8,21 +8,21 @@
 
 ## 2. Core Implementation — baseline_diff.py
 
-- [ ] 2.1 Create `task2/scripts/baseline_diff.py` with `generate_diff_markdown(master: dict, branch: dict) -> str`.
-- [ ] 2.2 Implement case-matching by `id`, classify each case into `regression / improvement / unchanged / new / dropped`.
-- [ ] 2.3 Emit per-case delta table (columns: `Case`, `Master status`, `Branch status`, `Delta`) with `⚠️ REGRESSION` / `✅ IMPROVEMENT` markers.
-- [ ] 2.4 Compute and emit aggregate delta lines: Δ pass-rate (%), Δ total USD ($), Δ p50 latency (ms), Δ p95 latency (ms) — all signed.
-- [ ] 2.5 Emit header with `run_at` timestamps from both dicts.
-- [ ] 2.6 Run `uv run pytest task2/tests/test_baseline_diff.py -x` — confirm diff unit tests pass.
+- [x] 2.1 Create `task2/scripts/baseline_diff.py` with `generate_diff_markdown(master: dict, branch: dict) -> str`.
+- [x] 2.2 Implement case-matching by `id`, classify each case into `regression / improvement / unchanged / new / dropped`.
+- [x] 2.3 Emit per-case delta table (columns: `Case`, `Master status`, `Branch status`, `Delta`) with `⚠️ REGRESSION` / `✅ IMPROVEMENT` markers.
+- [x] 2.4 Compute and emit aggregate delta lines: Δ pass-rate (%), Δ total USD ($), Δ p50 latency (ms), Δ p95 latency (ms) — all signed.
+- [x] 2.5 Emit header with `run_at` timestamps from both dicts.
+- [x] 2.6 Run `uv run pytest task2/tests/test_baseline_diff.py -x` — confirm diff unit tests pass.
 
 ## 3. Integration — benchmark.py write_diff
 
-- [ ] 3.1 Add `write_diff(branch: str, branch_data: dict, *, benchmark_root: Path) -> None` to `task2/scripts/benchmark.py`.
-- [ ] 3.2 Guard: return early if `sanitize_branch(branch) == "master"`.
-- [ ] 3.3 Guard: return early (with stderr message) if `benchmark_root / "master" / "results.json"` does not exist.
-- [ ] 3.4 Load master data, call `generate_diff_markdown`, write to `benchmark_root / sanitize_branch(branch) / "diff.md"`.
-- [ ] 3.5 Call `write_diff` from `write_outputs` (or from `main` immediately after `write_outputs`).
-- [ ] 3.6 Run `uv run pytest task2/tests/test_baseline_diff.py -x` — confirm `write_diff` integration tests pass.
+- [x] 3.1 Add `write_diff(branch: str, branch_data: dict, *, benchmark_root: Path) -> None` to `task2/scripts/benchmark.py`.
+- [x] 3.2 Guard: return early if `sanitize_branch(branch) == "master"`.
+- [x] 3.3 Guard: return early (with stderr message) if `benchmark_root / "master" / "results.json"` does not exist.
+- [x] 3.4 Load master data, call `generate_diff_markdown`, write to `benchmark_root / sanitize_branch(branch) / "diff.md"`.
+- [x] 3.5 Call `write_diff` from `write_outputs` (or from `main` immediately after `write_outputs`).
+- [x] 3.6 Run `uv run pytest task2/tests/test_baseline_diff.py -x` — confirm `write_diff` integration tests pass.
 
 ## 4. score.py --diff flag
 

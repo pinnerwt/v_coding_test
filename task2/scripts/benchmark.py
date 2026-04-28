@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Literal, get_args
 
 from agent.locator_cache import LocatorCache
+from scripts.baseline_diff import generate_diff_markdown
 from scripts.eval import (
     _PASS_STATUSES,
     _SKIP_STATUS,
@@ -206,6 +207,22 @@ def write_outputs(results: dict, *, out_dir: Path) -> None:
     (out_dir / "scoreboard.md").write_text(generate_scoreboard(results))
 
 
+def write_diff(branch: str, branch_data: dict, *, benchmark_root: Path) -> None:
+    if sanitize_branch(branch) == "master":
+        return
+    master_path = benchmark_root / "master" / "results.json"
+    if not master_path.exists():
+        print(
+            f"baseline-diff: master baseline not found at {master_path}; skipping diff.md",
+            file=sys.stderr,
+        )
+        return
+    master_data = json.loads(master_path.read_text())
+    diff_md = generate_diff_markdown(master_data, branch_data)
+    out_path = benchmark_root / sanitize_branch(branch) / "diff.md"
+    out_path.write_text(diff_md)
+
+
 def verify_benchmark(*, branch: str, base_date: str) -> None:
     out_dir = output_dir_for_branch(branch)
     results = out_dir / "results.json"
@@ -299,6 +316,7 @@ def main(argv: list[str] | None = None) -> int:
             "cases": [asdict(r) for r in agg_results],
         }
         write_outputs(data, out_dir=out_dir)
+        write_diff(branch, data, benchmark_root=_BENCHMARK_ROOT)
         print(f"Wrote: {out_dir}/results.json, {out_dir}/scoreboard.md")
         return compute_exit_code(data["cases"])
 
@@ -314,6 +332,7 @@ def main(argv: list[str] | None = None) -> int:
     data = json.loads(out_path.read_text())
     out_path.unlink()
     write_outputs(data, out_dir=out_dir)
+    write_diff(branch, data, benchmark_root=_BENCHMARK_ROOT)
     print(f"Wrote: {out_dir}/results.json, {out_dir}/scoreboard.md")
     return compute_exit_code(data["cases"])
 
