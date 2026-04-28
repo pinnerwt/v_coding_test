@@ -24,14 +24,14 @@
 
 ## 4. Green — Implement regression_onset.py
 
-- [ ] 4.1 Create `task2/scripts/regression_onset.py` with `main(argv)` entrypoint and `if __name__ == "__main__"` guard.
-- [ ] 4.2 Implement argument parsing: `--benchmark-root` (default `benchmark`), `--output` (default `<root>/_trends/regression_onset.md`).
-- [ ] 4.3 Implement run collection: reuse the same scan-and-sort logic as `collect_runs` in `trends.py` (copy or import `_is_passed`; do NOT import the full `Run` dataclass — only the case dicts are needed here).
-- [ ] 4.4 Implement per-case classification: iterate sorted runs, track last-passing branch per case ID, detect flip to failing, record onset branch and prior-passing branch.
-- [ ] 4.5 Implement `write_report(cases_data, output_path)`: emit the three-section markdown schema (Regressions, Never Passed, Stable) with the table columns defined in spec.
-- [ ] 4.6 Add `__init__.py`-safe module entry: ensure `python -m scripts.regression_onset` works (add to `task2/scripts/` alongside existing scripts — no `__init__.py` changes needed if `scripts/` already has one, otherwise add).
-- [ ] 4.7 Run `uv run pytest task2/tests/test_regression_onset.py -x` — all three tests must be green.
-- [ ] 4.8 Run `uv run ruff check task2/scripts/regression_onset.py task2/tests/test_regression_onset.py` and fix lint.
+- [x] 4.1 Create `task2/scripts/regression_onset.py` with `main(argv)` entrypoint and `if __name__ == "__main__"` guard.
+- [x] 4.2 Implement argument parsing: `--benchmark-root` (default `benchmark`), `--output` (default `<root>/_trends/regression_onset.md`).
+- [x] 4.3 Implement run collection: reuse the same scan-and-sort logic as `collect_runs` in `trends.py` (copy or import `_is_passed`; do NOT import the full `Run` dataclass — only the case dicts are needed here).
+- [x] 4.4 Implement per-case classification: iterate sorted runs, track last-passing branch per case ID, detect flip to failing, record onset branch and prior-passing branch.
+- [x] 4.5 Implement `write_report(cases_data, output_path)`: emit the three-section markdown schema (Regressions, Never Passed, Stable) with the table columns defined in spec.
+- [x] 4.6 Add `__init__.py`-safe module entry: ensure `python -m scripts.regression_onset` works (add to `task2/scripts/` alongside existing scripts — no `__init__.py` changes needed if `scripts/` already has one, otherwise add).
+- [x] 4.7 Run `uv run pytest task2/tests/test_regression_onset.py -x` — all three tests must be green.
+- [x] 4.8 Run `uv run ruff check task2/scripts/regression_onset.py task2/tests/test_regression_onset.py` and fix lint.
 
 ## 5. Generate and check in regression_onset.md
 
