@@ -26,8 +26,8 @@
 
 ## 5. README documentation
 
-- [ ] 5.1 Add a "WebVoyager benchmark" section to `task2/README.md` covering: Tier-0 vs Tier-1 distinction, site-inclusion criteria, excluded domains with reasons, Tier-0 baseline results (2026-04-28: 2/3 passed, webvoyager-2 9 steps $0.1146, webvoyager-3 6 steps $0.0405, webvoyager-1 failed HTTP 400).
-- [ ] 5.2 Verify the README section satisfies the spec scenarios: contains "WebVoyager", "Tier-0"/"Tier-1", and at least one excluded domain name.
+- [x] 5.1 Add a "WebVoyager benchmark" section to `task2/README.md` covering: Tier-0 vs Tier-1 distinction, site-inclusion criteria, excluded domains with reasons, Tier-0 baseline results (2026-04-28: 2/3 passed, webvoyager-2 9 steps $0.1146, webvoyager-3 6 steps $0.0405, webvoyager-1 failed HTTP 400).
+- [x] 5.2 Verify the README section satisfies the spec scenarios: contains "WebVoyager", "Tier-0"/"Tier-1", and at least one excluded domain name.
 
 ## 6. Baseline capture (manual, not committed)
 

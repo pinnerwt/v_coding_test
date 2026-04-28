@@ -53,6 +53,48 @@ Each branch contributes its most recent WebVoyager run (`benchmark/<branch>/webv
 
 2/3 passed. Per-passing-task cost ≈ $0.08, latency ≈ 50–90 s. The Wikipedia failure is a `LLMError('http 400')` from the Qwen endpoint at step 0 (zero tokens billed) — likely transient endpoint state, not an agent bug. Persisted at `benchmark/task2-benchmarks-readme-and-tier0/webvoyager/baseline.json` for reference.
 
+#### Tier-0 vs Tier-1
+
+| | Tier-0 | Tier-1 |
+|---|---|---|
+| **Tasks** | 3 | 12 |
+| **Purpose** | Fast smoke test; runs in CI smoke gate | Per-branch regression signal; cheapest credible generalisation check |
+| **Location** | `tests/fixtures/benchmarks/webvoyager/tasks_sample.json` | `eval/bench/data/webvoyager/tier1.json` |
+| **CLI flag** | `--tier 0` (default) | `--tier 1` |
+
+Run Tier-1 from `task2/`:
+
+```bash
+BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+SAFE_BRANCH="${BRANCH//\//-}"
+EVAL_RESULTS_DIR="benchmark/${SAFE_BRANCH}/webvoyager" \
+  LLM_BASE_URL=http://localhost:8090 LLM_MODEL=qwen3.5-27b \
+  uv run python -m scripts.bench --suite webvoyager --tier 1 --live
+```
+
+#### Site-inclusion criteria
+
+Sites are included in both tiers only if they satisfy all four conditions:
+
+1. Stable layout — no frequent structural redesigns that break locators.
+2. No login required — anonymous access to the target page.
+3. No CAPTCHA — deterministic navigation without bot-detection gates.
+4. No location-aware widgets — prices, availability, or content must not vary by detected IP.
+
+**Included sites (Tier-1):** Wikipedia, arXiv, GitHub, HuggingFace, BBC News, Cambridge Dictionary, Wolfram Alpha.
+
+**Excluded sites and reasons:**
+
+| Site | Reason |
+|---|---|
+| Allrecipes | Cookie consent modal blocks navigation |
+| Apple | Geo-redirect changes page structure by region |
+| Coursera | Login wall before course content |
+| Google Search | CAPTCHA risk under headless automation |
+| Booking.com | Geo-pricing makes results non-deterministic |
+| Google Flights | Dynamic price widgets non-deterministic |
+| Amazon | Login walls and aggressive CAPTCHA |
+
 ### Archived: basic benchmark (do not run)
 
 The fixture-backed basic benchmark was retired on 2026-04-28 in favor of WebVoyager. The trend block, snapshot table, and run instructions below are preserved for audit-trail interpretability of past PR records — **do not invoke `scripts.benchmark` or `scripts.trends`**, and do not edit this section.
