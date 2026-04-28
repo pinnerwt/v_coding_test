@@ -341,7 +341,6 @@ Urgency tags:
 
 ### P2 — measurable improvements
 
-- **#34** — Skip-reason tagging.
 - **#35** — N-run statistical bench mode (`--repeats N`).
 - **#36** — Auto-diff scoreboard against master baseline.
 - **#37** — Canary suite: must-always-pass cases, hard-blocking on regression.
