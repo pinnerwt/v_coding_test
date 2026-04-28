@@ -376,7 +376,7 @@ def compute_exit_code(cases: list[dict]) -> int:
 
 
 def build_clients():
-    base_url = os.environ.get("LLM_BASE_URL", "http://localhost:8090/v1")
+    base_url = os.environ.get("LLM_BASE_URL", "http://localhost:8090")
     model = os.environ.get("LLM_MODEL", _DEFAULT_LLM_MODEL)
     api_key = os.environ.get("LLM_API_KEY", "local")
     return LLMClient(base_url=base_url, model=model, api_key=api_key), Browser()

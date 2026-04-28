@@ -27,6 +27,26 @@ def test_build_clients_uses_shared_default_when_env_unset():
         assert kwargs.get("model") == llm_mod._DEFAULT_LLM_MODEL
 
 
+def test_build_clients_default_base_url_has_no_v1_suffix():
+    from scripts.eval import build_clients
+
+    env = {k: v for k, v in os.environ.items() if k not in ("LLM_BASE_URL", "LLM_MODEL")}
+    with (
+        patch.dict(os.environ, env, clear=True),
+        patch("scripts.eval.LLMClient") as mock_llm,
+        patch("scripts.eval.Browser") as mock_browser,
+    ):
+        mock_llm.return_value = MagicMock()
+        mock_browser.return_value = MagicMock()
+        build_clients()
+        _, kwargs = mock_llm.call_args
+        base_url = kwargs.get("base_url", "")
+        assert not base_url.endswith("/v1"), (
+            f"build_clients default base_url {base_url!r} must not end with /v1; "
+            "LLMClient appends /v1/chat/completions itself"
+        )
+
+
 def test_build_run_uses_shared_default_when_env_unset():
     from api.server import TaskRequest, _build_run
 
