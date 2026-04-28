@@ -349,15 +349,12 @@ Urgency tags:
 
 ### P0 — unblocks other work
 
-- **#55** — URGENT: Investigate benchmark-score degradation across recent commits (user-flagged 2026-04-28).
-
 ### P1 — observed bugs / type-narrowing gaps
 
 *(none currently)*
 
 ### P2 — measurable improvements
 
-- **#38** — Per-step token / latency breakdown surfacing.
 - **#41** — Cache-hit visibility separate from invalidations.
 - **#42** — Failure-clustering histogram across the suite (depends on #31, which is done).
 - **#43** — `tool_error` should also classify `ActEvent(outcome="timeout")`.
