@@ -30,6 +30,13 @@ from agent.trace import (
     TraceWriter,
 )
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _resolve_fixture_url(fixture_path: str) -> str:
+    return f"file://{REPO_ROOT}/{fixture_path}"
+
+
 _REQUIRED_FIELDS = ("id", "domain", "category", "task", "expect", "budget")
 PASS_STATUSES = frozenset({"succeeded", "unverified"})
 FAIL_STATUSES = frozenset({"failed", "blocked", "timeout"})
@@ -230,6 +237,8 @@ def _run_case(
 ) -> CaseResult:
     run_id = str(uuid.uuid4())
     fixture_url = case.get("fixture_url")
+    if fixture_url is None and case.get("fixture_path"):
+        fixture_url = _resolve_fixture_url(case["fixture_path"])
     with TraceWriter(path=":memory:") as writer:
         _open_trace_run(writer, run_id, case)
         try:
@@ -309,19 +318,16 @@ def iter_runnable_subcases(
         )
 
         variant_fixture_urls: dict[str, str] = parent_case.get("variant_fixture_urls", {})
+        variant_fixture_paths: dict[str, str] = parent_case.get("variant_fixture_paths", {})
         if variants:
-            sub_cases = [
-                {
-                    **parent_case,
-                    "id": f"{parent_case['id']}-{v}",
-                    **(
-                        {"fixture_url": variant_fixture_urls[v]}
-                        if v in variant_fixture_urls
-                        else {}
-                    ),
-                }
-                for v in variants
-            ]
+            sub_cases = []
+            for v in variants:
+                extra: dict[str, str] = {}
+                if v in variant_fixture_urls:
+                    extra["fixture_url"] = variant_fixture_urls[v]
+                elif v in variant_fixture_paths:
+                    extra["fixture_url"] = _resolve_fixture_url(variant_fixture_paths[v])
+                sub_cases.append({**parent_case, "id": f"{parent_case['id']}-{v}", **extra})
         else:
             sub_cases = [parent_case]
 

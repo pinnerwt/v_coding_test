@@ -2668,3 +2668,242 @@ def test_loop_read_invalid_intent_returns_error_string_loop_continues(
         f"got {result.status!r}"
     )
     assert result.steps <= 4
+
+
+# ---------------------------------------------------------------------------
+# Task 2: click with slow navigation — wait_for_load_state timeout → outcome=nav
+# ---------------------------------------------------------------------------
+
+
+def _make_fake_browser_for_click(
+    selector: str,
+    url_before: str,
+    url_after: str,
+    click_raises: Exception | None = None,
+    wait_raises: Exception | None = None,
+):
+    import types
+
+    from agent.locate import LocateResult
+
+    locate_result = LocateResult(
+        tier="L1_ax",
+        role="button",
+        name="Submit",
+        selector=selector,
+        ax_fingerprint="fp-stub",
+        confidence=1.0,
+        coords=None,
+    )
+
+    _url_holder = [url_before]
+
+    class _StubLocator:
+        def click(self, *, timeout):
+            if click_raises is not None:
+                raise click_raises
+            _url_holder[0] = url_after
+
+        def wait_for_load_state(self, state, *, timeout):
+            if wait_raises is not None:
+                raise wait_raises
+
+    class _StubPage:
+        @property
+        def url(self):
+            return _url_holder[0]
+
+        def locator(self, sel):
+            return _StubLocator()
+
+        def wait_for_load_state(self, state, *, timeout):
+            if wait_raises is not None:
+                raise wait_raises
+
+    fake_page = _StubPage()
+    fake_browser = types.SimpleNamespace(_page=fake_page)
+    return fake_browser, locate_result
+
+
+def test_loop_click_slow_nav_wait_load_timeout_still_classifies_as_nav_or_ok(monkeypatch):
+    import playwright.sync_api as pw_api
+
+    from agent.loop import _dispatch
+    from agent.supervisor import Supervisor
+    from agent.trace import TraceWriter
+
+    selector = "button[type=submit]"
+    url_before = "http://example.com/form"
+    url_after = "http://example.com/thanks"
+
+    wait_timeout_err = pw_api.TimeoutError("wait_for_load_state timed out")
+    fake_browser, locate_result = _make_fake_browser_for_click(
+        selector, url_before, url_after, wait_raises=wait_timeout_err
+    )
+
+    monkeypatch.setattr(
+        "agent.loop._locate_or_error_msg",
+        lambda *_args, **_kwargs: locate_result,
+    )
+
+    run_id = "unit-slow-nav"
+    writer = TraceWriter(":memory:")
+    from agent.trace import Run, RunBudget, RunLLM
+
+    writer.open_run(
+        Run(
+            run_id=run_id,
+            task="t",
+            expect_schema=None,
+            budget=RunBudget(steps=5, usd=1.0, seconds=60),
+            llm=RunLLM(base_url="", model="", temperature=0.0, seed=None),
+            agent_version="test",
+            started_at="2024-01-01T00:00:00Z",
+            ended_at=None,
+            status=None,
+            final=None,
+            totals=None,
+        )
+    )
+
+    result_str = _dispatch(
+        "click",
+        {"intent": "Submit button"},
+        fake_browser,
+        Supervisor(),
+        trace_writer=writer,
+        run_id=run_id,
+        step_id=f"{run_id}:step-1",
+    )
+
+    rows = writer._conn.execute("SELECT payload FROM traces_events ORDER BY seq").fetchall()
+    act_rows = [json.loads(r[0]) for r in rows if json.loads(r[0]).get("kind") == "act"]
+    assert len(act_rows) == 1
+    assert act_rows[0]["outcome"] in {"nav", "ok"}, (
+        f"expected nav (URL changed) or ok, got {act_rows[0]['outcome']!r}; result={result_str!r}"
+    )
+    assert act_rows[0]["outcome"] == "nav", (
+        f"URL changed from {url_before!r} to {url_after!r} — expected outcome=nav, "
+        f"got {act_rows[0]['outcome']!r}"
+    )
+    writer.close()
+
+
+# ---------------------------------------------------------------------------
+# Task 3: click raises TimeoutError → outcome=timeout; raises Error → outcome=error
+# ---------------------------------------------------------------------------
+
+
+def test_loop_click_playwright_timeout_yields_outcome_timeout(monkeypatch):
+    import playwright.sync_api as pw_api
+
+    from agent.loop import _dispatch
+    from agent.supervisor import Supervisor
+    from agent.trace import Run, RunBudget, RunLLM, TraceWriter
+
+    selector = "button[type=submit]"
+    click_err = pw_api.TimeoutError("click timed out")
+    fake_browser, locate_result = _make_fake_browser_for_click(
+        selector, "http://example.com/", "http://example.com/", click_raises=click_err
+    )
+
+    monkeypatch.setattr(
+        "agent.loop._locate_or_error_msg",
+        lambda *_args, **_kwargs: locate_result,
+    )
+
+    run_id = "unit-timeout"
+    writer = TraceWriter(":memory:")
+    writer.open_run(
+        Run(
+            run_id=run_id,
+            task="t",
+            expect_schema=None,
+            budget=RunBudget(steps=5, usd=1.0, seconds=60),
+            llm=RunLLM(base_url="", model="", temperature=0.0, seed=None),
+            agent_version="test",
+            started_at="2024-01-01T00:00:00Z",
+            ended_at=None,
+            status=None,
+            final=None,
+            totals=None,
+        )
+    )
+
+    result_str = _dispatch(
+        "click",
+        {"intent": "Submit button"},
+        fake_browser,
+        Supervisor(),
+        trace_writer=writer,
+        run_id=run_id,
+        step_id=f"{run_id}:step-1",
+    )
+
+    rows = writer._conn.execute("SELECT payload FROM traces_events ORDER BY seq").fetchall()
+    act_rows = [json.loads(r[0]) for r in rows if json.loads(r[0]).get("kind") == "act"]
+    assert len(act_rows) == 1
+    assert act_rows[0]["outcome"] == "timeout", (
+        f"expected outcome=timeout, got {act_rows[0]['outcome']!r}"
+    )
+    assert result_str.startswith("Error: click timeout"), (
+        f"expected tool result to start with 'Error: click timeout', got {result_str!r}"
+    )
+    writer.close()
+
+
+def test_loop_click_playwright_error_yields_outcome_error(monkeypatch):
+    import playwright.sync_api as pw_api
+
+    from agent.loop import _dispatch
+    from agent.supervisor import Supervisor
+    from agent.trace import Run, RunBudget, RunLLM, TraceWriter
+
+    selector = "button[type=submit]"
+    click_err = pw_api.Error("element not interactable")
+    fake_browser, locate_result = _make_fake_browser_for_click(
+        selector, "http://example.com/", "http://example.com/", click_raises=click_err
+    )
+
+    monkeypatch.setattr(
+        "agent.loop._locate_or_error_msg",
+        lambda *_args, **_kwargs: locate_result,
+    )
+
+    run_id = "unit-error"
+    writer = TraceWriter(":memory:")
+    writer.open_run(
+        Run(
+            run_id=run_id,
+            task="t",
+            expect_schema=None,
+            budget=RunBudget(steps=5, usd=1.0, seconds=60),
+            llm=RunLLM(base_url="", model="", temperature=0.0, seed=None),
+            agent_version="test",
+            started_at="2024-01-01T00:00:00Z",
+            ended_at=None,
+            status=None,
+            final=None,
+            totals=None,
+        )
+    )
+
+    result_str = _dispatch(
+        "click",
+        {"intent": "Submit button"},
+        fake_browser,
+        Supervisor(),
+        trace_writer=writer,
+        run_id=run_id,
+        step_id=f"{run_id}:step-1",
+    )
+
+    rows = writer._conn.execute("SELECT payload FROM traces_events ORDER BY seq").fetchall()
+    act_rows = [json.loads(r[0]) for r in rows if json.loads(r[0]).get("kind") == "act"]
+    assert len(act_rows) == 1
+    assert act_rows[0]["outcome"] == "error", (
+        f"expected outcome=error, got {act_rows[0]['outcome']!r}"
+    )
+    assert result_str.startswith("Error: click error"), (
+        f"expected tool result to start with 'Error: click error', got {result_str!r}"
+    )

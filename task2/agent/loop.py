@@ -569,12 +569,16 @@ def _dispatch(
         outcome: Literal["ok", "no_effect", "nav", "timeout", "error"]
         try:
             page.locator(locate_result.selector).click(timeout=5000)
-            page.wait_for_load_state("load", timeout=3000)
-            outcome = "nav" if page.url != url_before else "ok"
         except PlaywrightTimeoutError:
             outcome = "timeout"
         except PlaywrightError:
             outcome = "error"
+        else:
+            try:
+                page.wait_for_load_state("load", timeout=3000)
+            except PlaywrightTimeoutError:
+                pass
+            outcome = "nav" if page.url != url_before else "ok"
         elapsed_ms = int((time.monotonic() - t_click) * 1000)
         _emit_act_event(
             trace_writer=trace_writer,

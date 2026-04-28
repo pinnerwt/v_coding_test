@@ -77,7 +77,23 @@ The `TOOLS` list SHALL include a `click` entry with function name `"click"` and 
 - **THEN** the loop SHALL invoke `supervisor.handle(miss, current_tier="L1_ax")`
 - **AND** the supervisor SHALL return `next_tier="L2_dom"`
 - **AND** a `SupervisorEvent` with `policy="next_tier"` SHALL be emitted in the trace
-- **AND** the loop SHALL retry locate at L2 and proceed with the click if L2 succeeds
+- **AND** the loop SHALL proceed with `Locator.click` against the L2-resolved selector
+
+#### Scenario: LLM calls click and Locator.click raises TimeoutError — ActEvent outcome=timeout
+
+- **GIVEN** a click whose target is unclickable within the 5s timeout
+- **WHEN** the loop dispatches click and `Locator.click(timeout=5000)` raises `playwright.sync_api.TimeoutError`
+- **THEN** an `ActEvent` SHALL be emitted with `outcome="timeout"`
+- **AND** the tool result SHALL be an error string starting with `"Error: click timeout"`
+- **AND** the loop SHALL continue (SHALL NOT terminate the run)
+
+#### Scenario: LLM calls click and Locator.click raises a generic PlaywrightError — ActEvent outcome=error
+
+- **GIVEN** a click whose target raises a generic Playwright error (e.g. `"element not interactable"`)
+- **WHEN** the loop dispatches click and `Locator.click(timeout=5000)` raises `playwright.sync_api.Error`
+- **THEN** an `ActEvent` SHALL be emitted with `outcome="error"`
+- **AND** the tool result SHALL be an error string starting with `"Error: click error"`
+- **AND** the loop SHALL continue (SHALL NOT terminate the run)
 
 #### Scenario: LLM calls done with valid evidence — loop exits succeeded
 
