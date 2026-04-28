@@ -33,32 +33,11 @@
 - **AND** the `master` run SHALL be included in analysis
 
 ### Requirement: Regression onset report schema
-The file `task2/benchmark/_trends/regression_onset.md` SHALL follow this structure:
+The file `task2/benchmark/_trends/regression_onset.md` SHALL contain a top-level `# Regression Onset Report` heading, a `Generated: <ISO timestamp>` line, a `Benchmark root: <path>` line, and three subsections in this order:
 
-```
-# Regression Onset Report
-
-Generated: <ISO timestamp of report generation>
-Benchmark root: <path>
-
-## Regressions
-
-| Case | Onset Branch | Onset run_at | Prior passing branch |
-|---|---|---|---|
-| <case-id> | <first-failing-branch> | <run_at> | <last-passing-branch> |
-
-## Never Passed
-
-| Case | First seen | Total runs seen |
-|---|---|---|
-| <case-id> | <first-branch> | <N> |
-
-## Stable
-
-| Case | Status |
-|---|---|
-| <case-id> | always passing / always skipped |
-```
+- `## Regressions` — table with columns `Case`, `Onset Branch`, `Onset run_at`, `Prior passing branch`. One row per regressed case.
+- `## Never Passed` — table with columns `Case`, `First seen`, `Total runs seen`. One row per case that has at least one non-skipped failing status and was never in a passing state.
+- `## Stable` — table with columns `Case`, `Status`. One row per case whose non-skipped appearances are all passing, or whose only appearances are `skipped`.
 
 Each section SHALL appear even when it has no rows (header + empty table). The `Onset Branch` column SHALL contain the branch name (the directory name under `benchmark-root`), not a git SHA, since branch names are what is recorded.
 
