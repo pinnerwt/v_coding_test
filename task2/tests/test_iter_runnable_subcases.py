@@ -13,7 +13,7 @@ _BASE_CASE = {
 
 
 def test_shared_cache_identity_across_variants():
-    """Two variants with shared_cache=True yield the same LocatorCache instance."""
+    """Two variants with shared_cache=True yield the same LocatorCache instance and correct ids."""
     case = {
         **_BASE_CASE,
         "fixture": True,
@@ -21,7 +21,7 @@ def test_shared_cache_identity_across_variants():
         "variants": ["v1", "v2"],
         "shared_cache": True,
     }
-    results = list(iter_runnable_subcases([case], live=True))
+    results = list(iter_runnable_subcases([case], live=False))
     assert len(results) == 2
     c1, cache1, skip1 = results[0]
     c2, cache2, skip2 = results[1]
@@ -29,6 +29,8 @@ def test_shared_cache_identity_across_variants():
     assert skip2 is None
     assert cache1 is not None
     assert cache1 is cache2
+    assert c1["id"] == "base-v1"
+    assert c2["id"] == "base-v2"
 
 
 def test_live_disabled_skip():
