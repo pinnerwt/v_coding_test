@@ -22,9 +22,9 @@
 
 ## 4. REFACTOR — Consume iterator in benchmark.py
 
-- [ ] 4.1 Add `iter_runnable_subcases` to the import list from `scripts.eval` at the top of `task2/scripts/benchmark.py`.
-- [ ] 4.2 Replace the inline variant-expansion block in `benchmark.py::main`'s `--repeats > 1` branch (lines 294-318) with `for case, shared_cache, skip_reason in iter_runnable_subcases(all_cases, live=args.live): ...`, calling `aggregate_repeats(case, ..., cache=shared_cache)` when `skip_reason` is `None` and emitting a skipped `AggregatedCaseResult` otherwise.
-- [ ] 4.3 Run `uv run pytest task2/` and confirm full suite is still green.
+- [x] 4.1 Add `iter_runnable_subcases` to the import list from `scripts.eval` at the top of `task2/scripts/benchmark.py`.
+- [x] 4.2 Replace the inline variant-expansion block in `benchmark.py::main`'s `--repeats > 1` branch (lines 294-318) with `for case, shared_cache, skip_reason in iter_runnable_subcases(all_cases, live=args.live): ...`, calling `aggregate_repeats(case, ..., cache=shared_cache)` when `skip_reason` is `None` and emitting a skipped `AggregatedCaseResult` otherwise.
+- [x] 4.3 Run `uv run pytest task2/` and confirm full suite is still green.
 
 ## 5. Final cleanup
 

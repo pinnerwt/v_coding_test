@@ -11,7 +11,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal, get_args
 
-from agent.locator_cache import LocatorCache
 from scripts.baseline_diff import generate_diff_markdown
 from scripts.eval import (
     _SKIP_STATUS,
@@ -19,6 +18,7 @@ from scripts.eval import (
     _run_case,
     build_clients,
     compute_exit_code,
+    iter_runnable_subcases,
     load_cases,
     run_suite,
 )
@@ -294,19 +294,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.repeats > _DEFAULT_REPEATS:
         agg_results: list[AggregatedCaseResult] = []
         with browser:
-            for parent_case in all_cases:
-                variants = parent_case.get("variants")
-                use_shared_cache = parent_case.get("shared_cache", False) and variants
-                shared_cache = LocatorCache(path=":memory:") if use_shared_cache else None
-
-                if variants:
-                    sub_cases = [
-                        {**parent_case, "id": f"{parent_case['id']}-{v}"} for v in variants
-                    ]
+            for case, shared_cache, skip_reason in iter_runnable_subcases(
+                all_cases, live=args.live
+            ):
+                if skip_reason is not None:
+                    agg_results.append(
+                        _skipped_aggregate(case, repeats=args.repeats, reason=skip_reason)
+                    )
                 else:
-                    sub_cases = [parent_case]
-
-                for case in sub_cases:
                     agg_results.append(
                         aggregate_repeats(
                             case,
