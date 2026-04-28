@@ -461,8 +461,10 @@ def test_flag_regression_emits_warning_in_readme_block(tmp_path):
 
     assert "⚠️" in block
     assert "pass-rate regression detected" in block.lower()
-    assert "### Latest run" in block
-    assert block.index("⚠️") < block.index("### Latest run")
+    assert "#### Latest run" in block
+    assert "### Basic benchmark" in block
+    assert block.index("### Basic benchmark") < block.index("#### Latest run")
+    assert block.index("⚠️") < block.index("#### Latest run")
 
 
 def test_flag_regression_no_warning_for_stable(tmp_path):
