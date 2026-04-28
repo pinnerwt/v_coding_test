@@ -373,7 +373,6 @@ Urgency tags (advisory):
 
 ### P2 — measurable improvements
 
-- **#63** — WebVoyager Tier-1 (~12 tasks across stable popup-free sites); expand from 3-task Tier-0 to give per-branch generalization signal cheap enough to run.
 - **#50** — Per-repeat warm-cache bias when shared_cache + variants + --repeats > 1; needs decision on cold-start vs warm.
 - **#51** — Aggregation-aware scoreboard rollups (Total USD / p50 / p95) when --repeats > 1; current code mixes mean/sum semantics across fields.
 - **#52** — Robustify task2-benchmark.yml PR-comment posting: detect bot comment by id instead of relying on `gh --edit-last` + `2>/dev/null` fallback that masks real errors.
