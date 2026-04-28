@@ -722,10 +722,8 @@ def write_trends(
     (out_dir / "pass_rate.svg").write_text(render_pass_rate_svg(runs))
     (out_dir / "latency.svg").write_text(render_latency_svg(runs))
     (out_dir / "cost.svg").write_text(render_cost_svg(runs))
-
-    if benchmark_root is not None:
-        class_counts = collect_failure_class_runs(benchmark_root)
-        (out_dir / "failure_classes.svg").write_text(render_failure_classes_svg(runs, class_counts))
+    class_counts = collect_failure_class_runs(benchmark_root) if benchmark_root is not None else []
+    (out_dir / "failure_classes.svg").write_text(render_failure_classes_svg(runs, class_counts))
 
     if readme_path is not None:
         latest = _latest_run_data(benchmark_root) if benchmark_root is not None else None

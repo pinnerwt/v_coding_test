@@ -35,20 +35,21 @@ SUITE_THRESHOLDS: dict[str, dict] = {
 
 def _render_failure_histogram(cases: list[dict]) -> str:
     counts: dict[str, int] = {}
+    n_failed = 0
     for case in cases:
         raw = case.get("status", "unknown")
         if raw in ("succeeded", "unverified", "skipped"):
             continue
+        n_failed += 1
         fc = case.get("failure_class")
         if fc is None:
             continue
         counts[fc] = counts.get(fc, 0) + 1
     if not counts:
         return ""
-    total_failed = sum(counts.values())
     rows = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
     lines: list[str] = []
-    lines.append(f"**Failure histogram** ({total_failed} failed)")
+    lines.append(f"**Failure histogram** ({n_failed} failed)")
     lines.append("")
     lines.append("| Failure class | Count |")
     lines.append("|---|---|")
