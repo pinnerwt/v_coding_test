@@ -17,8 +17,8 @@
 
 ## 3. REFACTOR — Consume iterator in run_suite
 
-- [ ] 3.1 Replace the inline variant-expansion and skip-ladder block in `run_suite` (lines 312-335) with `for case, shared_cache, skip_reason in iter_runnable_subcases(cases, live=live): ...`, calling `_skipped_result(case, skip_reason)` when `skip_reason` is non-None and `_run_case(case, ..., cache=shared_cache, ...)` otherwise.
-- [ ] 3.2 Run `uv run pytest task2/` and confirm full suite is green.
+- [x] 3.1 Replace the inline variant-expansion and skip-ladder block in `run_suite` (lines 312-335) with `for case, shared_cache, skip_reason in iter_runnable_subcases(cases, live=live): ...`, calling `_skipped_result(case, skip_reason)` when `skip_reason` is non-None and `_run_case(case, ..., cache=shared_cache, ...)` otherwise.
+- [x] 3.2 Run `uv run pytest task2/` and confirm full suite is green.
 
 ## 4. REFACTOR — Consume iterator in benchmark.py
 

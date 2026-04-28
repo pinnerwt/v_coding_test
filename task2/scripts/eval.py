@@ -336,32 +336,19 @@ def run_suite(
     now = datetime.now(UTC)
     case_results: list[CaseResult] = []
 
-    for parent_case in cases:
-        variants = parent_case.get("variants")
-        use_shared_cache = parent_case.get("shared_cache", False) and variants
-        shared_cache = LocatorCache(path=":memory:") if use_shared_cache else None
-
-        if variants:
-            sub_cases = [{**parent_case, "id": f"{parent_case['id']}-{v}"} for v in variants]
+    for case, shared_cache, skip_reason in iter_runnable_subcases(cases, live=live):
+        if skip_reason is not None:
+            r = _skipped_result(case, skip_reason)
         else:
-            sub_cases = [parent_case]
-
-        for case in sub_cases:
-            fixture_path = case.get("fixture_path")
-            if fixture_path is not None and not Path(fixture_path).exists():
-                r = _skipped_result(case, "fixture_missing")
-            elif not live and not case.get("fixture", False):
-                r = _skipped_result(case, "live_disabled")
-            else:
-                r = _run_case(
-                    case,
-                    llm_client,
-                    browser,
-                    cache=shared_cache,
-                    canary=case.get("canary", False),
-                )
-            case_results.append(r)
-            print(f"[{_label(r.status)}] {r.id} ({r.steps} steps, ${r.usd:.4f})", flush=True)
+            r = _run_case(
+                case,
+                llm_client,
+                browser,
+                cache=shared_cache,
+                canary=case.get("canary", False),
+            )
+        case_results.append(r)
+        print(f"[{_label(r.status)}] {r.id} ({r.steps} steps, ${r.usd:.4f})", flush=True)
 
     payload = {
         "run_at": now.isoformat(),
