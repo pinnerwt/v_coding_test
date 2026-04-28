@@ -376,7 +376,6 @@ Urgency tags:
 - **#52** — Robustify task2-benchmark.yml PR-comment posting: detect bot comment by id instead of relying on `gh --edit-last` + `2>/dev/null` fallback that masks real errors.
 - **#53** — Pin asymmetric-population semantics for Δ p50/p95 latency in baseline_diff.py (intersection vs whole-population).
 - **#54** — Pin Δ pass-rate / USD / latency behavior for empty-cases / all-skipped runs in baseline_diff.py (n/a vs silent +0%).
-- **#58** — `scripts/eval.build_clients()` defaults `LLM_BASE_URL` to `…:8090/v1` while `LLMClient` re-appends `/v1/...`, producing 404s on bare `scripts.eval` invocations.
 
 ### P3 — nice-to-have
 
