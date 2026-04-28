@@ -13,9 +13,9 @@
 
 ## 3. Green — extend `_SUPPORTED_ROLES` in `agent/locate.py`
 
-- [ ] 3.1 In `task2/agent/locate.py`, add `"list"` and `"listitem"` to `_SUPPORTED_ROLES` frozenset
-- [ ] 3.2 Run `cd task2 && uv run pytest tests/test_locate.py -x` — confirm all locate unit tests pass (including the new list/listitem ones)
-- [ ] 3.3 Run `cd task2 && uv run pytest tests/test_eval.py -x -k fixture_count` — confirm the integration test passes
+- [x] 3.1 In `task2/agent/locate.py`, add `"list"` and `"listitem"` to `_SUPPORTED_ROLES` frozenset
+- [x] 3.2 Run `cd task2 && uv run pytest tests/test_locate.py -x` — confirm all locate unit tests pass (including the new list/listitem ones)
+- [x] 3.3 Run `cd task2 && uv run pytest tests/test_eval.py -x -k fixture_count` — confirm the integration test passes
 
 ## 4. Green — add canary: true to fixture-count.yaml
 
