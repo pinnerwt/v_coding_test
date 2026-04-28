@@ -22,10 +22,10 @@
 
 ## 4. canary_gate module — make tests green
 
-- [ ] 4.1 Create `task2/scripts/canary_gate.py` implementing the CLI contract from the spec: `--results <path>`, reads JSON, identifies canary cases via `.get("canary", False)`, applies gate logic, prints appropriate messages, exits 0 or 1.
-- [ ] 4.2 Ensure `canary_gate.py` imports `PASS_STATUSES` from `scripts.eval` and uses no Playwright/LLM deps.
-- [ ] 4.3 Run `uv run pytest tests/test_canary_gate.py` — all five tests must pass.
-- [ ] 4.4 Run `uv run ruff check .` and `uv run ruff format .` — must be clean.
+- [x] 4.1 Create `task2/scripts/canary_gate.py` implementing the CLI contract from the spec: `--results <path>`, reads JSON, identifies canary cases via `.get("canary", False)`, applies gate logic, prints appropriate messages, exits 0 or 1.
+- [x] 4.2 Ensure `canary_gate.py` imports `PASS_STATUSES` from `scripts.eval` and uses no Playwright/LLM deps.
+- [x] 4.3 Run `uv run pytest tests/test_canary_gate.py` — all five tests must pass.
+- [x] 4.4 Run `uv run ruff check .` and `uv run ruff format .` — must be clean.
 
 ## 5. CI workflow — add canary gate step
 
