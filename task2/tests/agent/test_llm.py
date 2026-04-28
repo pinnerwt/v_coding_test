@@ -464,3 +464,44 @@ def test_chat_response_usd_unknown_model_uses_default():
 
     expected = 1.0 * 0.001 + 1.0 * 0.002
     assert abs(resp.usd - expected) < 1e-9
+
+
+@respx.mock
+def test_chat_disable_thinking_env_unset_omits_kwargs(monkeypatch):
+    monkeypatch.delenv("LLM_DISABLE_THINKING", raising=False)
+    route = respx.post(f"http://localhost:8090{CHAT_PATH}").mock(
+        return_value=httpx.Response(200, json=_ok_payload())
+    )
+
+    chat(messages=[{"role": "user", "content": "hi"}], model="m")
+
+    body = json.loads(route.calls.last.request.content)
+    assert "chat_template_kwargs" not in body
+
+
+@respx.mock
+@pytest.mark.parametrize("value", ["1", "true", "TRUE", "yes", "on"])
+def test_chat_disable_thinking_truthy_env_injects_kwargs(monkeypatch, value):
+    monkeypatch.setenv("LLM_DISABLE_THINKING", value)
+    route = respx.post(f"http://localhost:8090{CHAT_PATH}").mock(
+        return_value=httpx.Response(200, json=_ok_payload())
+    )
+
+    chat(messages=[{"role": "user", "content": "hi"}], model="m")
+
+    body = json.loads(route.calls.last.request.content)
+    assert body["chat_template_kwargs"] == {"enable_thinking": False}
+
+
+@respx.mock
+@pytest.mark.parametrize("value", ["0", "false", "no", "", "off"])
+def test_chat_disable_thinking_falsy_env_omits_kwargs(monkeypatch, value):
+    monkeypatch.setenv("LLM_DISABLE_THINKING", value)
+    route = respx.post(f"http://localhost:8090{CHAT_PATH}").mock(
+        return_value=httpx.Response(200, json=_ok_payload())
+    )
+
+    chat(messages=[{"role": "user", "content": "hi"}], model="m")
+
+    body = json.loads(route.calls.last.request.content)
+    assert "chat_template_kwargs" not in body
