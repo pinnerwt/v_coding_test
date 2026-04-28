@@ -60,7 +60,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          SAFE_BRANCH=$(echo "${{ github.head_ref }}" | sed 's|[^a-zA-Z0-9._-]|-|g' | sed 's|^[.-]*||;s|[.-]*$||')
+          SAFE_BRANCH=$(uv run python -c "import sys; from scripts.benchmark import sanitize_branch; print(sanitize_branch(sys.argv[1]))" "${{ github.head_ref }}")
           DIFF_FILE="${{ github.workspace }}/task2/benchmark/${SAFE_BRANCH}/diff.md"
           if [ ! -f "$DIFF_FILE" ] || [ ! -s "$DIFF_FILE" ]; then
             echo "No diff.md found for branch ${SAFE_BRANCH}; skipping PR comment"
