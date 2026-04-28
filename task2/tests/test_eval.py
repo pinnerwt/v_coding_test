@@ -211,6 +211,11 @@ def test_fixture_count_yaml_loads():
     assert cases[0]["fixture"] is True
 
 
+def test_fixture_count_yaml_is_canary():
+    cases = load_cases("eval/cases/fixture-count.yaml")
+    assert cases[0]["canary"] is True
+
+
 def test_canary_read_h1_yaml_loads_as_fixture_canary():
     cases = load_cases("eval/cases/canary-read-h1.yaml")
     assert len(cases) == 1
@@ -1633,3 +1638,77 @@ def test_case_result_non_canary_serialized_as_false():
     )
     data = json.loads(json.dumps(asdict(cr)))
     assert data["canary"] is False
+
+
+# ---------------------------------------------------------------------------
+# Integration test: fixture-count with stubbed LLM emitting listitem intent
+# ---------------------------------------------------------------------------
+
+
+def test_fixture_count_with_listitem_intent_stub_llm(playwright_chromium):
+    from agent.browser import Browser
+    from agent.llm import ChatResponse, ToolCall, Usage
+    from scripts.eval import PASS_STATUSES, _run_case, load_cases
+
+    cases = load_cases("eval/cases/fixture-count.yaml")
+    case = cases[0]
+
+    _usage = Usage(prompt_tokens=1, completion_tokens=1, total_tokens=2)
+
+    def _tc(name: str, args: dict, call_id: str) -> ToolCall:
+        return ToolCall(id=call_id, name=name, arguments=json.dumps(args))
+
+    def _resp(tc: ToolCall) -> ChatResponse:
+        return ChatResponse(
+            content=None,
+            tool_calls=[tc],
+            finish_reason="tool_calls",
+            model="fake",
+            usage=_usage,
+            raw={},
+        )
+
+    def _text_resp(content: str) -> ChatResponse:
+        return ChatResponse(
+            content=content,
+            tool_calls=[],
+            finish_reason="stop",
+            model="fake",
+            usage=Usage(prompt_tokens=0, completion_tokens=0, total_tokens=0),
+            raw={},
+            usd=0.0,
+        )
+
+    plan_stub = '{"steps": ["read list items", "return items"], "expected_end_state": "done"}'
+    fixture_url = case["fixture_url"]
+
+    class _StubLLM:
+        def __init__(self):
+            self._call_index = 0
+
+        def chat(self, messages, *, tools=None, **_):
+            if tools is None:
+                return _text_resp(plan_stub)
+            idx = self._call_index
+            self._call_index += 1
+            if idx == 0:
+                return _resp(_tc("read", {"intent": "list items"}, "tc-read"))
+            return _resp(
+                _tc(
+                    "done",
+                    {
+                        "result": {"items": ["Item One", "Item Two", "Item Three"]},
+                        "evidence": {"url": fixture_url, "text_snippet": "Item One"},
+                    },
+                    "tc-done",
+                )
+            )
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        browser.goto(fixture_url)
+        result = _run_case(case, llm_client=_StubLLM(), browser=browser)
+
+    assert result.status in PASS_STATUSES, (
+        f"Expected status in PASS_STATUSES, got {result.status!r} "
+        f"(failure_class={result.failure_class!r}, failure_detail={result.failure_detail!r})"
+    )

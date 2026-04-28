@@ -22,6 +22,8 @@ The module SHALL import `PASS_STATUSES` from `scripts.eval` to define "passing".
 
 The module SHALL NOT import Playwright, LLMClient, or any browser-related dependency. It SHALL be pure-Python with stdlib-only dependencies (plus `scripts.eval` for `PASS_STATUSES`).
 
+The canary set now comprises three cases: `fixture-heading`, `canary-read-h1`, and `fixture-count`. The gate logic is unchanged; it reads the `canary` field dynamically from results JSON, so no code change is required to support the third canary.
+
 #### Scenario: One canary failed — gate exits 1
 
 - **GIVEN** a `results.json` with two cases: `fixture-heading` (`canary: true`, `status: "failed"`) and `canary-read-h1` (`canary: true`, `status: "succeeded"`)
@@ -31,7 +33,7 @@ The module SHALL NOT import Playwright, LLMClient, or any browser-related depend
 
 #### Scenario: All canaries pass, non-canary failed — gate exits 0 with warning
 
-- **GIVEN** a `results.json` with: `fixture-heading` (`canary: true`, `status: "succeeded"`), `canary-read-h1` (`canary: true`, `status: "succeeded"`), and `live-search-extract` (`canary: false`, `status: "failed"`)
+- **GIVEN** a `results.json` with: `fixture-heading` (`canary: true`, `status: "succeeded"`), `canary-read-h1` (`canary: true`, `status: "succeeded"`), `fixture-count` (`canary: true`, `status: "succeeded"`), and `live-search-extract` (`canary: false`, `status: "failed"`)
 - **WHEN** `canary_gate.main(["--results", "<path>"])` is called
 - **THEN** the process SHALL exit with code 0
 - **AND** stdout SHALL contain the word `"WARNING"` and reference `"live-search-extract"`
@@ -42,6 +44,13 @@ The module SHALL NOT import Playwright, LLMClient, or any browser-related depend
 - **WHEN** `canary_gate.main(["--results", "<path>"])` is called
 - **THEN** the process SHALL exit with code 0
 - **AND** stdout SHALL NOT contain the word `"WARNING"`
+
+#### Scenario: All three canaries pass, no non-canary failures — gate exits 0 with success message
+
+- **GIVEN** a `results.json` where all cases with `canary: true` (including `fixture-count`) have `status: "succeeded"` and no non-canary case has a failing status
+- **WHEN** `canary_gate.main(["--results", "<path>"])` is called
+- **THEN** the process SHALL exit with code 0
+- **AND** stdout SHALL contain a success message
 
 #### Scenario: Canary case skipped — gate exits 1
 
@@ -64,10 +73,10 @@ The module SHALL NOT import Playwright, LLMClient, or any browser-related depend
 
 ### Requirement: Canary case YAML files
 
-The repository SHALL include two case YAML files tagged as canary:
+The repository SHALL include three case YAML files tagged as canary:
 
-1. `task2/eval/cases/fixture-heading.yaml` — existing file; `canary: true` and `fixture_url` (a `data:text/html,...` URL containing a single `<h1>`) SHALL be added.
-2. `task2/eval/cases/canary-read-h1.yaml` — new file. It SHALL have:
+1. `task2/eval/cases/fixture-heading.yaml` — existing file; `canary: true` and `fixture_url` (a `data:text/html,...` URL containing a single `<h1>`) SHALL be present.
+2. `task2/eval/cases/canary-read-h1.yaml` — existing file. It SHALL have:
    - `id: canary-read-h1`
    - `domain: fixture`
    - `category: read-and-summarize`
@@ -77,11 +86,22 @@ The repository SHALL include two case YAML files tagged as canary:
    - `expect.schema: { title: str }`
    - `expect.validators: [title.nonempty]`
    - `fixture_url`: a `data:text/html,...` URL embedding a minimal page with a single `<h1>` element so the agent has content to read without external resources
-   - `budget: { steps: 5, usd: 0.02, seconds: 30 }` (matches the other fixture canaries; the gate trades aspirational tightness for must-always-pass reliability under the 27B model)
+   - `budget: { steps: 5, usd: 0.02, seconds: 30 }`
+3. `task2/eval/cases/fixture-count.yaml` — existing file. `canary: true` SHALL be present now that the `IntentParseError` for `list`/`listitem` role tokens is resolved. It SHALL have:
+   - `id: fixture-count`
+   - `domain: fixture`
+   - `category: search-and-extract`
+   - `canary: true`
+   - `fixture: true`
+   - `task`: an instruction to read all list items and return them as `items`
+   - `expect.schema: { items: list[str] }`
+   - `expect.validators: [items.len_gte: 1]`
+   - `fixture_url`: a `data:text/html,...` URL with a `<ul>` containing at least three `<li>` elements
+   - `budget: { steps: 5, usd: 0.05, seconds: 30 }`
 
-Both cases SHALL be `fixture: true` so they run in CI without `--live`. `fixture-count.yaml` is intentionally left non-canary because its list-extraction path hits an unrelated locate-engine `IntentParseError`; it will be revisited in a follow-up ticket.
+All three cases SHALL be `fixture: true` so they run in CI without `--live`.
 
-#### Scenario: fixture-heading.yaml carries canary: true after this change
+#### Scenario: fixture-heading.yaml carries canary: true
 
 - **WHEN** `task2/eval/cases/fixture-heading.yaml` is loaded via `scripts.eval.load_cases`
 - **THEN** the returned case dict SHALL have `canary == True`
@@ -90,6 +110,11 @@ Both cases SHALL be `fixture: true` so they run in CI without `--live`. `fixture
 
 - **WHEN** `task2/eval/cases/canary-read-h1.yaml` is loaded via `scripts.eval.load_cases`
 - **THEN** the returned case dict SHALL have `canary == True`, `fixture == True`, and `budget["steps"] == 5`
+
+#### Scenario: fixture-count.yaml carries canary: true after this change
+
+- **WHEN** `task2/eval/cases/fixture-count.yaml` is loaded via `scripts.eval.load_cases`
+- **THEN** the returned case dict SHALL have `canary == True` and `fixture == True`
 
 ### Requirement: canary field serialized into results.json
 

@@ -174,3 +174,42 @@ def test_ax_fingerprint_resolves_label_for_association(fixture_server, playwrigh
     assert labelled.ax_fingerprint != empty
     assert labelledby.ax_fingerprint != empty
     assert labelled.ax_fingerprint != labelledby.ax_fingerprint
+
+
+def test_parse_intent_list_role():
+    assert parse_intent("list") == ("list", None)
+
+
+def test_parse_intent_listitem_role():
+    assert parse_intent("listitem") == ("listitem", None)
+
+
+def test_parse_intent_items_listitem():
+    assert parse_intent("Items listitem") == ("listitem", "Items")
+
+
+def test_parse_intent_items_aliases_to_listitem():
+    assert parse_intent("items") == ("listitem", None)
+
+
+def test_parse_intent_lists_aliases_to_list():
+    assert parse_intent("lists") == ("list", None)
+
+
+def test_parse_intent_list_items_production_phrasing():
+    assert parse_intent("list items") == ("listitem", "list")
+
+
+def test_parse_intent_unknown_role_still_raises():
+    with pytest.raises(IntentParseError) as excinfo:
+        parse_intent("Submit widget")
+    assert "widget" in str(excinfo.value)
+
+
+def test_supported_role_literal_alias_exported():
+    from typing import get_args
+
+    from agent.locate import SupportedRole
+
+    args = get_args(SupportedRole)
+    assert set(args) == {"button", "link", "textbox", "checkbox", "heading", "list", "listitem"}

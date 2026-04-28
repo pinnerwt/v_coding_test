@@ -119,3 +119,41 @@ def test_canary_with_failing_status_exits_1(tmp_path, capsys, status):
     assert exc_info.value.code == 1
     out = capsys.readouterr().out
     assert "fixture-heading" in out
+
+
+def test_b3_all_three_canaries_pass_non_canary_failed_exits_0_with_warning(tmp_path, capsys):
+    from scripts.canary_gate import main
+
+    path = _write_results(
+        tmp_path,
+        [
+            {"id": "fixture-heading", "canary": True, "status": "succeeded"},
+            {"id": "canary-read-h1", "canary": True, "status": "succeeded"},
+            {"id": "fixture-count", "canary": True, "status": "succeeded"},
+            {"id": "live-search-extract", "canary": False, "status": "failed"},
+        ],
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        main(["--results", path])
+    assert exc_info.value.code == 0
+    out = capsys.readouterr().out
+    assert "WARNING" in out
+    assert "live-search-extract" in out
+
+
+def test_e3_all_three_canaries_pass_no_failures_exits_0(tmp_path, capsys):
+    from scripts.canary_gate import main
+
+    path = _write_results(
+        tmp_path,
+        [
+            {"id": "fixture-heading", "canary": True, "status": "succeeded"},
+            {"id": "canary-read-h1", "canary": True, "status": "succeeded"},
+            {"id": "fixture-count", "canary": True, "status": "succeeded"},
+        ],
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        main(["--results", path])
+    assert exc_info.value.code == 0
+    out = capsys.readouterr().out
+    assert "WARNING" not in out
