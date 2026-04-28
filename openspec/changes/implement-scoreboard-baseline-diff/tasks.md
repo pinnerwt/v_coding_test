@@ -1,10 +1,10 @@
 ## 1. Tests (Red first)
 
-- [ ] 1.1 Create `task2/tests/fixtures/results/master_results.json` — synthetic master baseline with two cases: `fixture-a` (succeeded) and `fixture-b` (failed), non-zero metrics.
-- [ ] 1.2 Create `task2/tests/fixtures/results/branch_results.json` — branch variant where `fixture-a` is failed (regression), `fixture-b` is succeeded (improvement), `fixture-c` is succeeded (new case).
-- [ ] 1.3 Write `task2/tests/test_baseline_diff.py` with failing tests covering: regression marker present, improvement marker present, new-case row, no-op branch produces no regression/improvement, aggregate deltas (pass-rate, USD, latency) are correctly signed, missing baseline path in `benchmark.py` write path skips `diff.md` gracefully, master branch write path skips `diff.md`.
-- [ ] 1.4 Write failing tests in `task2/tests/test_score.py` for the `--diff` flag: combined scoreboard + diff output contains separator and `Δ vs master`; missing path exits with code 1; omitting `--diff` leaves output unchanged.
-- [ ] 1.5 Run `uv run pytest task2/tests/test_baseline_diff.py task2/tests/test_score.py -x` — confirm all new tests fail for the right reasons (import errors / assertion errors, not syntax errors).
+- [x] 1.1 Create `task2/tests/fixtures/results/master_results.json` — synthetic master baseline with two cases: `fixture-a` (succeeded) and `fixture-b` (failed), non-zero metrics.
+- [x] 1.2 Create `task2/tests/fixtures/results/branch_results.json` — branch variant where `fixture-a` is failed (regression), `fixture-b` is succeeded (improvement), `fixture-c` is succeeded (new case).
+- [x] 1.3 Write `task2/tests/test_baseline_diff.py` with failing tests covering: regression marker present, improvement marker present, new-case row, no-op branch produces no regression/improvement, aggregate deltas (pass-rate, USD, latency) are correctly signed, missing baseline path in `benchmark.py` write path skips `diff.md` gracefully, master branch write path skips `diff.md`.
+- [x] 1.4 Write failing tests in `task2/tests/test_score.py` for the `--diff` flag: combined scoreboard + diff output contains separator and `Δ vs master`; missing path exits with code 1; omitting `--diff` leaves output unchanged.
+- [x] 1.5 Run `uv run pytest task2/tests/test_baseline_diff.py task2/tests/test_score.py -x` — confirm all new tests fail for the right reasons (import errors / assertion errors, not syntax errors).
 
 ## 2. Core Implementation — baseline_diff.py
 

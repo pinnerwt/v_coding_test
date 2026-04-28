@@ -659,3 +659,43 @@ def test_skipped_subsection_before_aggregate_summary():
     # The aggregate summary line starts with "**0/0 succeeded" when all cases are skipped
     summary_pos = output.index("**0/0 succeeded")
     assert skipped_pos < summary_pos
+
+
+# ---------------------------------------------------------------------------
+# implement-scoreboard-baseline-diff: --diff flag tests
+# ---------------------------------------------------------------------------
+
+_MASTER_RESULTS = _FIXTURES_DIR / "master_results.json"
+
+
+def test_diff_flag_combined_output_has_separator_and_heading():
+    result = _run_score(str(_SAMPLE_RESULTS), "--diff", str(_MASTER_RESULTS))
+    assert result.returncode == 0, result.stderr
+    assert "---" in result.stdout
+    assert "Δ vs master" in result.stdout
+
+
+def test_diff_flag_combined_output_has_scoreboard_content():
+    result = _run_score(str(_SAMPLE_RESULTS), "--diff", str(_MASTER_RESULTS))
+    assert result.returncode == 0, result.stderr
+    assert "p50:" in result.stdout
+    assert "|" in result.stdout
+
+
+def test_diff_flag_missing_path_exits_code_1():
+    result = _run_score(str(_SAMPLE_RESULTS), "--diff", "/nonexistent/path/master.json")
+    assert result.returncode == 1
+    assert result.stderr != ""
+
+
+def test_diff_flag_missing_path_stderr_message():
+    result = _run_score(str(_SAMPLE_RESULTS), "--diff", "/nonexistent/path/master.json")
+    assert "/nonexistent/path/master.json" in result.stderr
+
+
+def test_omitting_diff_leaves_output_unchanged():
+    result_without = _run_score(str(_SAMPLE_RESULTS))
+    result_with = _run_score(str(_SAMPLE_RESULTS), "--diff", str(_MASTER_RESULTS))
+    assert result_without.returncode == 0
+    assert "Δ vs master" not in result_without.stdout
+    assert result_without.stdout in result_with.stdout

@@ -1,0 +1,207 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+_FIXTURES = Path(__file__).parent / "fixtures" / "results"
+_MASTER = _FIXTURES / "master_results.json"
+_BRANCH = _FIXTURES / "branch_results.json"
+
+
+def _load(path: Path) -> dict:
+    return json.loads(path.read_text())
+
+
+# ---------------------------------------------------------------------------
+# generate_diff_markdown — unit tests
+# ---------------------------------------------------------------------------
+
+
+def test_regression_marker_present():
+    from scripts.baseline_diff import generate_diff_markdown
+
+    master = _load(_MASTER)
+    branch = _load(_BRANCH)
+    out = generate_diff_markdown(master, branch)
+    assert "⚠️ REGRESSION" in out
+
+
+def test_improvement_marker_present():
+    from scripts.baseline_diff import generate_diff_markdown
+
+    master = _load(_MASTER)
+    branch = _load(_BRANCH)
+    out = generate_diff_markdown(master, branch)
+    assert "✅ IMPROVEMENT" in out
+
+
+def test_new_case_row_present():
+    from scripts.baseline_diff import generate_diff_markdown
+
+    master = _load(_MASTER)
+    branch = _load(_BRANCH)
+    out = generate_diff_markdown(master, branch)
+    assert "fixture-c" in out
+    assert "new" in out
+
+
+def test_no_op_branch_produces_no_regression_or_improvement():
+    from scripts.baseline_diff import generate_diff_markdown
+
+    master = _load(_MASTER)
+    out = generate_diff_markdown(master, master)
+    assert "⚠️ REGRESSION" not in out
+    assert "✅ IMPROVEMENT" not in out
+
+
+def test_no_op_branch_all_unchanged():
+    from scripts.baseline_diff import generate_diff_markdown
+
+    master = _load(_MASTER)
+    out = generate_diff_markdown(master, master)
+    assert "unchanged" in out
+
+
+def test_no_op_branch_pass_rate_delta_zero():
+    from scripts.baseline_diff import generate_diff_markdown
+
+    master = _load(_MASTER)
+    out = generate_diff_markdown(master, master)
+    assert "Δ pass-rate: +0%" in out
+
+
+def test_aggregate_pass_rate_signed_correctly():
+    from scripts.baseline_diff import generate_diff_markdown
+
+    master = {
+        "run_at": "2026-04-20T00:00:00+00:00",
+        "cases": [
+            {"id": "c1", "status": "succeeded", "usd": 0.01, "latency_ms_total": 1000},
+            {"id": "c2", "status": "succeeded", "usd": 0.01, "latency_ms_total": 2000},
+        ],
+    }
+    branch = {
+        "run_at": "2026-04-28T00:00:00+00:00",
+        "cases": [
+            {"id": "c1", "status": "failed", "usd": 0.02, "latency_ms_total": 500},
+            {"id": "c2", "status": "succeeded", "usd": 0.02, "latency_ms_total": 1500},
+        ],
+    }
+    out = generate_diff_markdown(master, branch)
+    assert "Δ pass-rate: -50%" in out
+
+
+def test_aggregate_usd_delta_positive():
+    from scripts.baseline_diff import generate_diff_markdown
+
+    master = {
+        "run_at": "2026-04-20T00:00:00+00:00",
+        "cases": [
+            {"id": "c1", "status": "succeeded", "usd": 0.01, "latency_ms_total": 1000},
+            {"id": "c2", "status": "succeeded", "usd": 0.01, "latency_ms_total": 2000},
+        ],
+    }
+    branch = {
+        "run_at": "2026-04-28T00:00:00+00:00",
+        "cases": [
+            {"id": "c1", "status": "succeeded", "usd": 0.02, "latency_ms_total": 500},
+            {"id": "c2", "status": "succeeded", "usd": 0.02, "latency_ms_total": 1500},
+        ],
+    }
+    out = generate_diff_markdown(master, branch)
+    assert "Δ total USD: +$0.0200" in out
+
+
+def test_aggregate_latency_delta_negative():
+    from scripts.baseline_diff import generate_diff_markdown
+
+    master = {
+        "run_at": "2026-04-20T00:00:00+00:00",
+        "cases": [
+            {"id": "c1", "status": "succeeded", "usd": 0.01, "latency_ms_total": 1000},
+            {"id": "c2", "status": "succeeded", "usd": 0.01, "latency_ms_total": 2000},
+        ],
+    }
+    branch = {
+        "run_at": "2026-04-28T00:00:00+00:00",
+        "cases": [
+            {"id": "c1", "status": "succeeded", "usd": 0.02, "latency_ms_total": 500},
+            {"id": "c2", "status": "succeeded", "usd": 0.02, "latency_ms_total": 1500},
+        ],
+    }
+    out = generate_diff_markdown(master, branch)
+    assert "p50" in out
+    latency_lines = [ln for ln in out.splitlines() if "p50" in ln or "p95" in ln]
+    assert any("-" in ln for ln in latency_lines)
+
+
+def test_header_contains_run_at_timestamps():
+    from scripts.baseline_diff import generate_diff_markdown
+
+    master = _load(_MASTER)
+    branch = _load(_BRANCH)
+    out = generate_diff_markdown(master, branch)
+    assert master["run_at"] in out
+    assert branch["run_at"] in out
+
+
+def test_delta_vs_master_heading():
+    from scripts.baseline_diff import generate_diff_markdown
+
+    master = _load(_MASTER)
+    branch = _load(_BRANCH)
+    out = generate_diff_markdown(master, branch)
+    assert "Δ vs master" in out
+
+
+# ---------------------------------------------------------------------------
+# write_diff — integration tests
+# ---------------------------------------------------------------------------
+
+
+def test_write_diff_writes_diff_md_for_non_master_branch(tmp_path):
+    from scripts.benchmark import write_diff
+
+    master_dir = tmp_path / "master"
+    master_dir.mkdir()
+    (master_dir / "results.json").write_text(json.dumps(_load(_MASTER)))
+
+    branch_dir = tmp_path / "my-feature"
+    branch_dir.mkdir()
+
+    branch_data = _load(_BRANCH)
+    write_diff("my-feature", branch_data, benchmark_root=tmp_path)
+
+    diff_path = tmp_path / "my-feature" / "diff.md"
+    assert diff_path.exists()
+    content = diff_path.read_text()
+    assert "Δ vs master" in content
+
+
+def test_write_diff_skips_master_branch(tmp_path):
+    from scripts.benchmark import write_diff
+
+    master_dir = tmp_path / "master"
+    master_dir.mkdir()
+    (master_dir / "results.json").write_text(json.dumps(_load(_MASTER)))
+
+    branch_data = _load(_BRANCH)
+    write_diff("master", branch_data, benchmark_root=tmp_path)
+
+    diff_path = tmp_path / "master" / "diff.md"
+    assert not diff_path.exists()
+
+
+def test_write_diff_missing_baseline_skips_gracefully(tmp_path, capsys):
+    from scripts.benchmark import write_diff
+
+    branch_dir = tmp_path / "my-feature"
+    branch_dir.mkdir()
+    branch_data = _load(_BRANCH)
+
+    write_diff("my-feature", branch_data, benchmark_root=tmp_path)
+
+    diff_path = tmp_path / "my-feature" / "diff.md"
+    assert not diff_path.exists()
+    captured = capsys.readouterr()
+    assert captured.err != ""
