@@ -101,42 +101,18 @@ def test_detail_flag_no_table_when_step_breakdown_is_empty():
     assert _HEADER not in output
 
 
-def test_detail_flag_forwarded_from_main():
-    from io import StringIO
-    from unittest.mock import patch
+def test_detail_flag_forwarded_from_main(tmp_path, capsys):
+    import json
 
     from scripts.score import main
 
-    case = {
-        "id": "test-fwd-v1",
-        "status": "failed",
-        "steps": 1,
-        "usd": 0.0,
-        "l_tier_counts": {},
-        "prompt_tokens": 10,
-        "completion_tokens": 5,
-        "latency_ms_total": 100,
-        "latency_ms_per_step": [100],
-        "step_breakdown": [_STEP1],
-        "escalations": [],
-        "replans": 0,
-        "cache_events": {"hits": 0, "invalidations": 0, "misses": 0},
-    }
-    data = {"run_at": "2026-04-28T00:00:00+00:00", "cases": [case]}
+    data = _make_data("failed", [_STEP1])
+    results_file = tmp_path / "results.json"
+    results_file.write_text(json.dumps(data))
 
-    import json
-    import tempfile
+    main([str(results_file), "--detail"])
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-        json.dump(data, f)
-        tmp_path = f.name
-
-    captured = StringIO()
-    with patch("sys.stdout", captured):
-        main([tmp_path, "--detail"])
-
-    output = captured.getvalue()
-    assert _HEADER in output
+    assert _HEADER in capsys.readouterr().out
 
 
 def test_tool_calls_list_comma_joined_in_tool_column():
