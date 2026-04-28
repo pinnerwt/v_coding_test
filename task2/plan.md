@@ -355,7 +355,6 @@ Urgency tags:
 
 ### P2 — measurable improvements
 
-- **#41** — Cache-hit visibility separate from invalidations.
 - **#42** — Failure-clustering histogram across the suite (depends on #31, which is done).
 - **#43** — `tool_error` should also classify `ActEvent(outcome="timeout")`.
 - **#49** — Extract shared variant + skip + shared-cache iteration helper into eval.py (consumed by both run_suite and aggregate_repeats caller).
