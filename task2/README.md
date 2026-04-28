@@ -1,7 +1,11 @@
 # Task 2 — Generalized Browser Automation Agent
 
+## Benchmarks
+
+The agent is exercised by two benchmark suites. The **basic benchmark** is a synthetic, fixture-backed suite that covers the agent's mechanism contracts (locate ladder, cache invalidation, supervisor halt/replan). It runs offline against bundled HTML fixtures and is the inner loop for development. The **WebVoyager benchmark** runs a curated subset of [WebVoyager](https://arxiv.org/abs/2401.13919) tasks against the live web and is the outer-loop signal for "does the agent generalize to a random task on a real site." Both write per-branch artifacts under `benchmark/<branch>/` and feed the trend charts.
+
 <!-- TRENDS:BEGIN -->
-## Benchmark trends
+### Basic benchmark
 
 ![Pass rate over time](benchmark/_trends/pass_rate.svg)
 
@@ -13,7 +17,7 @@
 
 Cost and latency are split into passed vs. failed cases: a failing case bails out early, so a higher pass rate naturally raises totals. Compare the green (passed) and red (failed) series within a branch, not the totals across branches.
 
-### Latest run — `task2-implement-loop-type-tool` (2026-04-28 11:48 UTC)
+#### Latest run — `task2-implement-loop-type-tool` (2026-04-28 11:48 UTC)
 
 | Case | Status | Steps | Latency | Tokens | USD |
 |---|---|---:|---:|---:|---:|
@@ -29,6 +33,18 @@ Cost and latency are split into passed vs. failed cases: a failing case bails ou
 | **Total (9 cases, 9 passed)** | | 26 | 196.3 s | 40,469 | $0.0463 |
 <!-- TRENDS:END -->
 
+### WebVoyager benchmark (live web)
+
+WebVoyager tasks are real-world web navigation prompts (e.g. "Navigate to wikipedia.org and find the 2018 Turing Award winners") originally published by [He et al., 2024](https://arxiv.org/abs/2401.13919) under CC BY 4.0. We vendor a curated subset under `eval/bench/data/webvoyager/`, biased toward sites that are stable, popup-free, and load fast (Wikipedia, arXiv, GitHub, HuggingFace, BBC News, Cambridge Dictionary, Wolfram Alpha) so the suite stays cheap enough to run on every branch. Sites known to gate behind login, captcha, or aggressive bot detection (Booking, Flights, Amazon, Allrecipes, Apple, Coursera) are deliberately excluded.
+
+Run the live suite from `task2/`:
+
+```bash
+LLM_BASE_URL=http://localhost:8090 LLM_MODEL=qwen3.5-27b \
+  uv run python -m scripts.bench --suite webvoyager --live
+```
+
+Live results land under `eval/results/` (configurable via `EVAL_RESULTS_DIR`). The trend charts above only reflect the basic benchmark today; WebVoyager is tracked separately while the suite stabilizes.
 
 See `plan.md` for the full design. This README is the operator's guide.
 

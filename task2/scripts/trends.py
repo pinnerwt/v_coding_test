@@ -592,7 +592,7 @@ def render_latest_run_table(branch: str, data: dict) -> str:
         ts = run_at_iso
 
     lines: list[str] = [
-        f"### Latest run — `{branch}` ({ts})",
+        f"#### Latest run — `{branch}` ({ts})",
         "",
         "| Case | Status | Steps | Latency | Tokens | USD |",
         "|---|---|---:|---:|---:|---:|",
@@ -641,7 +641,7 @@ def _latest_run_data(bench_root: Path) -> tuple[str, dict] | None:
 
 def _render_readme_block(latest: tuple[str, dict] | None, runs: list[Run]) -> str:
     body = [
-        "## Benchmark trends",
+        "### Basic benchmark",
         "",
         "![Pass rate over time](benchmark/_trends/pass_rate.svg)",
         "",
