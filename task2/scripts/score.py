@@ -126,9 +126,10 @@ def generate_scoreboard(data: dict, *, detail: bool = False) -> str:
         cid = case.get("id", "?")
         esc_count = len(case.get("escalations", []))
         replan_count = case.get("replans", 0)
-        cache_hits = case.get("cache_events", {}).get("hits", 0)
-        cache_misses = case.get("cache_events", {}).get("misses", 0)
-        cache_inv = case.get("cache_events", {}).get("invalidations", 0)
+        cache_events = case.get("cache_events", {})
+        cache_hits = cache_events.get("hits", 0)
+        cache_misses = cache_events.get("misses", 0)
+        cache_inv = cache_events.get("invalidations", 0)
         fc = case.get("failure_class") or "-"
 
         lines.append(

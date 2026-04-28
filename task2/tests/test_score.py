@@ -706,28 +706,34 @@ def test_omitting_diff_leaves_output_unchanged():
 # ---------------------------------------------------------------------------
 
 
+def _make_cache_test_data(
+    case_overrides: dict | None = None, omit_cache_events: bool = False
+) -> dict:
+    case = {
+        "id": "test-case-v1",
+        "status": "succeeded",
+        "steps": 1,
+        "usd": 0.001,
+        "l_tier_counts": {},
+        "validators": [],
+        "prompt_tokens": 10,
+        "completion_tokens": 5,
+        "latency_ms_total": 100,
+        "latency_ms_per_step": [100],
+        "step_breakdown": [],
+        "cache_events": {"hits": 0, "misses": 0, "invalidations": 0},
+    }
+    if case_overrides is not None:
+        case.update(case_overrides)
+    if omit_cache_events:
+        case.pop("cache_events", None)
+    return {"run_at": "2026-04-28T00:00:00+00:00", "cases": [case]}
+
+
 def test_cache_hits_misses_columns_in_header():
     from scripts.score import generate_scoreboard
 
-    data = {
-        "run_at": "2026-04-28T00:00:00+00:00",
-        "cases": [
-            {
-                "id": "fixture-any",
-                "status": "succeeded",
-                "steps": 1,
-                "usd": 0.001,
-                "l_tier_counts": {},
-                "validators": [],
-                "prompt_tokens": 10,
-                "completion_tokens": 5,
-                "latency_ms_total": 100,
-                "latency_ms_per_step": [100],
-                "step_breakdown": [],
-                "cache_events": {"hits": 0, "misses": 0, "invalidations": 0},
-            }
-        ],
-    }
+    data = _make_cache_test_data({"id": "fixture-any"})
     output = generate_scoreboard(data)
     header_line = next(ln for ln in output.splitlines() if ln.startswith("| Case"))
     assert "Cache Hits" in header_line
@@ -742,25 +748,9 @@ def test_cache_hits_misses_columns_in_header():
 def test_cache_hits_misses_populated_from_cache_events():
     from scripts.score import generate_scoreboard
 
-    data = {
-        "run_at": "2026-04-28T00:00:00+00:00",
-        "cases": [
-            {
-                "id": "fixture-twostep",
-                "status": "succeeded",
-                "steps": 2,
-                "usd": 0.001,
-                "l_tier_counts": {},
-                "validators": [],
-                "prompt_tokens": 10,
-                "completion_tokens": 5,
-                "latency_ms_total": 100,
-                "latency_ms_per_step": [50, 50],
-                "step_breakdown": [],
-                "cache_events": {"hits": 1, "misses": 1, "invalidations": 0},
-            }
-        ],
-    }
+    data = _make_cache_test_data(
+        {"id": "fixture-twostep", "cache_events": {"hits": 1, "misses": 1, "invalidations": 0}}
+    )
     output = generate_scoreboard(data)
     case_row = next(ln for ln in output.splitlines() if "fixture-twostep" in ln)
     cols = [c.strip() for c in case_row.split("|")]
@@ -777,24 +767,7 @@ def test_cache_hits_misses_populated_from_cache_events():
 def test_cache_hits_misses_default_zero_when_absent():
     from scripts.score import generate_scoreboard
 
-    data = {
-        "run_at": "2026-04-28T00:00:00+00:00",
-        "cases": [
-            {
-                "id": "fixture-nocache",
-                "status": "succeeded",
-                "steps": 1,
-                "usd": 0.001,
-                "l_tier_counts": {},
-                "validators": [],
-                "prompt_tokens": 10,
-                "completion_tokens": 5,
-                "latency_ms_total": 100,
-                "latency_ms_per_step": [100],
-                "step_breakdown": [],
-            }
-        ],
-    }
+    data = _make_cache_test_data({"id": "fixture-nocache"}, omit_cache_events=True)
     output = generate_scoreboard(data)
     case_row = next(ln for ln in output.splitlines() if "fixture-nocache" in ln)
     cols = [c.strip() for c in case_row.split("|")]
