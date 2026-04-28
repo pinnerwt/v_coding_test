@@ -12,12 +12,13 @@ _BASE_CASE = {
 }
 
 
-def test_shared_cache_identity_across_variants():
-    """Two variants with shared_cache=True yield the same LocatorCache instance and correct ids."""
+def test_shared_cache_identity_across_variants(tmp_path):
+    fixture = tmp_path / "present.html"
+    fixture.touch()
     case = {
         **_BASE_CASE,
         "fixture": True,
-        "fixture_path": __file__,
+        "fixture_path": str(fixture),
         "variants": ["v1", "v2"],
         "shared_cache": True,
     }
@@ -34,7 +35,6 @@ def test_shared_cache_identity_across_variants():
 
 
 def test_live_disabled_skip():
-    """Live-only case with live=False yields one tuple with skip_reason='live_disabled'."""
     case = {**_BASE_CASE}
     results = list(iter_runnable_subcases([case], live=False))
     assert len(results) == 1
@@ -44,7 +44,6 @@ def test_live_disabled_skip():
 
 
 def test_fixture_missing_skip(tmp_path):
-    """fixture_path pointing to a non-existent path yields skip_reason='fixture_missing'."""
     case = {
         **_BASE_CASE,
         "fixture": True,
@@ -58,7 +57,6 @@ def test_fixture_missing_skip(tmp_path):
 
 
 def test_non_variantized_case_yields_once():
-    """Non-variantized fixture case yields one tuple with skip_reason=None and shared_cache=None."""
     case = {**_BASE_CASE, "fixture": True}
     results = list(iter_runnable_subcases([case], live=True))
     assert len(results) == 1
@@ -68,12 +66,13 @@ def test_non_variantized_case_yields_once():
     assert yielded_case is case
 
 
-def test_variants_without_shared_cache_yield_none_for_cache():
-    """Variants without shared_cache key yield two tuples both with shared_cache=None."""
+def test_variants_without_shared_cache_yield_none_for_cache(tmp_path):
+    fixture = tmp_path / "present.html"
+    fixture.touch()
     case = {
         **_BASE_CASE,
         "fixture": True,
-        "fixture_path": __file__,
+        "fixture_path": str(fixture),
         "variants": ["v1", "v2"],
     }
     results = list(iter_runnable_subcases([case], live=True))

@@ -420,45 +420,6 @@ def test_generate_scoreboard_renders_fractional_all_pass():
     assert "3/3 ✓" in out
 
 
-def test_aggregate_repeats_skips_live_disabled_without_calling_run_case():
-    from scripts.benchmark import aggregate_repeats
-
-    live_only_case = {**_SAMPLE_CASE, "id": "live-x", "fixture": False}
-    with patch("scripts.benchmark._run_case") as mock_run:
-        result = aggregate_repeats(
-            live_only_case,
-            repeats=3,
-            llm_client=None,
-            browser=None,
-            live=False,
-        )
-
-    assert mock_run.call_count == 0
-    assert result.repeat_status == "skipped"
-    assert result.skip_reason == "live_disabled"
-    assert result.repeats == 3
-    assert result.passed_runs == 0
-
-
-def test_aggregate_repeats_skips_fixture_missing_without_calling_run_case(tmp_path):
-    from scripts.benchmark import aggregate_repeats
-
-    missing_path = tmp_path / "does_not_exist.html"
-    case = {**_SAMPLE_CASE, "id": "fixture-missing-x", "fixture_path": str(missing_path)}
-    with patch("scripts.benchmark._run_case") as mock_run:
-        result = aggregate_repeats(
-            case,
-            repeats=3,
-            llm_client=None,
-            browser=None,
-            live=False,
-        )
-
-    assert mock_run.call_count == 0
-    assert result.repeat_status == "skipped"
-    assert result.skip_reason == "fixture_missing"
-
-
 def test_aggregate_repeats_forwards_cache_to_run_case():
     from scripts.benchmark import aggregate_repeats
 
@@ -639,7 +600,6 @@ def test_aggregate_repeats_p95_with_three_runs_uses_max_run():
             repeats=3,
             llm_client=MagicMock(),
             browser=MagicMock(),
-            live=True,
         )
 
     assert result.p95_latency_ms == 300
@@ -718,7 +678,6 @@ def test_aggregate_repeats_avg_mechanism_firings_is_mean_of_per_run_total():
             repeats=3,
             llm_client=MagicMock(),
             browser=MagicMock(),
-            live=True,
         )
 
     assert result.repeat_status == "all_pass"
@@ -783,7 +742,6 @@ def test_aggregate_repeats_mixed_pass_and_skip_classifies_as_partial():
             repeats=3,
             llm_client=MagicMock(),
             browser=MagicMock(),
-            live=True,
         )
 
     assert result.repeat_status == "partial"
