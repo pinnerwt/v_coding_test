@@ -80,6 +80,37 @@ def summarize_run(branch: str, data: dict) -> Run:
     )
 
 
+def collect_failure_class_runs(benchmark_root: Path) -> list[dict[str, int]]:
+    result: list[dict[str, int]] = []
+    if not benchmark_root.exists():
+        return result
+    dirs = []
+    for d in benchmark_root.iterdir():
+        if not d.is_dir() or d.name.startswith("_"):
+            continue
+        results = d / "results.json"
+        if not results.exists():
+            continue
+        try:
+            data = json.loads(results.read_text())
+            run_at = datetime.fromisoformat(data["run_at"])
+        except (json.JSONDecodeError, KeyError, ValueError):
+            continue
+        dirs.append((run_at, data))
+    dirs.sort(key=lambda t: t[0])
+    for _, data in dirs:
+        counts: dict[str, int] = {}
+        for case in data.get("cases", []):
+            if case.get("status") in ("succeeded", "unverified", "skipped"):
+                continue
+            fc = case.get("failure_class")
+            if fc is None:
+                continue
+            counts[fc] = counts.get(fc, 0) + 1
+        result.append(counts)
+    return result
+
+
 def collect_runs(benchmark_root: Path) -> list[Run]:
     runs: list[Run] = []
     if not benchmark_root.exists():
@@ -446,6 +477,113 @@ def render_cost_svg(runs: list[Run]) -> str:
     )
 
 
+_FAILURE_CLASS_PALETTE = [
+    "#1f77b4",
+    "#ff7f0e",
+    "#2ca02c",
+    "#d62728",
+    "#9467bd",
+    "#8c564b",
+    "#e377c2",
+    "#7f7f7f",
+]
+
+
+def render_failure_classes_svg(runs: list[Run], class_counts: list[dict[str, int]]) -> str:
+    if not runs or not class_counts:
+        return _empty_svg("Failure classes")
+
+    all_classes = sorted({cls for counts in class_counts for cls in counts})
+    if not all_classes:
+        return _empty_svg("Failure classes")
+
+    color_map = {
+        cls: _FAILURE_CLASS_PALETTE[i % len(_FAILURE_CLASS_PALETTE)]
+        for i, cls in enumerate(all_classes)
+    }
+
+    n = len(runs)
+    plot_w = _W - _PAD_L - _PAD_R
+    plot_h = _H - _PAD_T - _PAD_B
+    axis_y = _PAD_T + plot_h
+    y_max = max((sum(c.values()) for c in class_counts), default=0) or 1
+    y_max = y_max * 1.15
+
+    def x_at(i: int) -> float:
+        if n == 1:
+            return _PAD_L + plot_w / 2
+        return _PAD_L + (i / (n - 1)) * plot_w
+
+    def y_at(v: float) -> float:
+        return axis_y - (v / y_max) * plot_h
+
+    parts: list[str] = []
+    parts.append(
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {_W} {_H}" '
+        f'width="{_W}" height="{_H}" font-family="sans-serif">'
+    )
+    parts.append(_BG_RECT)
+    parts.append(
+        f'<text x="{_PAD_L}" y="18" font-size="13" font-weight="600">'
+        f"Failure classes over time</text>"
+    )
+
+    parts.append(f'<line x1="{_PAD_L}" y1="{_PAD_T}" x2="{_PAD_L}" y2="{axis_y}" stroke="#999"/>')
+    parts.append(
+        f'<line x1="{_PAD_L}" y1="{axis_y}" x2="{_W - _PAD_R}" y2="{axis_y}" stroke="#999"/>'
+    )
+
+    for frac in (0.0, 0.5, 1.0):
+        y = axis_y - frac * plot_h
+        label = str(int(frac * y_max / 1.15))
+        parts.append(
+            f'<text x="{_PAD_L - 6}" y="{y + 4}" font-size="10" '
+            f'text-anchor="end" fill="#000">{label}</text>'
+        )
+        if frac > 0:
+            parts.append(
+                f'<line x1="{_PAD_L}" y1="{y}" x2="{_W - _PAD_R}" y2="{y}" '
+                f'stroke="#eee" stroke-dasharray="2,2"/>'
+            )
+
+    for cls in all_classes:
+        color = color_map[cls]
+        vals = [c.get(cls, 0) for c in class_counts]
+        baseline = [0.0] * n
+
+        top_pts = " ".join(f"{x_at(i):.2f},{y_at(v):.2f}" for i, v in enumerate(vals))
+        base_pts = " ".join(
+            f"{x_at(i):.2f},{y_at(b):.2f}" for i, b in reversed(list(enumerate(baseline)))
+        )
+        parts.append(f'<polygon points="{top_pts} {base_pts}" fill="{color}" opacity="0.7"/>')
+        pts = " ".join(f"{x_at(i):.2f},{y_at(v):.2f}" for i, v in enumerate(vals))
+        parts.append(f'<polyline points="{pts}" fill="none" stroke="{color}" stroke-width="1.5"/>')
+
+    entry_w = max(90, plot_w // max(len(all_classes), 1))
+    lx = _PAD_L
+    ly = _H - 8
+    for j, cls in enumerate(all_classes):
+        ox = lx + j * entry_w
+        color = color_map[cls]
+        parts.append(f'<rect x="{ox}" y="{ly - 8}" width="10" height="10" fill="{color}"/>')
+        parts.append(
+            f'<text x="{ox + 14}" y="{ly}" font-size="10" fill="#000">{_xml_escape(cls)}</text>'
+        )
+
+    for i, run in enumerate(runs):
+        label = _xml_escape(run.branch)
+        if len(label) > 22:
+            label = label[:21] + "…"
+        cx = x_at(i)
+        parts.append(
+            f'<text x="{cx:.2f}" y="{axis_y + 12}" font-size="10" fill="#000" '
+            f'text-anchor="end" transform="rotate(-35 {cx:.2f} {axis_y + 12})">{label}</text>'
+        )
+
+    parts.append("</svg>")
+    return "".join(parts)
+
+
 # ---------------------------- latest-run table ---------------------------- #
 
 
@@ -536,6 +674,8 @@ def _render_readme_block(latest: tuple[str, dict] | None, runs: list[Run]) -> st
         "",
         "![Cost by status](benchmark/_trends/cost.svg)",
         "",
+        "![Failure classes over time](benchmark/_trends/failure_classes.svg)",
+        "",
         (
             "Cost and latency are split into passed vs. failed cases: a failing "
             "case bails out early, so a higher pass rate naturally raises totals. "
@@ -582,6 +722,10 @@ def write_trends(
     (out_dir / "pass_rate.svg").write_text(render_pass_rate_svg(runs))
     (out_dir / "latency.svg").write_text(render_latency_svg(runs))
     (out_dir / "cost.svg").write_text(render_cost_svg(runs))
+
+    if benchmark_root is not None:
+        class_counts = collect_failure_class_runs(benchmark_root)
+        (out_dir / "failure_classes.svg").write_text(render_failure_classes_svg(runs, class_counts))
 
     if readme_path is not None:
         latest = _latest_run_data(benchmark_root) if benchmark_root is not None else None

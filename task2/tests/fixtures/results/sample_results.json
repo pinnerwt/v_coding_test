@@ -36,7 +36,8 @@
       ],
       "escalations": [],
       "replans": 0,
-      "cache_events": {"hits": 0, "invalidations": 0, "misses": 0}
+      "cache_events": {"hits": 0, "invalidations": 0, "misses": 0},
+      "failure_class": "no_done_emitted"
     }
   ]
 }

@@ -637,13 +637,9 @@ def test_render_failure_classes_svg_deterministic_colors():
     import re
 
     def _extract_class_color(svg: str, cls: str) -> str | None:
-        pattern = rf'fill="(#[0-9a-fA-F]{{6}})"[^>]*>{re.escape(cls)}</text>'
+        pattern = rf'fill="(#[0-9a-fA-F]{{6}})"/><text[^>]*>{re.escape(cls)}</text>'
         m = re.search(pattern, svg)
-        if m:
-            return m.group(1)
-        pattern2 = rf'{re.escape(cls)}.*?fill="(#[0-9a-fA-F]{{6}})"'
-        m2 = re.search(pattern2, svg, re.DOTALL)
-        return m2.group(1) if m2 else None
+        return m.group(1) if m else None
 
     color_halt_a = _extract_class_color(svg_a, "supervisor_halt")
     color_halt_b = _extract_class_color(svg_b, "supervisor_halt")

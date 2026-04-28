@@ -33,6 +33,31 @@ SUITE_THRESHOLDS: dict[str, dict] = {
 }
 
 
+def _render_failure_histogram(cases: list[dict]) -> str:
+    counts: dict[str, int] = {}
+    for case in cases:
+        raw = case.get("status", "unknown")
+        if raw in ("succeeded", "unverified", "skipped"):
+            continue
+        fc = case.get("failure_class")
+        if fc is None:
+            continue
+        counts[fc] = counts.get(fc, 0) + 1
+    if not counts:
+        return ""
+    total_failed = sum(counts.values())
+    rows = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    lines: list[str] = []
+    lines.append(f"**Failure histogram** ({total_failed} failed)")
+    lines.append("")
+    lines.append("| Failure class | Count |")
+    lines.append("|---|---|")
+    for cls, cnt in rows:
+        lines.append(f"| {cls} | {cnt} |")
+    lines.append("")
+    return "\n".join(lines)
+
+
 def _render_step_breakdown(steps: list[dict]) -> str:
     if not steps:
         return ""
@@ -103,6 +128,10 @@ def generate_scoreboard(data: dict, *, detail: bool = False) -> str:
             glyph = "✅" if pct >= target_pct else "❌"
             lines.append(f"{name}: {passed}/{ran} ({pct}%) [target {target_pct}%] {glyph}")
     lines.append("")
+
+    histogram = _render_failure_histogram(cases)
+    if histogram:
+        lines.append(histogram)
 
     lines.append(
         "| Case | Status | Steps | Latency (ms) | USD | Tokens (P+C) "
