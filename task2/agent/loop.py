@@ -31,6 +31,7 @@ if TYPE_CHECKING:
 
 RunStatus = Literal["succeeded", "unverified", "failed", "timeout"]
 ToolName = Literal["goto", "read", "click", "done", "fail"]
+_CLICK_SUCCESS_OUTCOMES: frozenset[str] = frozenset({"ok", "nav"})
 
 STATE_MESSAGE_PREFIX = "Current state: "
 
@@ -480,6 +481,30 @@ def _locate_with_supervisor(
     return result
 
 
+def _locate_or_error_msg(
+    page: Page,
+    intent: str,
+    supervisor: Supervisor,
+    *,
+    cache: LocatorCache | None,
+    trace_writer: TraceWriter | None,
+    run_id: str | None,
+    step_id: str | None,
+) -> LocateResult | str:
+    try:
+        return _locate_with_supervisor(
+            page,
+            intent,
+            supervisor,
+            cache=cache,
+            trace_writer=trace_writer,
+            run_id=run_id,
+            step_id=step_id,
+        )
+    except (LocatorMiss, IntentParseError) as miss:
+        return f"Error: could not locate element for intent {intent!r} ({miss})"
+
+
 def _dispatch(
     tool_name: str,
     args: dict,
@@ -501,22 +526,21 @@ def _dispatch(
         intent: str | None = args.get("intent")
         page = browser._page
         if intent:
-            try:
-                locate_result = _locate_with_supervisor(
-                    page,
-                    intent,
-                    supervisor,
-                    cache=locator_cache,
-                    trace_writer=trace_writer,
-                    run_id=run_id,
-                    step_id=step_id,
-                )
-            except (LocatorMiss, IntentParseError) as miss:
-                return f"Error: could not locate element for intent {intent!r} ({miss})"
+            located = _locate_or_error_msg(
+                page,
+                intent,
+                supervisor,
+                cache=locator_cache,
+                trace_writer=trace_writer,
+                run_id=run_id,
+                step_id=step_id,
+            )
+            if isinstance(located, str):
+                return located
             from agent.browser import ElementNotFound
 
             try:
-                return browser.read(locate_result.selector)
+                return browser.read(located.selector)
             except ElementNotFound as exc:
                 return f"Error: located element vanished before read for intent {intent!r} ({exc})"
         return _body_text(page)
@@ -525,25 +549,25 @@ def _dispatch(
         if not isinstance(intent_val, str) or not intent_val:
             return "Error: click requires a non-empty 'intent' string argument"
         page = browser._page
-        try:
-            locate_result = _locate_with_supervisor(
-                page,
-                intent_val,
-                supervisor,
-                cache=locator_cache,
-                trace_writer=trace_writer,
-                run_id=run_id,
-                step_id=step_id,
-            )
-        except (LocatorMiss, IntentParseError) as miss:
-            return f"Error: could not locate element for intent {intent_val!r} ({miss})"
+        located = _locate_or_error_msg(
+            page,
+            intent_val,
+            supervisor,
+            cache=locator_cache,
+            trace_writer=trace_writer,
+            run_id=run_id,
+            step_id=step_id,
+        )
+        if isinstance(located, str):
+            return located
+        locate_result = located
         url_before = page.url
         t_click = time.monotonic()
+        from playwright.sync_api import Error as PlaywrightError
+        from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+
         outcome: Literal["ok", "no_effect", "nav", "timeout", "error"]
         try:
-            from playwright.sync_api import Error as PlaywrightError
-            from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
-
             page.locator(locate_result.selector).click(timeout=5000)
             page.wait_for_load_state("load", timeout=3000)
             outcome = "nav" if page.url != url_before else "ok"
@@ -561,7 +585,7 @@ def _dispatch(
             ms=elapsed_ms,
             step_id=step_id,
         )
-        if outcome in ("ok", "nav"):
+        if outcome in _CLICK_SUCCESS_OUTCOMES:
             return f"Clicked {intent_val!r} ({outcome})"
         return f"Error: click {outcome} for intent {intent_val!r}"
     return f"Error: unknown tool {tool_name!r}"
