@@ -333,7 +333,7 @@ def iter_runnable_subcases(
 
         for case in sub_cases:
             fixture_path = case.get("fixture_path")
-            if fixture_path is not None and not Path(fixture_path).exists():
+            if fixture_path is not None and not (REPO_ROOT / fixture_path).exists():
                 yield case, None, "fixture_missing"
             elif not live and not case.get("fixture", False):
                 yield case, None, "live_disabled"

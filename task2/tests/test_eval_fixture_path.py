@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from scripts.eval import _resolve_fixture_url, iter_runnable_subcases
@@ -22,6 +23,25 @@ def test_resolve_fixture_path_returns_file_url_under_repo_root():
     assert result.startswith("file://")
     assert str(_REPO_ROOT) in result
     assert result.endswith(fixture_path)
+
+
+def test_iter_runnable_subcases_fixture_existence_check_is_repo_root_anchored(
+    tmp_path, monkeypatch
+):
+    case = {
+        **_BASE_CASE,
+        "id": "fp-anchor",
+        "fixture": True,
+        "fixture_path": "task2/tests/fixtures/correction_l1_miss.html",
+    }
+    monkeypatch.chdir(tmp_path)
+    results = list(iter_runnable_subcases([case], live=False))
+    assert len(results) == 1
+    _sub_case, _cache, skip_reason = results[0]
+    assert skip_reason is None, (
+        f"expected fixture_path to resolve via REPO_ROOT regardless of cwd ({os.getcwd()!r}), "
+        f"got skip_reason={skip_reason!r}"
+    )
 
 
 def test_iter_runnable_subcases_resolves_variant_fixture_paths():
