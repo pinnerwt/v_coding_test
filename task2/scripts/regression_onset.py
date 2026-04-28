@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 _PASSING = frozenset({"succeeded", "unverified"})
-_FAILING = frozenset({"failed", "timeout", "error"})
+_NON_FAILING = frozenset({"succeeded", "unverified", "skipped"})
 
 
 def _collect_case_history(benchmark_root: Path) -> list[tuple[str, str, dict]]:
@@ -30,13 +30,13 @@ def _collect_case_history(benchmark_root: Path) -> list[tuple[str, str, dict]]:
     return [(branch, data["run_at"], data) for _, branch, data in runs]
 
 
-def _classify_cases(runs: list[tuple[str, str, dict]]) -> tuple[list, list, list]:
+def _classify_cases(
+    runs: list[tuple[str, str, dict]],
+) -> tuple[list[dict], list[dict], list[dict]]:
     last_pass: dict[str, str] = {}
     first_seen: dict[str, str] = {}
     seen_count: dict[str, int] = {}
     regressions: dict[str, dict] = {}
-    never_passed: set[str] = set()
-    stable: set[str] = set()
     ever_passed: set[str] = set()
     ever_failed: set[str] = set()
 
@@ -50,11 +50,11 @@ def _classify_cases(runs: list[tuple[str, str, dict]]) -> tuple[list, list, list
                 first_seen[cid] = branch
                 seen_count[cid] = 0
             if status != "skipped":
-                seen_count[cid] = seen_count.get(cid, 0) + 1
+                seen_count[cid] += 1
             if status in _PASSING:
                 ever_passed.add(cid)
                 last_pass[cid] = branch
-            elif status in _FAILING:
+            elif status not in _NON_FAILING:
                 ever_failed.add(cid)
                 if cid not in regressions and cid in ever_passed:
                     regressions[cid] = {
@@ -64,36 +64,32 @@ def _classify_cases(runs: list[tuple[str, str, dict]]) -> tuple[list, list, list
                         "prior_passing": last_pass[cid],
                     }
 
-    all_cases = set(first_seen.keys())
-    regression_ids = set(regressions.keys())
-
-    for cid in all_cases:
-        if cid in regression_ids:
+    never_passed: set[str] = set()
+    stable: set[str] = set()
+    for cid in first_seen:
+        if cid in regressions:
             continue
         if cid in ever_failed and cid not in ever_passed:
             never_passed.add(cid)
-        elif cid in ever_passed or cid not in ever_failed:
+        else:
             stable.add(cid)
 
     reg_rows = sorted(regressions.values(), key=lambda r: r["case"])
     np_rows = sorted(
-        [
-            {"case": cid, "first_seen": first_seen[cid], "total_runs": seen_count.get(cid, 0)}
+        (
+            {"case": cid, "first_seen": first_seen[cid], "total_runs": seen_count[cid]}
             for cid in never_passed
-        ],
+        ),
         key=lambda r: r["case"],
     )
     stable_rows = sorted(
-        [{"case": cid, "status": _stable_label(cid, ever_passed, ever_failed)} for cid in stable],
+        (
+            {"case": cid, "status": "always passing" if cid in ever_passed else "always skipped"}
+            for cid in stable
+        ),
         key=lambda r: r["case"],
     )
     return reg_rows, np_rows, stable_rows
-
-
-def _stable_label(cid: str, ever_passed: set[str], ever_failed: set[str]) -> str:
-    if cid in ever_passed:
-        return "always passing"
-    return "always skipped"
 
 
 def write_report(

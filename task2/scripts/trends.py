@@ -546,13 +546,15 @@ def _render_readme_block(latest: tuple[str, dict] | None, runs: list[Run]) -> st
     if latest is not None:
         branch, data = latest
         if flag_regression(runs):
-            _warn = (
-                "> ⚠️ **Pass-rate regression detected**"
-                " — latest run is >5 pp below the historical median."
-                " See `benchmark/_trends/regression_onset.md`"
-                " for per-case onset branches."
+            body.extend(
+                [
+                    "",
+                    "> ⚠️ **Pass-rate regression detected**"
+                    " — latest run is >5 pp below the historical median."
+                    " See `benchmark/_trends/regression_onset.md`"
+                    " for per-case onset branches.",
+                ]
             )
-            body.extend(["", _warn])
         body.extend(["", render_latest_run_table(branch, data)])
     return "\n".join(body)
 
