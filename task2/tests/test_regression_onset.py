@@ -71,3 +71,30 @@ def test_skips_underscore_dirs(tmp_path):
 
     text = out.read_text()
     assert "_trends" not in text
+
+
+def test_never_passed_case_in_never_passed_section_not_regressions(tmp_path):
+    root = tmp_path / "bench"
+    out = tmp_path / "report.md"
+
+    _write_run(
+        root / "run_a" / "results.json",
+        "2026-04-26T01:00:00+00:00",
+        [_case("correction-l1-miss-l2-hit", "failed")],
+    )
+    _write_run(
+        root / "run_b" / "results.json",
+        "2026-04-26T02:00:00+00:00",
+        [_case("correction-l1-miss-l2-hit", "failed")],
+    )
+
+    from scripts.regression_onset import main
+
+    main(["--benchmark-root", str(root), "--output", str(out)])
+
+    text = out.read_text()
+    regressions_section = text.split("## Never Passed")[0]
+    never_passed_section = text.split("## Never Passed")[1].split("## Stable")[0]
+
+    assert "correction-l1-miss-l2-hit" not in regressions_section
+    assert "correction-l1-miss-l2-hit" in never_passed_section

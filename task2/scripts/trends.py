@@ -505,7 +505,6 @@ _TRENDS_END = "<!-- TRENDS:END -->"
 
 
 def _latest_run_data(bench_root: Path) -> tuple[str, dict] | None:
-    """Return (branch, results.json contents) for the most recent run, or None."""
     latest: tuple[datetime, str, dict] | None = None
     if not bench_root.exists():
         return None

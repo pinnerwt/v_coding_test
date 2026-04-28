@@ -502,3 +502,61 @@ def test_flag_regression_no_warning_for_stable(tmp_path):
     block = text[begin:end]
 
     assert "⚠️" not in block
+
+
+def test_flag_regression_returns_false_for_empty_list():
+    from scripts.trends import flag_regression
+
+    assert flag_regression([]) is False
+
+
+def test_flag_regression_returns_false_at_exactly_5pp_boundary():
+    from scripts.trends import flag_regression
+
+    runs = [
+        _make_run("b1", "2026-04-26T01:00:00+00:00", 0.6),
+        _make_run("b2", "2026-04-26T02:00:00+00:00", 0.5),
+        _make_run("b3", "2026-04-26T03:00:00+00:00", 0.45),
+    ]
+    assert flag_regression(runs) is False
+
+
+def test_flag_regression_returns_false_when_latest_above_median():
+    from scripts.trends import flag_regression
+
+    runs = [
+        _make_run("b1", "2026-04-26T01:00:00+00:00", 0.2),
+        _make_run("b2", "2026-04-26T02:00:00+00:00", 0.3),
+        _make_run("b3", "2026-04-26T03:00:00+00:00", 0.8),
+    ]
+    assert flag_regression(runs) is False
+
+
+def test_flag_regression_no_warning_for_single_run_in_readme(tmp_path):
+    from scripts.trends import collect_runs, write_trends
+
+    _write_run(
+        tmp_path / "bench" / "b1" / "results.json",
+        "2026-04-26T01:00:00+00:00",
+        [_case(status="succeeded")],
+    )
+
+    readme = tmp_path / "README.md"
+    readme.write_text(
+        "# Title\n\n<!-- TRENDS:BEGIN -->\nold\n<!-- TRENDS:END -->\n\n## Other\nkeep\n"
+    )
+
+    runs = collect_runs(tmp_path / "bench")
+    write_trends(
+        runs,
+        out_dir=tmp_path / "bench" / "_trends",
+        readme_path=readme,
+        benchmark_root=tmp_path / "bench",
+    )
+
+    text = readme.read_text()
+    begin = text.index("<!-- TRENDS:BEGIN -->") + len("<!-- TRENDS:BEGIN -->")
+    end = text.index("<!-- TRENDS:END -->")
+    block = text[begin:end]
+
+    assert "⚠️" not in block
