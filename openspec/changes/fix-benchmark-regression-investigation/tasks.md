@@ -35,9 +35,9 @@
 
 ## 5. Generate and check in regression_onset.md
 
-- [ ] 5.1 From `task2/`, run `uv run python -m scripts.regression_onset --benchmark-root benchmark` to generate `task2/benchmark/_trends/regression_onset.md`.
-- [ ] 5.2 Inspect the output: verify `## Regressions` contains rows for `fixture-heading` (onset: `task2-implement-plan-event-trace-writer`) and `fixture-count` (onset: `task2-implement-observe-ax-tree`); verify `## Never Passed` contains `correction-l1-miss-l2-hit`, `drift-submit-form-v1`, `drift-submit-form-v2`, `maintenance-drift-rename-v1`, `maintenance-drift-rename-v2`, and the five live cases (all always skipped).
-- [ ] 5.3 Stage `task2/benchmark/_trends/regression_onset.md` for commit alongside the script.
+- [x] 5.1 From `task2/`, run `uv run python -m scripts.regression_onset --benchmark-root benchmark` to generate `task2/benchmark/_trends/regression_onset.md`.
+- [x] 5.2 Inspect the output: verify `## Regressions` contains rows for `fixture-heading` (onset: `task2-implement-plan-event-trace-writer`) and `fixture-count` (onset: `task2-implement-observe-ax-tree`); verify `## Never Passed` contains `correction-l1-miss-l2-hit`, `drift-submit-form-v1`, `drift-submit-form-v2`, `maintenance-drift-rename-v1`, `maintenance-drift-rename-v2`, and the five live cases (all always skipped).
+- [x] 5.3 Stage `task2/benchmark/_trends/regression_onset.md` for commit alongside the script.
 
 ## 6. Full test suite green + ruff clean
 
