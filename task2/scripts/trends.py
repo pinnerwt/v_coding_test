@@ -80,11 +80,10 @@ def summarize_run(branch: str, data: dict) -> Run:
     )
 
 
-def collect_failure_class_runs(benchmark_root: Path) -> list[dict[str, int]]:
-    result: list[dict[str, int]] = []
+def _iter_run_data(benchmark_root: Path) -> list[tuple[str, dict, datetime]]:
+    items: list[tuple[str, dict, datetime]] = []
     if not benchmark_root.exists():
-        return result
-    dirs = []
+        return items
     for d in benchmark_root.iterdir():
         if not d.is_dir() or d.name.startswith("_"):
             continue
@@ -96,38 +95,29 @@ def collect_failure_class_runs(benchmark_root: Path) -> list[dict[str, int]]:
             run_at = datetime.fromisoformat(data["run_at"])
         except (json.JSONDecodeError, KeyError, ValueError):
             continue
-        dirs.append((run_at, data))
-    dirs.sort(key=lambda t: t[0])
-    for _, data in dirs:
-        counts: dict[str, int] = {}
-        for case in data.get("cases", []):
-            if case.get("status") in ("succeeded", "unverified", "skipped"):
-                continue
-            fc = case.get("failure_class")
-            if fc is None:
-                continue
-            counts[fc] = counts.get(fc, 0) + 1
-        result.append(counts)
-    return result
+        items.append((d.name, data, run_at))
+    items.sort(key=lambda t: t[2])
+    return items
+
+
+def _failure_class_counts(data: dict) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for case in data.get("cases", []):
+        if _is_passed(case) or case.get("status") == "skipped":
+            continue
+        fc = case.get("failure_class")
+        if fc is None:
+            continue
+        counts[fc] = counts.get(fc, 0) + 1
+    return counts
+
+
+def collect_failure_class_runs(benchmark_root: Path) -> list[dict[str, int]]:
+    return [_failure_class_counts(data) for _, data, _ in _iter_run_data(benchmark_root)]
 
 
 def collect_runs(benchmark_root: Path) -> list[Run]:
-    runs: list[Run] = []
-    if not benchmark_root.exists():
-        return runs
-    for d in benchmark_root.iterdir():
-        if not d.is_dir() or d.name.startswith("_"):
-            continue
-        results = d / "results.json"
-        if not results.exists():
-            continue
-        try:
-            data = json.loads(results.read_text())
-            runs.append(summarize_run(d.name, data))
-        except (json.JSONDecodeError, KeyError, ValueError):
-            continue
-    runs.sort(key=lambda r: r.run_at)
-    return runs
+    return [summarize_run(branch, data) for branch, data, _ in _iter_run_data(benchmark_root)]
 
 
 def flag_regression(runs: list[Run]) -> bool:
@@ -506,8 +496,8 @@ def render_failure_classes_svg(runs: list[Run], class_counts: list[dict[str, int
     plot_w = _W - _PAD_L - _PAD_R
     plot_h = _H - _PAD_T - _PAD_B
     axis_y = _PAD_T + plot_h
-    y_max = max((sum(c.values()) for c in class_counts), default=0) or 1
-    y_max = y_max * 1.15
+    y_max_raw = max((sum(c.values()) for c in class_counts), default=0) or 1
+    y_max = y_max_raw * 1.15
 
     def x_at(i: int) -> float:
         if n == 1:
@@ -535,7 +525,7 @@ def render_failure_classes_svg(runs: list[Run], class_counts: list[dict[str, int
 
     for frac in (0.0, 0.5, 1.0):
         y = axis_y - frac * plot_h
-        label = str(int(frac * y_max / 1.15))
+        label = str(int(frac * y_max_raw))
         parts.append(
             f'<text x="{_PAD_L - 6}" y="{y + 4}" font-size="10" '
             f'text-anchor="end" fill="#000">{label}</text>'
@@ -546,17 +536,12 @@ def render_failure_classes_svg(runs: list[Run], class_counts: list[dict[str, int
                 f'stroke="#eee" stroke-dasharray="2,2"/>'
             )
 
+    base_pts = " ".join(f"{x_at(i):.2f},{axis_y:.2f}" for i in range(n - 1, -1, -1))
     for cls in all_classes:
         color = color_map[cls]
         vals = [c.get(cls, 0) for c in class_counts]
-        baseline = [0.0] * n
-
-        top_pts = " ".join(f"{x_at(i):.2f},{y_at(v):.2f}" for i, v in enumerate(vals))
-        base_pts = " ".join(
-            f"{x_at(i):.2f},{y_at(b):.2f}" for i, b in reversed(list(enumerate(baseline)))
-        )
-        parts.append(f'<polygon points="{top_pts} {base_pts}" fill="{color}" opacity="0.7"/>')
         pts = " ".join(f"{x_at(i):.2f},{y_at(v):.2f}" for i, v in enumerate(vals))
+        parts.append(f'<polygon points="{pts} {base_pts}" fill="{color}" opacity="0.7"/>')
         parts.append(f'<polyline points="{pts}" fill="none" stroke="{color}" stroke-width="1.5"/>')
 
     entry_w = max(90, plot_w // max(len(all_classes), 1))
@@ -643,25 +628,11 @@ _TRENDS_END = "<!-- TRENDS:END -->"
 
 
 def _latest_run_data(bench_root: Path) -> tuple[str, dict] | None:
-    latest: tuple[datetime, str, dict] | None = None
-    if not bench_root.exists():
+    items = _iter_run_data(bench_root)
+    if not items:
         return None
-    for d in bench_root.iterdir():
-        if not d.is_dir() or d.name.startswith("_"):
-            continue
-        results = d / "results.json"
-        if not results.exists():
-            continue
-        try:
-            data = json.loads(results.read_text())
-            run_at = datetime.fromisoformat(data["run_at"])
-        except (json.JSONDecodeError, KeyError, ValueError):
-            continue
-        if latest is None or run_at > latest[0]:
-            latest = (run_at, d.name, data)
-    if latest is None:
-        return None
-    return latest[1], latest[2]
+    branch, data, _ = items[-1]
+    return branch, data
 
 
 def _render_readme_block(latest: tuple[str, dict] | None, runs: list[Run]) -> str:
@@ -708,7 +679,8 @@ def _update_readme(readme_path: Path, block: str) -> None:
     if begin == -1 or end == -1 or end < begin:
         return
     new_text = text[: begin + len(_TRENDS_BEGIN)] + "\n" + block + "\n" + text[end:]
-    readme_path.write_text(new_text)
+    if new_text != text:
+        readme_path.write_text(new_text)
 
 
 def write_trends(

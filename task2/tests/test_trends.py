@@ -570,31 +570,11 @@ def test_collect_failure_class_runs_excludes_none(tmp_path):
 
 
 def test_render_failure_classes_svg_basic(tmp_path):
-    from datetime import UTC, datetime
-
-    from scripts.trends import Run, render_failure_classes_svg
+    from scripts.trends import render_failure_classes_svg
 
     runs = [
-        Run(
-            branch="b1",
-            run_at=datetime(2026, 4, 26, 1, tzinfo=UTC),
-            pass_rate=0.5,
-            total_usd=0.0,
-            p50_ms=0,
-            p95_ms=0,
-            total_tokens=0,
-            total_cases=2,
-        ),
-        Run(
-            branch="b2",
-            run_at=datetime(2026, 4, 26, 2, tzinfo=UTC),
-            pass_rate=0.5,
-            total_usd=0.0,
-            p50_ms=0,
-            p95_ms=0,
-            total_tokens=0,
-            total_cases=2,
-        ),
+        _make_run("b1", "2026-04-26T01:00:00+00:00", 0.5),
+        _make_run("b2", "2026-04-26T02:00:00+00:00", 0.5),
     ]
     class_counts = [{"supervisor_halt": 2}, {"locator_miss": 1}]
     svg = render_failure_classes_svg(runs, class_counts)
@@ -613,20 +593,9 @@ def test_render_failure_classes_svg_empty():
 
 
 def test_render_failure_classes_svg_deterministic_colors():
-    from datetime import UTC, datetime
+    from scripts.trends import render_failure_classes_svg
 
-    from scripts.trends import Run, render_failure_classes_svg
-
-    run = Run(
-        branch="b1",
-        run_at=datetime(2026, 4, 26, 1, tzinfo=UTC),
-        pass_rate=0.5,
-        total_usd=0.0,
-        p50_ms=0,
-        p95_ms=0,
-        total_tokens=0,
-        total_cases=2,
-    )
+    run = _make_run("b1", "2026-04-26T01:00:00+00:00", 0.5)
 
     class_counts_a = [{"supervisor_halt": 3, "locator_miss": 1}]
     class_counts_b = [{"supervisor_halt": 1, "locator_miss": 2}]
@@ -713,22 +682,9 @@ def test_flag_regression_returns_false_when_latest_above_median():
 
 
 def test_write_trends_writes_failure_classes_svg_when_benchmark_root_none(tmp_path):
-    from datetime import UTC, datetime
+    from scripts.trends import write_trends
 
-    from scripts.trends import Run, write_trends
-
-    runs = [
-        Run(
-            branch="b1",
-            run_at=datetime(2026, 4, 26, 1, tzinfo=UTC),
-            pass_rate=0.5,
-            total_usd=0.0,
-            p50_ms=0,
-            p95_ms=0,
-            total_tokens=0,
-            total_cases=2,
-        )
-    ]
+    runs = [_make_run("b1", "2026-04-26T01:00:00+00:00", 0.5)]
     out_dir = tmp_path / "out"
     write_trends(runs, out_dir=out_dir, benchmark_root=None)
     svg_path = out_dir / "failure_classes.svg"
