@@ -29,7 +29,7 @@ from agent.trace import (
 )
 
 _REQUIRED_FIELDS = ("id", "domain", "category", "task", "expect", "budget")
-_PASS_STATUSES = frozenset({"succeeded", "unverified"})
+PASS_STATUSES = frozenset({"succeeded", "unverified"})
 _FAIL_STATUSES = frozenset({"failed", "blocked", "timeout"})
 _SKIP_STATUS = "skipped"
 
@@ -342,7 +342,7 @@ def build_clients():
 
 
 def _label(status: str) -> str:
-    if status in _PASS_STATUSES:
+    if status in PASS_STATUSES:
         return "PASS"
     if status == _SKIP_STATUS:
         return "SKIP"

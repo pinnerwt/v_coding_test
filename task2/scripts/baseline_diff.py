@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from scripts.eval import _PASS_STATUSES
+from scripts.eval import PASS_STATUSES
 
 CaseDelta = Literal["regression", "improvement", "unchanged", "new", "dropped"]
 
@@ -20,8 +20,8 @@ def _classify(master_status: str | None, branch_status: str | None) -> CaseDelta
         return "new"
     if branch_status is None:
         return "dropped"
-    m_pass = master_status in _PASS_STATUSES
-    b_pass = branch_status in _PASS_STATUSES
+    m_pass = master_status in PASS_STATUSES
+    b_pass = branch_status in PASS_STATUSES
     if m_pass and not b_pass:
         return "regression"
     if not m_pass and b_pass:
@@ -30,7 +30,7 @@ def _classify(master_status: str | None, branch_status: str | None) -> CaseDelta
 
 
 def _pass_count(cases: list[dict]) -> int:
-    return sum(1 for c in cases if c.get("status") in _PASS_STATUSES)
+    return sum(1 for c in cases if c.get("status") in PASS_STATUSES)
 
 
 def _fmt_signed(val: float, fmt: str = ".0f") -> str:

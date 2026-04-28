@@ -14,8 +14,8 @@ from typing import Literal, get_args
 from agent.locator_cache import LocatorCache
 from scripts.baseline_diff import generate_diff_markdown
 from scripts.eval import (
-    _PASS_STATUSES,
     _SKIP_STATUS,
+    PASS_STATUSES,
     _run_case,
     build_clients,
     compute_exit_code,
@@ -113,7 +113,7 @@ def aggregate_repeats(
     runs = [_run_case(case, llm_client, browser, cache=cache) for _ in range(repeats)]
 
     all_skipped = all(r.status == _SKIP_STATUS for r in runs)
-    passed_runs = sum(1 for r in runs if r.status in _PASS_STATUSES)
+    passed_runs = sum(1 for r in runs if r.status in PASS_STATUSES)
 
     if all_skipped:
         repeat_status: RepeatStatus = "skipped"
@@ -145,7 +145,7 @@ def aggregate_repeats(
     median_steps = int(statistics.median(steps_values))
     mean_usd = sum(usd_values) / len(usd_values)
 
-    failing_runs = [r for r in runs if r.status not in _PASS_STATUSES and r.status != _SKIP_STATUS]
+    failing_runs = [r for r in runs if r.status not in PASS_STATUSES and r.status != _SKIP_STATUS]
     rep_run = failing_runs[-1] if failing_runs else runs[-1]
 
     return AggregatedCaseResult(

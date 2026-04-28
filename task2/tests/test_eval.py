@@ -1486,3 +1486,9 @@ def test_all_valid_skip_reasons_accepted():
             skip_reason=reason,
         )
         assert r.skip_reason == reason
+
+
+def test_pass_statuses_is_public_module_attribute():
+    from scripts.eval import PASS_STATUSES
+
+    assert PASS_STATUSES == frozenset({"succeeded", "unverified"})
