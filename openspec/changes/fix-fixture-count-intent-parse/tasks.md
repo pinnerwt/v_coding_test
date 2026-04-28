@@ -1,15 +1,15 @@
 ## 1. Red — unit tests for parse_intent with list/listitem roles
 
-- [ ] 1.1 In `task2/tests/test_locate.py`, add a test asserting `parse_intent("list")` returns `("list", None)` and does NOT raise `IntentParseError`
-- [ ] 1.2 In `task2/tests/test_locate.py`, add a test asserting `parse_intent("listitem")` returns `("listitem", None)` and does NOT raise `IntentParseError`
-- [ ] 1.3 In `task2/tests/test_locate.py`, add a test asserting `parse_intent("Items listitem")` returns `("listitem", "Items")`
-- [ ] 1.4 In `task2/tests/test_locate.py`, add a test asserting `parse_intent("items")` still raises `IntentParseError` with `"items"` in the message
-- [ ] 1.5 Run `cd task2 && uv run pytest tests/test_locate.py -x` — confirm the new tests fail for the expected reason (`IntentParseError`)
+- [x] 1.1 In `task2/tests/test_locate.py`, add a test asserting `parse_intent("list")` returns `("list", None)` and does NOT raise `IntentParseError`
+- [x] 1.2 In `task2/tests/test_locate.py`, add a test asserting `parse_intent("listitem")` returns `("listitem", None)` and does NOT raise `IntentParseError`
+- [x] 1.3 In `task2/tests/test_locate.py`, add a test asserting `parse_intent("Items listitem")` returns `("listitem", "Items")`
+- [x] 1.4 In `task2/tests/test_locate.py`, add a test asserting `parse_intent("items")` still raises `IntentParseError` with `"items"` in the message
+- [x] 1.5 Run `cd task2 && uv run pytest tests/test_locate.py -x` — confirm the new tests fail for the expected reason (`IntentParseError`)
 
 ## 2. Red — integration test for fixture-count with stubbed LLM
 
-- [ ] 2.1 In `task2/tests/test_eval.py`, add an integration test that loads `eval/cases/fixture-count.yaml`, runs `_run_case` (or `run_suite`) against a stubbed LLM that emits a single locate+read step with a `listitem` role intent, and asserts `result.status in {"succeeded", "unverified"}`
-- [ ] 2.2 Run `cd task2 && uv run pytest tests/test_eval.py -x -k fixture_count` — confirm the test fails due to `IntentParseError` (not a test-setup error)
+- [x] 2.1 In `task2/tests/test_eval.py`, add an integration test that loads `eval/cases/fixture-count.yaml`, runs `_run_case` (or `run_suite`) against a stubbed LLM that emits a single locate+read step with a `listitem` role intent, and asserts `result.status in {"succeeded", "unverified"}`
+- [x] 2.2 Run `cd task2 && uv run pytest tests/test_eval.py -x -k fixture_count` — confirm the test fails due to `IntentParseError` (not a test-setup error)
 
 ## 3. Green — extend `_SUPPORTED_ROLES` in `agent/locate.py`
 

@@ -174,3 +174,21 @@ def test_ax_fingerprint_resolves_label_for_association(fixture_server, playwrigh
     assert labelled.ax_fingerprint != empty
     assert labelledby.ax_fingerprint != empty
     assert labelled.ax_fingerprint != labelledby.ax_fingerprint
+
+
+def test_parse_intent_list_role():
+    assert parse_intent("list") == ("list", None)
+
+
+def test_parse_intent_listitem_role():
+    assert parse_intent("listitem") == ("listitem", None)
+
+
+def test_parse_intent_items_listitem():
+    assert parse_intent("Items listitem") == ("listitem", "Items")
+
+
+def test_parse_intent_items_still_raises():
+    with pytest.raises(IntentParseError) as excinfo:
+        parse_intent("items")
+    assert "items" in str(excinfo.value)
