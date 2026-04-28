@@ -13,20 +13,20 @@
 
 Cost and latency are split into passed vs. failed cases: a failing case bails out early, so a higher pass rate naturally raises totals. Compare the green (passed) and red (failed) series within a branch, not the totals across branches.
 
-### Latest run — `task2-extract-suite-iteration-helper` (2026-04-28 08:24 UTC)
+### Latest run — `task2-fix-fixture-count-intent-parse` (2026-04-28 09:23 UTC)
 
 | Case | Status | Steps | Latency | Tokens | USD |
 |---|---|---:|---:|---:|---:|
-| `canary-read-h1` | succeeded | 3 | 27.4 s | 4,299 | $0.0052 |
-| `correction-l1-miss-l2-hit` | failed | 2 | 23.5 s | 2,745 | $0.0035 |
-| `correction-replan` | succeeded | 2 | 19.4 s | 2,656 | $0.0033 |
-| `drift-submit-form-v1` | failed | 2 | 26.7 s | 2,868 | $0.0037 |
-| `drift-submit-form-v2` | failed | 2 | 26.5 s | 2,863 | $0.0037 |
-| `fixture-count` | failed | 0 | 0 ms | 0 | $0.0000 |
-| `fixture-heading` | succeeded | 3 | 26.3 s | 4,182 | $0.0050 |
-| `maintenance-drift-rename-v1` | failed | 2 | 20.4 s | 2,648 | $0.0033 |
-| `maintenance-drift-rename-v2` | failed | 2 | 20.3 s | 2,648 | $0.0033 |
-| **Total (9 cases, 3 passed)** | | 18 | 190.5 s | 24,909 | $0.0309 |
+| `canary-read-h1` | succeeded | 3 | 28.5 s | 4,318 | $0.0052 |
+| `correction-l1-miss-l2-hit` | failed | 2 | 16.6 s | 2,520 | $0.0030 |
+| `correction-replan` | succeeded | 2 | 19.1 s | 2,646 | $0.0032 |
+| `drift-submit-form-v1` | failed | 2 | 19.8 s | 2,638 | $0.0033 |
+| `drift-submit-form-v2` | failed | 2 | 19.7 s | 2,638 | $0.0033 |
+| `fixture-count` | succeeded | 3 | 21.9 s | 4,185 | $0.0048 |
+| `fixture-heading` | succeeded | 3 | 23.5 s | 4,100 | $0.0048 |
+| `maintenance-drift-rename-v1` | failed | 2 | 22.2 s | 2,704 | $0.0034 |
+| `maintenance-drift-rename-v2` | failed | 2 | 22.0 s | 2,704 | $0.0034 |
+| **Total (9 cases, 4 passed)** | | 21 | 193.3 s | 28,453 | $0.0344 |
 <!-- TRENDS:END -->
 
 
