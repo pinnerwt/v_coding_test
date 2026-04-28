@@ -357,7 +357,6 @@ Urgency tags:
 
 ### P2 — measurable improvements
 
-- **#49** — Extract shared variant + skip + shared-cache iteration helper into eval.py (consumed by both run_suite and aggregate_repeats caller).
 - **#50** — Per-repeat warm-cache bias when shared_cache + variants + --repeats > 1; needs decision on cold-start vs warm.
 - **#51** — Aggregation-aware scoreboard rollups (Total USD / p50 / p95) when --repeats > 1; current code mixes mean/sum semantics across fields.
 - **#52** — Robustify task2-benchmark.yml PR-comment posting: detect bot comment by id instead of relying on `gh --edit-last` + `2>/dev/null` fallback that masks real errors.
