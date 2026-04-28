@@ -11,11 +11,32 @@ Automate the full development cycle for the next Task 2 TDD ticket: derive ticke
 
 ### 1. Identify the next ticket
 
-Read `task2/plan.md` and locate the **`## Undone`** rubric (between `## Benchmark improvements (candidates)` and `## Honest risks / tradeoffs`). It groups remaining tickets by urgency — **P0** (unblocks other tickets / removes recurring debug friction), **P1** (observed bugs blocking the brief's done bar), **P2** (measurable improvements), **P3** (nice-to-have).
+**Selection rule (benchmark-impact-first, per user directive 2026-04-28):** pick the candidate most likely to flip the most red benchmark cases to green on the next benchmark run. Implement, run benchmark, report the pass-rate delta. Stop the wrapping loop when pass-rate plateaus across consecutive iterations or demo time arrives.
 
-**Selection rule:** pick the highest-urgency entry available; tie-break by lowest ticket number within the same bucket. Do **not** pick from the `### In flight` subsection — those have an open PR awaiting merge. Lowest-numbered selection is **only** the fallback when the rubric is missing/empty.
+How to apply, in order:
 
-Why urgency-first: P0 tickets unblock work that a numerical-order pass would silently defer. Concrete example observed in PR #62 (ticket #32, 2026-04-27): the implementation deferred Task 7.1 (real-Qwen smoke check) because the eval-runner default `LLM_MODEL=qwen3` 404s against the local Qwen serving `qwen3-5-27b`. That deferral was filed as ticket #44 (P0) — picking it next is much higher leverage than the next-numbered P2 candidate (#33 scoreboard-traffic-lights), since #44 also unblocks the smoke check on every future ticket.
+1. **Read the latest benchmark scoreboard** to know what is red and why.
+   ```bash
+   ls -t task2/benchmark/*/results.json | head -3
+   cat task2/benchmark/master/scoreboard.md  # or the most recent per-branch scoreboard
+   ```
+   Note each failing case and its `failure_class` / step pattern. The "Failure histogram" block at the top of `scoreboard.md` (added in ticket #42) is the fastest summary.
+
+2. **Read the `## Undone` rubric in `task2/plan.md`** (between `## Benchmark improvements (candidates)` and `## Honest risks / tradeoffs`) and the long-form `## Benchmark improvements (candidates)` and `## TDD tickets` sections. Cross-check against `openspec/changes/archive/` for stale entries (archived directories carry a date prefix; strip it when matching). Skip the `### In flight` subsection.
+
+3. **Estimate red→green flips per candidate.** For each candidate ticket, write one line: `ticket #N: flips ~K cases — case A (failure_class=X), case B (...)`. The estimate is judgment, not arithmetic — but it must reference *currently red* cases by name. Examples:
+   - A ticket that fixes a specific `IntentParseError` (e.g. #56 fixes `fixture-count`) flips 1 case if that's the only red case with that failure mode.
+   - A ticket that fixes the supervisor `next_tier` policy plumbing (e.g. #32) plausibly flips 5 cases (every red case with `failure_class=no_done_emitted` and step pattern "read → fail").
+   - A pure refactor / dev-experience ticket (e.g. #49 was) flips 0.
+   - A ticket that improves *diagnosis without fixing the underlying bug* (e.g. failure-class enrichment, scoreboard traffic lights) flips 0; pick those only when their absence currently blocks an estimate for another candidate.
+
+4. **Pick the highest expected red→green count.** Tie-break by lowest ticket number. Tickets with 0 expected flips drop to the bottom unless every red case is gated on a 0-flip ticket landing first. The Undone rubric's P0/P1/P2/P3 urgency tags are *advisory* under this rule — a P3 ticket that flips 5 cases beats a P0 that flips 0.
+
+5. **State the chosen ticket** in one line: ticket number, title, urgency tag (still record it for the audit trail), derived change name, and the **expected red→green count** (e.g. `iteration 8 picks #56 (P2, expected flips: 1) → fix-fixture-count-intentparse`).
+
+The urgency tag remains useful as a tie-breaker between equally-impactful candidates and as documentation of *why* a 0-flip ticket might still be picked (e.g. it unblocks several others). Do not drop it from the rubric or the per-iteration log.
+
+**Stop condition for the wrapping `/auto_task2` loop:** after `/done_pr` records the new benchmark, compute the pass-rate delta against the prior master baseline. If two consecutive iterations produce zero net pass-rate improvement (delta ≤ 0 each time), halt and surface to the user. The 8-iteration ceiling still applies as a hard cap.
 
 Cross-check the rubric against the filesystem to catch stale entries:
 ```bash
