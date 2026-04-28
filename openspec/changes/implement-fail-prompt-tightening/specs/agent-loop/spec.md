@@ -24,3 +24,8 @@ The old unconditional phrasing ("If you cannot complete the task, call `fail` wi
 
 - **WHEN** `_build_system_prompt("any task")` is called
 - **THEN** the returned string SHALL NOT contain the substring `"If you cannot complete the task, call"`
+
+#### Scenario: system prompt names irrecoverable conditions
+
+- **WHEN** `_build_system_prompt("any task")` is called
+- **THEN** the returned string SHALL contain the substrings `"login walls"`, `"captchas"`, `"pages that don't exist"`, and `"required information genuinely absent from the page"`
