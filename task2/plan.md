@@ -347,8 +347,6 @@ Urgency tags:
 
 ### P0 — unblocks other work
 
-- **#55** — URGENT: Investigate benchmark-score degradation across recent commits — build per-case regression-onset SHA map, identify candidate cause commits, confirm root cause (validator change vs prompt drift vs Qwen drift vs cache regression).
-
 ### P1 — observed bugs / type-narrowing gaps
 
 *(none currently)*
