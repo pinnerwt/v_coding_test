@@ -136,13 +136,13 @@ def aggregate_repeats(
     steps_values = [r.steps for r in runs]
     firings = [len(r.escalations) + r.replans for r in runs]
 
-    median_lat = int(statistics.median(latencies)) if latencies else 0
-    p95_lat = _percentile(latencies, 95) if latencies else 0
-    stddev_usd = statistics.pstdev(usd_values) if len(usd_values) > 1 else 0.0
-    avg_firings = sum(firings) / len(firings) if firings else 0.0
+    median_lat = int(statistics.median(latencies))
+    p95_lat = _percentile(latencies, 95)
+    stddev_usd = statistics.pstdev(usd_values)
+    avg_firings = sum(firings) / len(firings)
     mean_replans = sum(r.replans for r in runs) / len(runs)
-    median_steps = int(statistics.median(steps_values)) if steps_values else 0
-    mean_usd = sum(usd_values) / len(usd_values) if usd_values else 0.0
+    median_steps = int(statistics.median(steps_values))
+    mean_usd = sum(usd_values) / len(usd_values)
 
     failing_runs = [r for r in runs if r.status not in _PASS_STATUSES and r.status != _SKIP_STATUS]
     rep_run = failing_runs[-1] if failing_runs else runs[-1]

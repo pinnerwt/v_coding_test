@@ -700,3 +700,68 @@ def test_main_repeats_3_calls_run_case_three_times_per_case(tmp_path, monkeypatc
 
     assert mock_run_case.call_count == 3
     assert rc == 0
+
+
+def test_aggregate_repeats_avg_mechanism_firings_is_mean_of_per_run_total():
+    from unittest.mock import MagicMock
+
+    from scripts.benchmark import aggregate_repeats
+
+    side_effects = [
+        _make_case_result("succeeded", escalations=[{"tier": "L2"}], replans=0),
+        _make_case_result("succeeded", escalations=[{"tier": "L2"}, {"tier": "L3"}], replans=1),
+        _make_case_result("succeeded", escalations=[], replans=2),
+    ]
+    with patch("scripts.benchmark._run_case", side_effect=side_effects):
+        result = aggregate_repeats(
+            _SAMPLE_CASE,
+            repeats=3,
+            llm_client=MagicMock(),
+            browser=MagicMock(),
+            live=True,
+        )
+
+    assert result.repeat_status == "all_pass"
+    assert result.avg_mechanism_firings == 2.0
+
+
+def test_main_repeats_shared_cache_forwarded_to_all_variants(tmp_path, monkeypatch):
+    from unittest.mock import MagicMock
+
+    from scripts.benchmark import main
+
+    cases_dir = tmp_path / "cases"
+    cases_dir.mkdir()
+    (cases_dir / "case.yaml").write_text(
+        "id: fixture-variants\n"
+        "domain: example.com\n"
+        "category: fixture\n"
+        "task: do something\n"
+        "expect: {}\n"
+        "budget: {steps: 5, usd: 1.0, seconds: 30}\n"
+        "fixture: true\n"
+        "shared_cache: true\n"
+        "variants: [v1, v2]\n"
+    )
+
+    monkeypatch.setenv("EVAL_CASES_DIR", str(cases_dir))
+    monkeypatch.setenv("GITHUB_HEAD_REF", "test-branch")
+    monkeypatch.chdir(tmp_path)
+
+    passing = _make_case_result("succeeded")
+    mock_browser = MagicMock()
+    mock_browser.__enter__ = MagicMock(return_value=mock_browser)
+    mock_browser.__exit__ = MagicMock(return_value=False)
+
+    with (
+        patch("scripts.benchmark._run_case", return_value=passing) as mock_run_case,
+        patch("scripts.benchmark.build_clients", return_value=(MagicMock(), mock_browser)),
+    ):
+        rc = main(["--repeats", "2"])
+
+    assert rc == 0
+
+    caches = [call.kwargs["cache"] for call in mock_run_case.call_args_list]
+    assert len(caches) == 4
+    assert caches[0] is not None
+    assert all(c is caches[0] for c in caches)
