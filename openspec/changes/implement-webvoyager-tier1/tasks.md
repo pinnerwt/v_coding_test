@@ -15,9 +15,9 @@
 
 ## 3. Green — --tier flag in bench runner
 
-- [ ] 3.1 In `task2/scripts/bench.py`, add `--tier` argument: `parser.add_argument("--tier", type=int, choices=[0, 1], default=0)`. Extend `_DEFAULT_TASK_PATHS` to a nested dict keyed by `(suite, tier)` — or use a two-level dict — mapping `("webvoyager", 0)` to the existing Tier-0 path and `("webvoyager", 1)` to `eval/bench/data/webvoyager/tier1.json`. Update the path-resolution line to use `args.tier`. The `WEBVOYAGER_TASKS` env-var override must still take precedence.
-- [ ] 3.2 Run `uv run pytest tests/test_bench.py::test_bench_tier_flag_default_selects_tier0 tests/test_bench.py::test_bench_tier1_flag_selects_tier1_path tests/test_bench.py::test_bench_webvoyager_tasks_env_overrides_tier1 -x` from `task2/` and confirm all three pass.
-- [ ] 3.3 Run the full test suite `uv run pytest tests/test_bench.py -x` and confirm no regressions.
+- [x] 3.1 In `task2/scripts/bench.py`, add `--tier` argument: `parser.add_argument("--tier", type=int, choices=[0, 1], default=0)`. Extend `_DEFAULT_TASK_PATHS` to a nested dict keyed by `(suite, tier)` — or use a two-level dict — mapping `("webvoyager", 0)` to the existing Tier-0 path and `("webvoyager", 1)` to `eval/bench/data/webvoyager/tier1.json`. Update the path-resolution line to use `args.tier`. The `WEBVOYAGER_TASKS` env-var override must still take precedence.
+- [x] 3.2 Run `uv run pytest tests/test_bench.py::test_bench_tier_flag_default_selects_tier0 tests/test_bench.py::test_bench_tier1_flag_selects_tier1_path tests/test_bench.py::test_bench_webvoyager_tasks_env_overrides_tier1 -x` from `task2/` and confirm all three pass.
+- [x] 3.3 Run the full test suite `uv run pytest tests/test_bench.py -x` and confirm no regressions.
 
 ## 4. Lint and format
 
