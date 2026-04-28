@@ -4,7 +4,7 @@
 
 ## What Changes
 
-- Introduce `iter_runnable_subcases(parent_cases, *, live) -> Iterator[tuple[dict, LocatorCache | None, str | None]]` in `task2/scripts/eval.py` — a single authoritative place for variant expansion, shared-cache construction, and skip-reason determination.
+- Introduce `iter_runnable_subcases(parent_cases, *, live) -> Iterator[tuple[dict, LocatorCache | None, SkipReason | None]]` in `task2/scripts/eval.py` — a single authoritative place for variant expansion, shared-cache construction, and skip-reason determination.
 - Refactor `run_suite` (lines 313-321) to consume the iterator instead of its inline expand-and-skip block.
 - Refactor `benchmark.py::main`'s `--repeats > 1` block (lines 298-306) to consume the same iterator.
 - Add parametrized tests covering the five scenarios (two-variant shared-cache, live-disabled skip, fixture-missing skip, non-variant, variants-no-shared-cache).
