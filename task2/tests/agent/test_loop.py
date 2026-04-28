@@ -3023,9 +3023,15 @@ def _make_fake_browser_for_type(
     )
 
     class _StubLocator:
+        def __init__(self):
+            self.fill_calls: list[dict] = []
+
         def fill(self, text, *, timeout):
+            self.fill_calls.append({"text": text, "timeout": timeout})
             if fill_raises is not None:
                 raise fill_raises
+
+    stub_locator = _StubLocator()
 
     class _StubPage:
         @property
@@ -3036,11 +3042,11 @@ def _make_fake_browser_for_type(
             assert sel == locate_result.selector, (
                 f"expected page.locator({locate_result.selector!r}), got {sel!r}"
             )
-            return _StubLocator()
+            return stub_locator
 
     fake_page = _StubPage()
     fake_browser = types.SimpleNamespace(_page=fake_page)
-    return fake_browser, locate_result
+    return fake_browser, locate_result, stub_locator
 
 
 def test_loop_type_playwright_timeout_yields_outcome_timeout(monkeypatch):
@@ -3051,7 +3057,9 @@ def test_loop_type_playwright_timeout_yields_outcome_timeout(monkeypatch):
 
     selector = "input#email"
     fill_err = pw_api.TimeoutError("fill timed out")
-    fake_browser, locate_result = _make_fake_browser_for_type(selector, fill_raises=fill_err)
+    fake_browser, locate_result, stub_locator = _make_fake_browser_for_type(
+        selector, fill_raises=fill_err
+    )
 
     monkeypatch.setattr(
         "agent.loop._locate_or_error_msg",
@@ -3081,6 +3089,9 @@ def test_loop_type_playwright_timeout_yields_outcome_timeout(monkeypatch):
     assert result_str.startswith("Error: type timeout"), (
         f"expected tool result to start with 'Error: type timeout', got {result_str!r}"
     )
+    assert stub_locator.fill_calls == [{"text": "foo", "timeout": 5000}], (
+        f"expected one fill call with timeout=5000, got {stub_locator.fill_calls!r}"
+    )
     writer.close()
 
 
@@ -3092,7 +3103,9 @@ def test_loop_type_playwright_error_yields_outcome_error(monkeypatch):
 
     selector = "input#email"
     fill_err = pw_api.Error("element is not an HTMLInputElement")
-    fake_browser, locate_result = _make_fake_browser_for_type(selector, fill_raises=fill_err)
+    fake_browser, locate_result, _stub_locator = _make_fake_browser_for_type(
+        selector, fill_raises=fill_err
+    )
 
     monkeypatch.setattr(
         "agent.loop._locate_or_error_msg",
@@ -3179,7 +3192,7 @@ def test_loop_type_dispatch_ok_returns_typed_into_string(monkeypatch):
     from agent.supervisor import Supervisor
 
     selector = "input#email"
-    fake_browser, locate_result = _make_fake_browser_for_type(selector)
+    fake_browser, locate_result, _stub_locator = _make_fake_browser_for_type(selector)
 
     monkeypatch.setattr(
         "agent.loop._locate_or_error_msg",
