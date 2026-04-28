@@ -206,6 +206,38 @@ def test_write_diff_missing_baseline_skips_gracefully(tmp_path, capsys):
     assert captured.err != ""
 
 
+def test_per_case_table_order_is_deterministic():
+    from scripts.baseline_diff import generate_diff_markdown
+
+    master_abc = {
+        "run_at": "2026-04-20T00:00:00+00:00",
+        "cases": [
+            {"id": "a", "status": "succeeded", "usd": 0.01, "latency_ms_total": 1000},
+            {"id": "b", "status": "failed", "usd": 0.01, "latency_ms_total": 1000},
+            {"id": "c", "status": "succeeded", "usd": 0.01, "latency_ms_total": 1000},
+        ],
+    }
+    master_cba = {
+        "run_at": "2026-04-20T00:00:00+00:00",
+        "cases": [
+            {"id": "c", "status": "succeeded", "usd": 0.01, "latency_ms_total": 1000},
+            {"id": "b", "status": "failed", "usd": 0.01, "latency_ms_total": 1000},
+            {"id": "a", "status": "succeeded", "usd": 0.01, "latency_ms_total": 1000},
+        ],
+    }
+    branch = {
+        "run_at": "2026-04-28T00:00:00+00:00",
+        "cases": [
+            {"id": "a", "status": "succeeded", "usd": 0.01, "latency_ms_total": 1000},
+            {"id": "b", "status": "succeeded", "usd": 0.01, "latency_ms_total": 1000},
+            {"id": "c", "status": "succeeded", "usd": 0.01, "latency_ms_total": 1000},
+        ],
+    }
+    out_abc = generate_diff_markdown(master_abc, branch)
+    out_cba = generate_diff_markdown(master_cba, branch)
+    assert out_abc == out_cba
+
+
 def test_dropped_case_row_present():
     from scripts.baseline_diff import generate_diff_markdown
 

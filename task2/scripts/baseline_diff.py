@@ -41,7 +41,7 @@ def _fmt_signed(val: float, fmt: str = ".0f") -> str:
 def generate_diff_markdown(master: dict, branch: dict) -> str:
     master_cases: dict[str, dict] = {c["id"]: c for c in master.get("cases", [])}
     branch_cases: dict[str, dict] = {c["id"]: c for c in branch.get("cases", [])}
-    all_ids = list(master_cases) + [k for k in branch_cases if k not in master_cases]
+    all_ids = sorted(set(master_cases) | set(branch_cases))
 
     lines: list[str] = [
         "## Δ vs master",
