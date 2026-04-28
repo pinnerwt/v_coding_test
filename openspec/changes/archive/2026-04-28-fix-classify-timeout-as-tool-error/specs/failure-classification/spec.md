@@ -1,10 +1,4 @@
-# failure-classification Specification
-
-## Purpose
-
-Provide structured, derived classification of why an eval case failed, so that scoreboards and downstream tooling can surface actionable failure modes (locator misses, supervisor halts, schema errors, validator failures, etc.) instead of an opaque `"failed"` status. Classification is computed from the run trace and validator results, not stored separately, so old result files remain consumable and new ones gain a `failure_class` / `failure_detail` pair.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: _classify_failure derives failure_class and failure_detail from trace
 
@@ -102,30 +96,3 @@ The function is pure — it does not access `TraceWriter`, the file system, or a
 - **WHEN** `_classify_failure(events, validators=[], status="failed")` is called
 - **THEN** the first element of the result SHALL equal `"supervisor_halt"`
 - **AND** NOT `"tool_error"`
-
-### Requirement: Scoreboard surfaces failure_class column
-
-`scripts/score.py`'s `generate_scoreboard` function SHALL include a `Failure class` column in the per-case Markdown table. For each case:
-
-- When `failure_class` is a non-None string, the column SHALL display the literal value (e.g. `no_done_emitted`).
-- When `failure_class` is `None` or the key is absent from the case dict, the column SHALL display `-`.
-
-The summary section (pass rate, latency, token totals, mechanism firing rates) does not need to change.
-
-#### Scenario: Failed case shows failure_class in scoreboard
-
-- **GIVEN** a results dict with one case `{"status": "failed", "failure_class": "no_done_emitted", ...}`
-- **WHEN** `generate_scoreboard(data)` is called
-- **THEN** the returned Markdown SHALL contain `no_done_emitted` in the per-case row
-
-#### Scenario: Passing case shows dash in failure_class column
-
-- **GIVEN** a results dict with one case `{"status": "succeeded", "failure_class": null, ...}`
-- **WHEN** `generate_scoreboard(data)` is called
-- **THEN** the per-case row SHALL contain `-` in the Failure class column position
-
-#### Scenario: Missing failure_class key shows dash (backward compat with old results)
-
-- **GIVEN** a results dict with one case that has no `failure_class` key (old result file format)
-- **WHEN** `generate_scoreboard(data)` is called
-- **THEN** the per-case row SHALL display `-` without raising an error

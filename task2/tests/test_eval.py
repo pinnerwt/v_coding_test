@@ -1318,6 +1318,24 @@ def test_classify_failure_tool_error():
     assert "TimeoutError" in detail
 
 
+def test_classify_failure_tool_error_timeout():
+    from agent.trace import ActEvent
+    from scripts.eval import _classify_failure
+
+    rid = _make_run_id()
+    ev = ActEvent(
+        **_make_base_fields(rid, 1),
+        tool="click",
+        args={},
+        outcome="timeout",
+        diff={"error": "TimeoutError on selector X"},
+        ms=100,
+    )
+    fc, detail = _classify_failure([ev], [], "failed")
+    assert fc == "tool_error"
+    assert "TimeoutError on selector X" in detail
+
+
 def test_classify_failure_validator_fail():
     from agent.trace import DoneEvent
     from scripts.eval import _classify_failure
