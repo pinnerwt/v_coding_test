@@ -205,3 +205,24 @@ def test_write_diff_missing_baseline_skips_gracefully(tmp_path, capsys):
     assert not diff_path.exists()
     captured = capsys.readouterr()
     assert captured.err != ""
+
+
+def test_dropped_case_row_present():
+    from scripts.baseline_diff import generate_diff_markdown
+
+    master = {
+        "run_at": "2026-04-20T00:00:00+00:00",
+        "cases": [
+            {"id": "x", "status": "succeeded", "usd": 0.01, "latency_ms_total": 1000},
+            {"id": "y", "status": "failed", "usd": 0.005, "latency_ms_total": 500},
+        ],
+    }
+    branch = {
+        "run_at": "2026-04-28T00:00:00+00:00",
+        "cases": [
+            {"id": "x", "status": "succeeded", "usd": 0.01, "latency_ms_total": 1000},
+        ],
+    }
+    out = generate_diff_markdown(master, branch)
+    assert "y" in out
+    assert "dropped" in out
