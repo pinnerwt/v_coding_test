@@ -28,6 +28,6 @@
 
 ## 5. Final cleanup
 
-- [ ] 5.1 Run `uv run ruff check .` from `task2/` and fix any linting issues.
-- [ ] 5.2 Run `uv run ruff format .` from `task2/` if needed to pass format checks.
-- [ ] 5.3 Run `uv run pytest task2/` one final time and confirm full suite passes with no warnings.
+- [x] 5.1 Run `uv run ruff check .` from `task2/` and fix any linting issues.
+- [x] 5.2 Run `uv run ruff format .` from `task2/` if needed to pass format checks.
+- [x] 5.3 Run `uv run pytest task2/` one final time and confirm full suite passes with no warnings.
