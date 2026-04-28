@@ -16,7 +16,7 @@ TBD - created by archiving change implement-quantitative-eval. Update Purpose af
 The scoreboard SHALL contain all of the following sections, in order:
 
 - **Category summary**: one line per suite in `SUITE_THRESHOLDS` insertion order, rendered BEFORE the per-case table. Each line SHALL follow the format: `<SuiteName>: <passed>/<ran> (<pct>%) [target <target>%] <glyph>` where `<glyph>` is ✅ when passed/ran >= target_pct and ran > 0, ❌ when passed/ran < target_pct and ran > 0, or ⏭️ when ran == 0. Cases not matching any suite prefix SHALL be omitted from the category summary (not shown as "other" row).
-- **Per-case status table**: columns `Case`, `Status`, `Steps`, `Latency (ms)`, `USD`, `Tokens (P+C)`, `Escalations`, `Replans`, `Cache Inv.`, `Failure class`
+- **Per-case status table**: columns `Case`, `Status`, `Steps`, `Latency (ms)`, `USD`, `Tokens (P+C)`, `Escalations`, `Replans`, `Cache Hits`, `Cache Misses`, `Cache Inv.`, `Failure class`
 - **Summary line**: `N/M succeeded (X%)` where N = passed (succeeded + unverified), M = total non-skipped.
 - **Latency percentiles**: `p50: Xms  p95: Xms` computed over `latency_ms_total` values of non-skipped cases.
 - **Totals**: `Total USD: $X.XXXX   Total tokens: P prompt + C completion`.
@@ -24,6 +24,16 @@ The scoreboard SHALL contain all of the following sections, in order:
 - **Mechanism firing rates**: table rendered as `| Mechanism | Cases with ≥1 firing |` with rows for `L1→L2 escalation`, `Replan`, and `Cache invalidation`, each showing `N/M` (non-skipped cases with at least one firing / total non-skipped).
 
 "Ran" for the category summary SHALL be defined as cases whose `status` is NOT `"skipped"`. "Passed" for the category summary SHALL be cases whose `status` is `"succeeded"` or `"unverified"`.
+
+**Per-case cache columns:**
+
+The per-case table SHALL include three cache columns in the following left-to-right order, adjacent to each other and immediately left of `Failure class`:
+
+- `Cache Hits` — populated from `case.get("cache_events", {}).get("hits", 0)`
+- `Cache Misses` — populated from `case.get("cache_events", {}).get("misses", 0)`
+- `Cache Inv.` — populated from `case.get("cache_events", {}).get("invalidations", 0)` (existing column, unchanged)
+
+All three columns SHALL default to `0` when `cache_events` is absent or the key is missing (backward-compatible with old result files).
 
 **Per-case Status column rendering (added by implement-bench-repeats):**
 
@@ -120,6 +130,29 @@ The helper SHALL be backward-compatible: results JSON files that do not contain 
 - **WHEN** `_render_case_status(case)` is called
 - **THEN** it SHALL NOT raise a `KeyError`
 - **AND** SHALL return a string (defaulting to plain status or `0/3 ✗`)
+
+#### Scenario: Cache Hits and Cache Misses columns appear in per-case table header
+
+- **GIVEN** a results file with at least one case entry
+- **WHEN** `generate_scoreboard(data)` is called
+- **THEN** the per-case table header row SHALL contain `Cache Hits`
+- **AND** the per-case table header row SHALL contain `Cache Misses`
+- **AND** both columns SHALL appear to the left of `Cache Inv.` in the header
+
+#### Scenario: Cache Hits and Cache Misses populated from cache_events dict
+
+- **GIVEN** a results file with a case containing `cache_events: {hits: 1, misses: 1, invalidations: 0}`
+- **WHEN** `generate_scoreboard(data)` is called
+- **THEN** the per-case table row for that case SHALL contain `1` in the `Cache Hits` column
+- **AND** the per-case table row for that case SHALL contain `1` in the `Cache Misses` column
+- **AND** the per-case table row for that case SHALL contain `0` in the `Cache Inv.` column
+
+#### Scenario: Cache Hits and Cache Misses default to 0 when cache_events is absent
+
+- **GIVEN** a results file with a case that has no `cache_events` key
+- **WHEN** `generate_scoreboard(data)` is called
+- **THEN** the per-case table row SHALL show `0` for both `Cache Hits` and `Cache Misses`
+- **AND** no exception SHALL be raised
 
 ### Requirement: Suite-threshold config block
 
