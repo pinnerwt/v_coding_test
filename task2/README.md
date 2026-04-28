@@ -2,10 +2,40 @@
 
 ## Benchmarks
 
-The agent is exercised by two benchmark suites. The **basic benchmark** is a synthetic, fixture-backed suite that covers the agent's mechanism contracts (locate ladder, cache invalidation, supervisor halt/replan). It runs offline against bundled HTML fixtures and is the inner loop for development. The **WebVoyager benchmark** runs a curated subset of [WebVoyager](https://arxiv.org/abs/2401.13919) tasks against the live web and is the outer-loop signal for "does the agent generalize to a random task on a real site." Both write per-branch artifacts under `benchmark/<branch>/` and feed the trend charts.
+The per-PR benchmark is **WebVoyager** — a curated subset of real-world web-navigation tasks from [WebVoyager](https://arxiv.org/abs/2401.13919) (He et al., 2024, CC BY 4.0). Each `/done_pr` run records a fresh WebVoyager run for the branch under `benchmark/<branch>/webvoyager/<timestamp>.json`. The earlier fixture-backed *basic benchmark* (locate ladder, cache invalidation, supervisor halt/replan) is **archived** below — its prior trend charts and the most recent run are preserved for context but the suite is no longer executed per PR.
+
+### WebVoyager benchmark (live web)
+
+WebVoyager tasks are real-world web-navigation prompts (e.g. "Navigate to wikipedia.org and find the 2018 Turing Award winners"). The vendored subset under `eval/bench/data/webvoyager/` is biased toward sites that are stable, popup-free, and load fast (Wikipedia, arXiv, GitHub, HuggingFace, BBC News, Cambridge Dictionary, Wolfram Alpha) so the suite stays cheap enough to run on every branch. Sites known to gate behind login, captcha, or aggressive bot detection (Booking, Flights, Amazon, Allrecipes, Apple, Coursera) are deliberately excluded.
+
+Run the live suite from `task2/`:
+
+```bash
+BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+SAFE_BRANCH="${BRANCH//\//-}"
+EVAL_RESULTS_DIR="benchmark/${SAFE_BRANCH}/webvoyager" \
+  LLM_BASE_URL=http://localhost:8090 LLM_MODEL=qwen3.5-27b \
+  uv run python -m scripts.bench --suite webvoyager --live
+```
+
+Artifacts land at `task2/benchmark/<sanitized-branch>/webvoyager/<timestamp>.json` in the same `cases[]` shape as `benchmark/task2-benchmarks-readme-and-tier0/webvoyager/baseline.json`. There is no aggregated trend view yet; comparing runs is a manual diff between the JSON files until a future ticket adds it.
+
+#### Tier-0 baseline (3 tasks, 2026-04-28)
+
+| Case | Site | Status | Steps | Latency | USD |
+|---|---|---|---:|---:|---:|
+| `webvoyager-1` | Wikipedia | failed (`tool_error`: `LLMError('http 400')` at step 0) | 0 | 0.0 s | $0.0000 |
+| `webvoyager-2` | arXiv | succeeded | 9 | 92.9 s | $0.1146 |
+| `webvoyager-3` | GitHub | succeeded | 6 | 51.9 s | $0.0405 |
+
+2/3 passed. Per-passing-task cost ≈ $0.08, latency ≈ 50–90 s. The Wikipedia failure is a `LLMError('http 400')` from the Qwen endpoint at step 0 (zero tokens billed) — likely transient endpoint state, not an agent bug. Persisted at `benchmark/task2-benchmarks-readme-and-tier0/webvoyager/baseline.json` for reference.
+
+### Archived: basic benchmark (do not run)
+
+The fixture-backed basic benchmark was retired on 2026-04-28 in favor of WebVoyager. The trend block, snapshot table, and run instructions below are preserved for audit-trail interpretability of past PR records — **do not invoke `scripts.benchmark` or `scripts.trends`**, and do not edit this section.
 
 <!-- TRENDS:BEGIN -->
-### Basic benchmark
+#### Trends (archived)
 
 ![Pass rate over time](benchmark/_trends/pass_rate.svg)
 
@@ -17,7 +47,7 @@ The agent is exercised by two benchmark suites. The **basic benchmark** is a syn
 
 Cost and latency are split into passed vs. failed cases: a failing case bails out early, so a higher pass rate naturally raises totals. Compare the green (passed) and red (failed) series within a branch, not the totals across branches.
 
-#### Latest run — `task2-implement-fail-preflight-gate` (2026-04-28 20:41 UTC)
+#### Final basic-benchmark run — `task2-implement-fail-preflight-gate` (2026-04-28 20:41 UTC)
 
 | Case | Status | Steps | Latency | Tokens | USD |
 |---|---|---:|---:|---:|---:|
@@ -32,29 +62,6 @@ Cost and latency are split into passed vs. failed cases: a failing case bails ou
 | `maintenance-drift-rename-v2` | succeeded | 2 | 5.9 s | 2,548 | $0.0027 |
 | **Total (9 cases, 9 passed)** | | 16 | 58.1 s | 21,028 | $0.0224 |
 <!-- TRENDS:END -->
-
-### WebVoyager benchmark (live web)
-
-WebVoyager tasks are real-world web navigation prompts (e.g. "Navigate to wikipedia.org and find the 2018 Turing Award winners") originally published by [He et al., 2024](https://arxiv.org/abs/2401.13919) under CC BY 4.0. We vendor a curated subset under `eval/bench/data/webvoyager/`, biased toward sites that are stable, popup-free, and load fast (Wikipedia, arXiv, GitHub, HuggingFace, BBC News, Cambridge Dictionary, Wolfram Alpha) so the suite stays cheap enough to run on every branch. Sites known to gate behind login, captcha, or aggressive bot detection (Booking, Flights, Amazon, Allrecipes, Apple, Coursera) are deliberately excluded.
-
-Run the live suite from `task2/`:
-
-```bash
-LLM_BASE_URL=http://localhost:8090 LLM_MODEL=qwen3.5-27b \
-  uv run python -m scripts.bench --suite webvoyager --live
-```
-
-Live results land under `eval/results/` (configurable via `EVAL_RESULTS_DIR`). The trend charts above only reflect the basic benchmark today; WebVoyager is tracked separately while the suite stabilizes.
-
-#### Tier-0 baseline (3 tasks, 2026-04-28)
-
-| Case | Site | Status | Steps | Latency | USD |
-|---|---|---|---:|---:|---:|
-| `webvoyager-1` | Wikipedia | failed (`tool_error`: `LLMError('http 400')` at step 0) | 0 | 0.0 s | $0.0000 |
-| `webvoyager-2` | arXiv | succeeded | 9 | 92.9 s | $0.1146 |
-| `webvoyager-3` | GitHub | succeeded | 6 | 51.9 s | $0.0405 |
-
-2/3 passed. Per-passing-task cost ≈ $0.08, latency ≈ 50–90 s. The Wikipedia failure is a `LLMError('http 400')` from the Qwen endpoint at step 0 (zero tokens billed) — likely transient endpoint state, not an agent bug. Persisted at `benchmark/task2-benchmarks-readme-and-tier0/webvoyager/baseline.json` for reference.
 
 See `plan.md` for the full design. This README is the operator's guide.
 
