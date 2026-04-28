@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Literal
 import agent.observe as observe
 import agent.plan as plan_module
 from agent.locate import (
+    IntentParseError,
     LocateResult,
     LocatorMiss,
     _canonical_ax_fingerprint,
@@ -19,7 +20,7 @@ from agent.locate import (
 )
 from agent.locator_cache import CacheEntry, _origin_from_url
 from agent.supervisor import EscalationDecision, Supervisor
-from agent.trace import LocateEvent, PlanEvent, SupervisorEvent, TraceWriter
+from agent.trace import ActEvent, LocateEvent, PlanEvent, SupervisorEvent, TraceWriter
 
 if TYPE_CHECKING:
     from playwright.sync_api import Page
@@ -29,7 +30,8 @@ if TYPE_CHECKING:
     from agent.locator_cache import LocatorCache
 
 RunStatus = Literal["succeeded", "unverified", "failed", "timeout"]
-ToolName = Literal["goto", "read", "done", "fail"]
+ToolName = Literal["goto", "read", "click", "done", "fail"]
+_CLICK_SUCCESS_OUTCOMES: frozenset[str] = frozenset({"ok", "nav"})
 
 STATE_MESSAGE_PREFIX = "Current state: "
 
@@ -101,6 +103,23 @@ TOOLS: list[dict] = [
                     },
                 },
                 "required": ["result", "evidence"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "click",
+            "description": "Click a page element described by intent.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "intent": {
+                        "type": "string",
+                        "description": "Describe the element to click (e.g. 'the Submit button').",
+                    }
+                },
+                "required": ["intent"],
             },
         },
     },
@@ -315,6 +334,33 @@ def _emit_supervisor_event(
     trace_writer.append_event(event)
 
 
+def _emit_act_event(
+    *,
+    trace_writer: TraceWriter | None,
+    run_id: str | None,
+    tool: str,
+    args: dict[str, Any],
+    outcome: Literal["ok", "no_effect", "nav", "timeout", "error"],
+    ms: int,
+    step_id: str | None = None,
+) -> None:
+    if trace_writer is None or run_id is None:
+        return
+    seq = trace_writer.next_seq(run_id)
+    event = ActEvent(
+        run_id=run_id,
+        seq=seq,
+        ts=datetime.now(UTC).isoformat(),
+        step_id=step_id,
+        tool=tool,
+        args=args,
+        outcome=outcome,
+        diff={},
+        ms=ms,
+    )
+    trace_writer.append_event(event)
+
+
 def _locate_with_supervisor(
     page: Page,
     intent: str,
@@ -435,6 +481,30 @@ def _locate_with_supervisor(
     return result
 
 
+def _locate_or_error_msg(
+    page: Page,
+    intent: str,
+    supervisor: Supervisor,
+    *,
+    cache: LocatorCache | None,
+    trace_writer: TraceWriter | None,
+    run_id: str | None,
+    step_id: str | None,
+) -> LocateResult | str:
+    try:
+        return _locate_with_supervisor(
+            page,
+            intent,
+            supervisor,
+            cache=cache,
+            trace_writer=trace_writer,
+            run_id=run_id,
+            step_id=step_id,
+        )
+    except (LocatorMiss, IntentParseError) as miss:
+        return f"Error: could not locate element for intent {intent!r} ({miss})"
+
+
 def _dispatch(
     tool_name: str,
     args: dict,
@@ -456,25 +526,72 @@ def _dispatch(
         intent: str | None = args.get("intent")
         page = browser._page
         if intent:
-            try:
-                locate_result = _locate_with_supervisor(
-                    page,
-                    intent,
-                    supervisor,
-                    cache=locator_cache,
-                    trace_writer=trace_writer,
-                    run_id=run_id,
-                    step_id=step_id,
-                )
-            except LocatorMiss as miss:
-                return f"Error: could not locate element for intent {intent!r} ({miss})"
+            located = _locate_or_error_msg(
+                page,
+                intent,
+                supervisor,
+                cache=locator_cache,
+                trace_writer=trace_writer,
+                run_id=run_id,
+                step_id=step_id,
+            )
+            if isinstance(located, str):
+                return located
             from agent.browser import ElementNotFound
 
             try:
-                return browser.read(locate_result.selector)
+                return browser.read(located.selector)
             except ElementNotFound as exc:
                 return f"Error: located element vanished before read for intent {intent!r} ({exc})"
         return _body_text(page)
+    if tool_name == "click":
+        intent_val: str | None = args.get("intent")
+        if not isinstance(intent_val, str) or not intent_val:
+            return "Error: click requires a non-empty 'intent' string argument"
+        page = browser._page
+        located = _locate_or_error_msg(
+            page,
+            intent_val,
+            supervisor,
+            cache=locator_cache,
+            trace_writer=trace_writer,
+            run_id=run_id,
+            step_id=step_id,
+        )
+        if isinstance(located, str):
+            return located
+        locate_result = located
+        url_before = page.url
+        t_click = time.monotonic()
+        from playwright.sync_api import Error as PlaywrightError
+        from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+
+        outcome: Literal["ok", "no_effect", "nav", "timeout", "error"]
+        try:
+            page.locator(locate_result.selector).click(timeout=5000)
+        except PlaywrightTimeoutError:
+            outcome = "timeout"
+        except PlaywrightError:
+            outcome = "error"
+        else:
+            try:
+                page.wait_for_load_state("load", timeout=3000)
+            except PlaywrightTimeoutError:
+                pass
+            outcome = "nav" if page.url != url_before else "ok"
+        elapsed_ms = int((time.monotonic() - t_click) * 1000)
+        _emit_act_event(
+            trace_writer=trace_writer,
+            run_id=run_id,
+            tool="click",
+            args={"intent": intent_val},
+            outcome=outcome,
+            ms=elapsed_ms,
+            step_id=step_id,
+        )
+        if outcome in _CLICK_SUCCESS_OUTCOMES:
+            return f"Clicked {intent_val!r} ({outcome})"
+        return f"Error: click {outcome} for intent {intent_val!r}"
     return f"Error: unknown tool {tool_name!r}"
 
 

@@ -30,6 +30,13 @@ from agent.trace import (
     TraceWriter,
 )
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _resolve_fixture_url(fixture_path: str) -> str:
+    return (REPO_ROOT / fixture_path).as_uri()
+
+
 _REQUIRED_FIELDS = ("id", "domain", "category", "task", "expect", "budget")
 PASS_STATUSES = frozenset({"succeeded", "unverified"})
 FAIL_STATUSES = frozenset({"failed", "blocked", "timeout"})
@@ -230,6 +237,8 @@ def _run_case(
 ) -> CaseResult:
     run_id = str(uuid.uuid4())
     fixture_url = case.get("fixture_url")
+    if fixture_url is None and case.get("fixture_path"):
+        fixture_url = _resolve_fixture_url(case["fixture_path"])
     with TraceWriter(path=":memory:") as writer:
         _open_trace_run(writer, run_id, case)
         try:
@@ -308,14 +317,24 @@ def iter_runnable_subcases(
             LocatorCache(path=":memory:") if use_shared_cache else None
         )
 
+        variant_fixture_urls: dict[str, str] = parent_case.get("variant_fixture_urls", {})
+        variant_fixture_paths: dict[str, str] = parent_case.get("variant_fixture_paths", {})
         if variants:
-            sub_cases = [{**parent_case, "id": f"{parent_case['id']}-{v}"} for v in variants]
+            sub_cases = []
+            for v in variants:
+                extra: dict[str, str] = {}
+                if v in variant_fixture_urls:
+                    extra["fixture_url"] = variant_fixture_urls[v]
+                elif v in variant_fixture_paths:
+                    extra["fixture_path"] = variant_fixture_paths[v]
+                    extra["fixture_url"] = _resolve_fixture_url(variant_fixture_paths[v])
+                sub_cases.append({**parent_case, "id": f"{parent_case['id']}-{v}", **extra})
         else:
             sub_cases = [parent_case]
 
         for case in sub_cases:
             fixture_path = case.get("fixture_path")
-            if fixture_path is not None and not Path(fixture_path).exists():
+            if fixture_path is not None and not (REPO_ROOT / fixture_path).exists():
                 yield case, None, "fixture_missing"
             elif not live and not case.get("fixture", False):
                 yield case, None, "live_disabled"
@@ -364,7 +383,7 @@ def compute_exit_code(cases: list[dict]) -> int:
 
 
 def build_clients():
-    base_url = os.environ.get("LLM_BASE_URL", "http://localhost:8090/v1")
+    base_url = os.environ.get("LLM_BASE_URL", "http://localhost:8090")
     model = os.environ.get("LLM_MODEL", _DEFAULT_LLM_MODEL)
     api_key = os.environ.get("LLM_API_KEY", "local")
     return LLMClient(base_url=base_url, model=model, api_key=api_key), Browser()

@@ -10,3 +10,4 @@ budget:
   usd: 0.05
   seconds: 30
 fixture: true
+fixture_path: "task2/tests/fixtures/correction_l1_miss.html"

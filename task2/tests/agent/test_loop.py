@@ -9,7 +9,16 @@ import pytest
 from agent.browser import Browser
 from agent.llm import ChatResponse, ToolCall, Usage
 from agent.loop import RunResult, loop
-from agent.trace import LocateEvent, PlanEvent, Run, RunBudget, RunLLM, SupervisorEvent, TraceWriter
+from agent.trace import (
+    ActEvent,
+    LocateEvent,
+    PlanEvent,
+    Run,
+    RunBudget,
+    RunLLM,
+    SupervisorEvent,
+    TraceWriter,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -2447,3 +2456,434 @@ def test_real_loop_correction_l1_miss_produces_escalation(fixture_server, playwr
     )
     assert l2_locate is not None, "expected at least one LocateEvent(tier='L2_dom') in the trace"
     writer.close()
+
+
+# ---------------------------------------------------------------------------
+# Click tool: TOOLS list includes click entry
+# ---------------------------------------------------------------------------
+
+
+def test_tools_list_includes_click():
+    from agent.loop import TOOLS
+
+    click_entry = next((t for t in TOOLS if t["function"]["name"] == "click"), None)
+    assert click_entry is not None, "TOOLS must contain an entry with function.name == 'click'"
+    props = click_entry["function"]["parameters"]["properties"]
+    assert "intent" in props, "click entry must have 'intent' in parameters.properties"
+    assert props["intent"]["type"] == "string", "click 'intent' parameter must be type 'string'"
+    required = click_entry["function"]["parameters"]["required"]
+    assert "intent" in required, "'intent' must appear in click's parameters.required"
+
+
+# ---------------------------------------------------------------------------
+# Click tool: LLM calls click → ActEvent(outcome="ok") emitted, run succeeds
+# ---------------------------------------------------------------------------
+
+
+def test_loop_click_to_done(fixture_server, playwright_chromium):
+    fixture_url = f"{fixture_server}/loop_click_submit.html"
+
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+        _response_with_tool_call(_tool_call("click", {"intent": "Submit button"}, call_id="tc-2")),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"clicked": True},
+                    "evidence": {"url": fixture_url, "text_snippet": "Submit"},
+                },
+                call_id="tc-3",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+
+    run_id = "test-click-to-done"
+    writer = _make_writer_with_run(run_id)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop("click Submit", browser, fake_llm, trace_writer=writer, run_id=run_id)
+
+    assert result.status == "succeeded"
+    assert result.steps <= 4
+
+    from agent.trace import ActEvent
+
+    events = list(writer.iter_events(run_id))
+    act_events = [e for e in events if isinstance(e, ActEvent)]
+    assert len(act_events) >= 1, "expected at least one ActEvent"
+    click_act = next((e for e in act_events if e.tool == "click"), None)
+    assert click_act is not None, "expected ActEvent with tool='click'"
+    assert click_act.outcome == "ok", f"expected outcome='ok', got {click_act.outcome!r}"
+    assert click_act.args == {"intent": "Submit button"}
+    writer.close()
+
+
+# ---------------------------------------------------------------------------
+# Click tool: navigation after click → ActEvent(outcome="nav")
+# ---------------------------------------------------------------------------
+
+
+def test_loop_click_outcome_nav(fixture_server, playwright_chromium):
+    fixture_url = f"{fixture_server}/loop_click_nav.html"
+    dest_url = f"{fixture_server}/loop_happy_path.html"
+
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+        _response_with_tool_call(_tool_call("click", {"intent": "Go button"}, call_id="tc-2")),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"navigated": True},
+                    "evidence": {"url": dest_url, "text_snippet": "Hello"},
+                },
+                call_id="tc-3",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+
+    run_id = "test-click-nav"
+    writer = _make_writer_with_run(run_id)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop("click Go", browser, fake_llm, trace_writer=writer, run_id=run_id)
+
+    from agent.trace import ActEvent
+
+    events = list(writer.iter_events(run_id))
+    act_events = [e for e in events if isinstance(e, ActEvent) and e.tool == "click"]
+    assert len(act_events) >= 1, "expected at least one ActEvent with tool='click'"
+    assert act_events[0].outcome == "nav", (
+        f"expected outcome='nav' after navigation, got {act_events[0].outcome!r}"
+    )
+    assert result.status == "succeeded"
+    writer.close()
+
+
+# ---------------------------------------------------------------------------
+# Click tool: L1 miss → supervisor escalates to L2 → SupervisorEvent(policy="next_tier")
+# ---------------------------------------------------------------------------
+
+
+def test_loop_click_l1_miss_supervisor_escalation(fixture_server, playwright_chromium):
+    fixture_url = f"{fixture_server}/correction_l1_miss.html"
+
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+        _response_with_tool_call(_tool_call("click", {"intent": "Submit button"}, call_id="tc-2")),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"clicked": True},
+                    "evidence": {"url": fixture_url, "text_snippet": "Submit"},
+                },
+                call_id="tc-3",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+
+    run_id = "test-click-l1-miss"
+    writer = _make_writer_with_run(run_id)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        loop("click the Submit button", browser, fake_llm, trace_writer=writer, run_id=run_id)
+
+    events = list(writer.iter_events(run_id))
+    supervisor_events = [e for e in events if isinstance(e, SupervisorEvent)]
+    assert len(supervisor_events) >= 1, "expected at least one SupervisorEvent"
+    next_tier_event = next((e for e in supervisor_events if e.policy == "next_tier"), None)
+    policies = [e.policy for e in supervisor_events]
+    assert next_tier_event is not None, (
+        f"expected SupervisorEvent(policy='next_tier'), got policies={policies}"
+    )
+    act_events = [e for e in events if isinstance(e, ActEvent) and e.tool == "click"]
+    assert len(act_events) == 1, (
+        f"expected exactly one click ActEvent after L2 escalation, got {len(act_events)}"
+    )
+    outcome = act_events[0].outcome
+    assert outcome in {"ok", "nav"}, (
+        f"expected click ActEvent.outcome in {{ok, nav}} after escalation, got {outcome!r}"
+    )
+    writer.close()
+
+
+# ---------------------------------------------------------------------------
+# Click tool: invalid intent (IntentParseError) returns error string, loop continues
+# ---------------------------------------------------------------------------
+
+
+def test_loop_click_invalid_intent_returns_error_string_loop_continues(
+    fixture_server, playwright_chromium
+):
+    fixture_url = f"{fixture_server}/loop_click_submit.html"
+
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+        _response_with_tool_call(
+            _tool_call("click", {"intent": "the full page content"}, call_id="tc-2")
+        ),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"done": True},
+                    "evidence": {"url": fixture_url, "text_snippet": "Submit"},
+                },
+                call_id="tc-3",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop("click submit", browser, fake_llm, max_steps=10)
+
+    assert result.status == "succeeded", (
+        f"expected loop to continue past IntentParseError and reach done, got {result.status!r}"
+    )
+    assert result.steps <= 4
+
+
+# ---------------------------------------------------------------------------
+# Read tool: invalid intent (IntentParseError) returns error string, loop continues
+# ---------------------------------------------------------------------------
+
+
+def test_loop_read_invalid_intent_returns_error_string_loop_continues(
+    fixture_server, playwright_chromium
+):
+    fixture_url = f"{fixture_server}/loop_click_submit.html"
+
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+        _response_with_tool_call(
+            _tool_call("read", {"intent": "the full page content"}, call_id="tc-2")
+        ),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"done": True},
+                    "evidence": {"url": fixture_url, "text_snippet": "Submit"},
+                },
+                call_id="tc-3",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop("read the page", browser, fake_llm, max_steps=10)
+
+    assert result.status == "succeeded", (
+        "expected loop to continue past read IntentParseError and reach done, "
+        f"got {result.status!r}"
+    )
+    assert result.steps <= 4
+
+
+# ---------------------------------------------------------------------------
+# Task 2: click with slow navigation — wait_for_load_state timeout → outcome=nav
+# ---------------------------------------------------------------------------
+
+
+def _make_fake_browser_for_click(
+    selector: str,
+    url_before: str,
+    url_after: str,
+    click_raises: Exception | None = None,
+    wait_raises: Exception | None = None,
+):
+    import types
+
+    from agent.locate import LocateResult
+
+    locate_result = LocateResult(
+        tier="L1_ax",
+        role="button",
+        name="Submit",
+        selector=selector,
+        ax_fingerprint="fp-stub",
+        confidence=1.0,
+        coords=None,
+    )
+
+    _url_holder = [url_before]
+
+    class _StubLocator:
+        def click(self, *, timeout):
+            if click_raises is not None:
+                raise click_raises
+            _url_holder[0] = url_after
+
+    class _StubPage:
+        @property
+        def url(self):
+            return _url_holder[0]
+
+        def locator(self, sel):
+            return _StubLocator()
+
+        def wait_for_load_state(self, state, *, timeout):
+            if wait_raises is not None:
+                raise wait_raises
+
+    fake_page = _StubPage()
+    fake_browser = types.SimpleNamespace(_page=fake_page)
+    return fake_browser, locate_result
+
+
+def _open_click_writer(run_id: str) -> TraceWriter:
+    writer = TraceWriter(":memory:")
+    writer.open_run(
+        Run(
+            run_id=run_id,
+            task="t",
+            expect_schema=None,
+            budget=RunBudget(steps=5, usd=1.0, seconds=60),
+            llm=RunLLM(base_url="", model="", temperature=0.0, seed=None),
+            agent_version="test",
+            started_at="2024-01-01T00:00:00Z",
+            ended_at=None,
+            status=None,
+            final=None,
+            totals=None,
+        )
+    )
+    return writer
+
+
+def test_loop_click_slow_nav_wait_load_timeout_still_classifies_as_nav_or_ok(monkeypatch):
+    import playwright.sync_api as pw_api
+
+    from agent.loop import _dispatch
+    from agent.supervisor import Supervisor
+
+    selector = "button[type=submit]"
+    url_before = "http://example.com/form"
+    url_after = "http://example.com/thanks"
+
+    wait_timeout_err = pw_api.TimeoutError("wait_for_load_state timed out")
+    fake_browser, locate_result = _make_fake_browser_for_click(
+        selector, url_before, url_after, wait_raises=wait_timeout_err
+    )
+
+    monkeypatch.setattr(
+        "agent.loop._locate_or_error_msg",
+        lambda *_args, **_kwargs: locate_result,
+    )
+
+    run_id = "unit-slow-nav"
+    writer = _open_click_writer(run_id)
+
+    result_str = _dispatch(
+        "click",
+        {"intent": "Submit button"},
+        fake_browser,
+        Supervisor(),
+        trace_writer=writer,
+        run_id=run_id,
+        step_id=f"{run_id}:step-1",
+    )
+
+    act_events = [e for e in writer.iter_events(run_id) if isinstance(e, ActEvent)]
+    assert len(act_events) == 1
+    assert act_events[0].outcome in {"nav", "ok"}, (
+        f"expected nav (URL changed) or ok, got {act_events[0].outcome!r}; result={result_str!r}"
+    )
+    assert act_events[0].outcome == "nav", (
+        f"URL changed from {url_before!r} to {url_after!r} — expected outcome=nav, "
+        f"got {act_events[0].outcome!r}"
+    )
+    writer.close()
+
+
+# ---------------------------------------------------------------------------
+# Task 3: click raises TimeoutError → outcome=timeout; raises Error → outcome=error
+# ---------------------------------------------------------------------------
+
+
+def test_loop_click_playwright_timeout_yields_outcome_timeout(monkeypatch):
+    import playwright.sync_api as pw_api
+
+    from agent.loop import _dispatch
+    from agent.supervisor import Supervisor
+
+    selector = "button[type=submit]"
+    click_err = pw_api.TimeoutError("click timed out")
+    fake_browser, locate_result = _make_fake_browser_for_click(
+        selector, "http://example.com/", "http://example.com/", click_raises=click_err
+    )
+
+    monkeypatch.setattr(
+        "agent.loop._locate_or_error_msg",
+        lambda *_args, **_kwargs: locate_result,
+    )
+
+    run_id = "unit-timeout"
+    writer = _open_click_writer(run_id)
+
+    result_str = _dispatch(
+        "click",
+        {"intent": "Submit button"},
+        fake_browser,
+        Supervisor(),
+        trace_writer=writer,
+        run_id=run_id,
+        step_id=f"{run_id}:step-1",
+    )
+
+    act_events = [e for e in writer.iter_events(run_id) if isinstance(e, ActEvent)]
+    assert len(act_events) == 1
+    assert act_events[0].outcome == "timeout", (
+        f"expected outcome=timeout, got {act_events[0].outcome!r}"
+    )
+    assert result_str.startswith("Error: click timeout"), (
+        f"expected tool result to start with 'Error: click timeout', got {result_str!r}"
+    )
+    writer.close()
+
+
+def test_loop_click_playwright_error_yields_outcome_error(monkeypatch):
+    import playwright.sync_api as pw_api
+
+    from agent.loop import _dispatch
+    from agent.supervisor import Supervisor
+
+    selector = "button[type=submit]"
+    click_err = pw_api.Error("element not interactable")
+    fake_browser, locate_result = _make_fake_browser_for_click(
+        selector, "http://example.com/", "http://example.com/", click_raises=click_err
+    )
+
+    monkeypatch.setattr(
+        "agent.loop._locate_or_error_msg",
+        lambda *_args, **_kwargs: locate_result,
+    )
+
+    run_id = "unit-error"
+    writer = _open_click_writer(run_id)
+
+    result_str = _dispatch(
+        "click",
+        {"intent": "Submit button"},
+        fake_browser,
+        Supervisor(),
+        trace_writer=writer,
+        run_id=run_id,
+        step_id=f"{run_id}:step-1",
+    )
+
+    act_events = [e for e in writer.iter_events(run_id) if isinstance(e, ActEvent)]
+    assert len(act_events) == 1
+    assert act_events[0].outcome == "error", (
+        f"expected outcome=error, got {act_events[0].outcome!r}"
+    )
+    assert result_str.startswith("Error: click error"), (
+        f"expected tool result to start with 'Error: click error', got {result_str!r}"
+    )
