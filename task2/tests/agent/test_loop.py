@@ -3,12 +3,13 @@ from __future__ import annotations
 import dataclasses
 import json
 from datetime import datetime
+from unittest.mock import patch
 
 import pytest
 
 from agent.browser import Browser
 from agent.llm import ChatResponse, ToolCall, Usage
-from agent.loop import RunResult, loop
+from agent.loop import RunResult, _build_system_prompt, loop
 from agent.trace import (
     ActEvent,
     LocateEvent,
@@ -3232,3 +3233,107 @@ def test_loop_type_dispatch_ok_returns_typed_into_string(monkeypatch):
     assert act_events[0].outcome == "ok"
     assert act_events[0].tool == "type"
     writer.close()
+
+
+# ---------------------------------------------------------------------------
+# Compaction tests (fix-qwen-http-400)
+# ---------------------------------------------------------------------------
+
+_LARGE_AX_TREE = "x" * 4096
+
+_LARGE_OBSERVATION = {
+    "url": "https://example.com",
+    "title": "Example",
+    "ax_tree_digest": _LARGE_AX_TREE,
+    "ax_fingerprint": "abc123",
+    "last_actions": [],
+}
+
+_URLS = [
+    "https://example.com/1",
+    "https://example.com/2",
+    "https://example.com/3",
+]
+
+
+class _StubBrowserForCompaction:
+    def __init__(self):
+        self._page = None
+        self._cdp_sessions: dict = {}
+
+    def goto(self, url: str) -> None:
+        pass
+
+
+class _RecordingLLMClient:
+    def __init__(self):
+        self.all_messages: list[list[dict]] = []
+        self._step = 0
+
+    def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
+        if tools is None:
+            return ChatResponse(
+                content='{"steps": ["do the task"], "expected_end_state": "done"}',
+                tool_calls=[],
+                finish_reason="stop",
+                model="fake",
+                usage=Usage(prompt_tokens=0, completion_tokens=0, total_tokens=0),
+                raw={},
+                usd=0.0,
+            )
+        self.all_messages.append(list(messages))
+        url = _URLS[self._step % len(_URLS)]
+        self._step += 1
+        return ChatResponse(
+            content=None,
+            tool_calls=[
+                ToolCall(
+                    id=f"tc-{self._step}",
+                    name="goto",
+                    arguments=json.dumps({"url": url}),
+                )
+            ],
+            finish_reason="tool_calls",
+            model="fake",
+            usage=Usage(prompt_tokens=1, completion_tokens=1, total_tokens=2),
+            raw={},
+        )
+
+
+def test_loop_compacts_message_history_under_token_budget():
+    stub_llm = _RecordingLLMClient()
+    stub_browser = _StubBrowserForCompaction()
+    with patch("agent.loop.observe.build_observation", return_value=_LARGE_OBSERVATION):
+        result = loop("dummy task", browser=stub_browser, llm_client=stub_llm, max_steps=25)
+
+    assert result.status == "timeout"
+    last_messages = stub_llm.all_messages[-1]
+    total_chars = sum(len(json.dumps(m)) for m in last_messages)
+    assert total_chars < 80_000
+    elided = [
+        m
+        for m in last_messages
+        if m.get("role") == "user" and m.get("content") == "Current state: <elided>"
+    ]
+    assert len(elided) >= 1
+    assert last_messages[0]["role"] == "system"
+
+
+def test_loop_preserves_most_recent_observation_after_compaction():
+    stub_llm = _RecordingLLMClient()
+    stub_browser = _StubBrowserForCompaction()
+    with patch("agent.loop.observe.build_observation", return_value=_LARGE_OBSERVATION):
+        result = loop("dummy task", browser=stub_browser, llm_client=stub_llm, max_steps=25)
+
+    assert result.status == "timeout"
+    last_messages = stub_llm.all_messages[-1]
+    state_msgs = [
+        m
+        for m in last_messages
+        if m.get("role") == "user" and "Current state: " in m.get("content", "")
+    ]
+    assert len(state_msgs) >= 1
+    last_user_state_msg = state_msgs[-1]
+    assert last_user_state_msg["content"] != "Current state: <elided>"
+    assert last_messages[0]["role"] == "system"
+    assert last_messages[0]["content"] == _build_system_prompt("dummy task")

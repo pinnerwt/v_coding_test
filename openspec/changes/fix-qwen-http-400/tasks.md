@@ -31,7 +31,7 @@
 
 ## Task 3 — Red: compaction keeps total chars under budget
 
-- [ ] 3.1 In `task2/tests/agent/test_loop.py`, add test `test_loop_compacts_message_history_under_token_budget`.
+- [x] 3.1 In `task2/tests/agent/test_loop.py`, add test `test_loop_compacts_message_history_under_token_budget`.
 
   The test shall:
   - Create a stub `LLMClient` that records every `messages` argument passed to `chat()` and always returns a `ChatResponse` with a `goto` tool call (URL cycling through a fixed list to avoid infinite navigation).
@@ -45,7 +45,7 @@
 
   Acceptance: `uv run pytest tests/agent/test_loop.py::test_loop_compacts_message_history_under_token_budget -x` (from `task2/`).
 
-- [ ] 3.2 Run the test and confirm it fails because no compaction logic exists and the accumulated messages exceed 80 K chars by step 25 with realistic AX-tree-sized observations.
+- [x] 3.2 Run the test and confirm it fails because no compaction logic exists and the accumulated messages exceed 80 K chars by step 25 with realistic AX-tree-sized observations.
 
   Note: the stub browser's observation must be sized to trigger compaction. Use a stub that returns `build_observation`-compatible dicts with a long `ax_tree` string of at least 4 KB to simulate Wikipedia-scale pages.
 
