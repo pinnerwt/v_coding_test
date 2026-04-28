@@ -777,3 +777,113 @@ def test_cache_hits_misses_default_zero_when_absent():
     misses_idx = headers.index("Cache Misses")
     assert cols[hits_idx] == "0"
     assert cols[misses_idx] == "0"
+
+
+# ---------------------------------------------------------------------------
+# implement-failure-clustering-histogram: histogram block tests (Red phase)
+# ---------------------------------------------------------------------------
+
+
+def _make_run_at() -> str:
+    return "2026-04-28T00:00:00+00:00"
+
+
+def test_failure_histogram_header_present():
+    from scripts.score import generate_scoreboard
+
+    data = {
+        "run_at": _make_run_at(),
+        "cases": [_make_case("c1", "failed", failure_class="supervisor_halt")],
+    }
+    output = generate_scoreboard(data)
+    assert "**Failure histogram**" in output
+    assert "| Failure class | Count |" in output
+
+
+def test_failure_histogram_counts_sorted_desc():
+    from scripts.score import generate_scoreboard
+
+    data = {
+        "run_at": _make_run_at(),
+        "cases": [
+            _make_case("c1", "failed", failure_class="supervisor_halt"),
+            _make_case("c2", "failed", failure_class="supervisor_halt"),
+            _make_case("c3", "failed", failure_class="supervisor_halt"),
+            _make_case("c4", "failed", failure_class="locator_miss"),
+            _make_case("c5", "failed", failure_class="tool_error"),
+        ],
+    }
+    output = generate_scoreboard(data)
+    assert "| supervisor_halt | 3 |" in output
+    halt_pos = output.index("supervisor_halt")
+    locator_pos = output.index("locator_miss")
+    tool_pos = output.index("tool_error")
+    assert halt_pos < locator_pos
+    assert halt_pos < tool_pos
+
+
+def test_failure_histogram_ties_sorted_alpha():
+    from scripts.score import generate_scoreboard
+
+    data = {
+        "run_at": _make_run_at(),
+        "cases": [
+            _make_case("c1", "failed", failure_class="locator_miss"),
+            _make_case("c2", "failed", failure_class="tool_error"),
+        ],
+    }
+    output = generate_scoreboard(data)
+    locator_pos = output.index("locator_miss")
+    tool_pos = output.index("tool_error")
+    assert locator_pos < tool_pos
+
+
+def test_failure_histogram_suppressed_no_failures():
+    from scripts.score import generate_scoreboard
+
+    data = {
+        "run_at": _make_run_at(),
+        "cases": [_make_case("c1", "succeeded")],
+    }
+    output = generate_scoreboard(data)
+    assert "**Failure histogram**" not in output
+
+
+def test_failure_histogram_suppressed_all_none():
+    from scripts.score import generate_scoreboard
+
+    data = {
+        "run_at": _make_run_at(),
+        "cases": [_make_case("c1", "failed", failure_class=None)],
+    }
+    output = generate_scoreboard(data)
+    assert "**Failure histogram**" not in output
+
+
+def test_failure_histogram_backward_compat_no_key():
+    from scripts.score import generate_scoreboard
+
+    data = {
+        "run_at": _make_run_at(),
+        "cases": [_make_case("c1", "failed", include_failure_class_key=False)],
+    }
+    output = generate_scoreboard(data)
+    assert "**Failure histogram**" not in output
+
+
+def test_failure_histogram_placement():
+    from scripts.score import generate_scoreboard
+
+    data = {
+        "run_at": _make_run_at(),
+        "cases": [
+            _make_case("drift-c1", "failed", failure_class="locator_miss"),
+            _make_case("fixture-c2", "succeeded"),
+        ],
+    }
+    output = generate_scoreboard(data)
+    category_pos = output.index("Drift suite:")
+    histogram_pos = output.index("**Failure histogram**")
+    case_header_pos = output.index("| Case |")
+    assert category_pos < histogram_pos
+    assert histogram_pos < case_header_pos
