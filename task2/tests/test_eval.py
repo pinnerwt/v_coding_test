@@ -1432,6 +1432,7 @@ def test_live_disabled_skip_reason(tmp_path):
     live_case = {**_FIXTURE_CASE, "fixture": False}
     out = run_suite(cases=[live_case], results_dir=tmp_path, live=False)
     data = json.loads(out.read_text())
+    assert data["cases"][0]["status"] == "skipped"
     assert data["cases"][0]["skip_reason"] == "live_disabled"
 
 
@@ -1445,6 +1446,27 @@ def test_fixture_missing_skip_reason(tmp_path):
     data = json.loads(out.read_text())
     assert data["cases"][0]["status"] == "skipped"
     assert data["cases"][0]["skip_reason"] == "fixture_missing"
+
+
+def test_existing_fixture_path_does_not_skip(tmp_path, monkeypatch):
+    fixture_file = tmp_path / "fixture.html"
+    fixture_file.write_text("<html></html>")
+    case = {**_FIXTURE_CASE, "fixture": True, "fixture_path": str(fixture_file)}
+
+    stub = CaseResult(
+        id=case["id"],
+        status="succeeded",
+        steps=1,
+        usd=0.0,
+        l_tier_counts={},
+        validators=[],
+    )
+    monkeypatch.setattr("scripts.eval._run_case", lambda *a, **kw: stub)
+
+    out = run_suite(cases=[case], results_dir=tmp_path, live=True)
+    data = json.loads(out.read_text())
+    assert data["cases"][0]["status"] == "succeeded"
+    assert data["cases"][0].get("skip_reason") is None
 
 
 def test_all_valid_skip_reasons_accepted():

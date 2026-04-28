@@ -7,7 +7,7 @@ Every skipped `CaseResult` today carries `status="skipped"` but no information a
 - Add `skip_reason: Literal["live_disabled", "infra_unavailable", "fixture_missing", "feature_not_implemented"] | None` to `CaseResult`; default `None` for non-skipped cases.
 - Require `skip_reason` to be non-`None` whenever `status="skipped"`; enforce at construction time (raise `ValueError` on unknown reason value).
 - Wire `_skipped_result()` in `eval.py` to set `skip_reason="live_disabled"` for the `not live and not fixture` skip path.
-- Wire `load_cases()` to raise a `ValueError` with a `fixture_missing` signal when a referenced fixture file does not exist, and set `skip_reason="fixture_missing"` in the resulting `CaseResult` when a case is skipped due to a missing fixture.
+- Wire `run_suite()`'s skip branch to set `skip_reason="fixture_missing"` when a case's optional `fixture_path` field references a file that does not exist on disk; `load_cases()` is unchanged (the existence check belongs in `run_suite()`, see `design.md` D4).
 - Surface a **"Skipped" subsection** in the scoreboard below the per-case table: lists each `skip_reason` value and the count of cases with that reason.
 
 ## Capabilities
@@ -19,7 +19,7 @@ Every skipped `CaseResult` today carries `status="skipped"` but no information a
 ### Modified Capabilities
 
 - `eval-runner`: `CaseResult.skip_reason` field; validation at construction; `_skipped_result()` wired to `"live_disabled"` and `"fixture_missing"` skip paths.
-- `score-script`: New "Skipped" subsection with reason counts appended after the per-case table and before mechanism firing rates.
+- `score-script`: New "Skipped" subsection with reason counts appended after the per-case table and before the aggregate summary line.
 
 ## Impact
 
