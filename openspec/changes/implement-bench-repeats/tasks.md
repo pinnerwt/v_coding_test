@@ -1,11 +1,11 @@
 ## 1. Failing Tests (Red phase)
 
-- [ ] 1.1 Create `task2/tests/test_bench_repeats.py` with Test 1: write a test that calls `aggregate_repeats(case, repeats=3, ...)` with `_run_case` patched to always return `status="succeeded"` and asserts `passed_runs == 3`, `repeats == 3`, `repeat_status == "all_pass"` — confirm it fails with `ImportError` or `AttributeError`
-- [ ] 1.2 Add Test 2 to `test_bench_repeats.py`: write a test that patches `_run_case` with statuses `["succeeded", "failed", "failed"]` and asserts `passed_runs == 1`, `repeats == 3`, `repeat_status == "partial"` — confirm it also fails
-- [ ] 1.3 Add a test for `--repeats 0` rejection: assert that `benchmark.main(["--repeats", "0"])` exits non-zero — confirm it fails
-- [ ] 1.4 Add a test for `AggregatedCaseResult` rejects unknown `repeat_status` (`ValueError` on construction) — confirm it fails
-- [ ] 1.5 Add a test for `_render_case_status` in `test_score.py` (or a new test file): assert `repeats=3, passed_runs=3` renders `"3/3 ✓"` and `repeats=3, passed_runs=2` renders `"2/3 ✗"` — confirm it fails
-- [ ] 1.6 Run `uv run pytest task2/tests/test_bench_repeats.py -x` and confirm all new tests are failing for expected reasons (ImportError / AttributeError)
+- [x] 1.1 Create `task2/tests/test_bench_repeats.py` with Test 1: write a test that calls `aggregate_repeats(case, repeats=3, ...)` with `_run_case` patched to always return `status="succeeded"` and asserts `passed_runs == 3`, `repeats == 3`, `repeat_status == "all_pass"` — confirm it fails with `ImportError` or `AttributeError`
+- [x] 1.2 Add Test 2 to `test_bench_repeats.py`: write a test that patches `_run_case` with statuses `["succeeded", "failed", "failed"]` and asserts `passed_runs == 1`, `repeats == 3`, `repeat_status == "partial"` — confirm it also fails
+- [x] 1.3 Add a test for `--repeats 0` rejection: assert that `benchmark.main(["--repeats", "0"])` exits non-zero — confirm it fails
+- [x] 1.4 Add a test for `AggregatedCaseResult` rejects unknown `repeat_status` (`ValueError` on construction) — confirm it fails
+- [x] 1.5 Add a test for `_render_case_status` in `test_score.py` (or a new test file): assert `repeats=3, passed_runs=3` renders `"3/3 ✓"` and `repeats=3, passed_runs=2` renders `"2/3 ✗"` — confirm it fails
+- [x] 1.6 Run `uv run pytest task2/tests/test_bench_repeats.py -x` and confirm all new tests are failing for expected reasons (ImportError / AttributeError)
 
 ## 2. AggregatedCaseResult Dataclass
 
