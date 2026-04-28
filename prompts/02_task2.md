@@ -82,3 +82,5 @@ Let's check the benchmark results. Propose different ways to improve the benchma
 Update the skills from what you have learned. Please also update /done_pr to analyze why benchmark failed and add tickets to task2/plan.md
 
 For each iteration in /new_task2 : pick the change most likely to flip the most red cases to green on the next benchmark run. Implement, run benchmark, report delta. Stop when pass-rate plateaus or demo time arrives.
+
+Great. Let's archive the results in task2/RAEDME.md to a section called "basic_benchmark", and update the benchmark to the live one (web voyager)? Let's plan about this first.
