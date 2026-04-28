@@ -96,3 +96,11 @@ def test_e_all_pass_exits_0_without_warning(tmp_path, capsys):
     assert exc_info.value.code == 0
     out = capsys.readouterr().out
     assert "WARNING" not in out
+
+
+def test_missing_results_arg_exits_nonzero(capsys):
+    from scripts.canary_gate import main
+
+    with pytest.raises(SystemExit) as exc_info:
+        main([])
+    assert exc_info.value.code != 0

@@ -165,11 +165,53 @@ def test_fixture_heading_yaml_loads():
     assert cases[0]["fixture"] is True
 
 
+def test_fixture_heading_yaml_is_canary():
+    cases = load_cases("eval/cases/fixture-heading.yaml")
+    assert cases[0]["canary"] is True
+
+
 def test_fixture_count_yaml_loads():
     cases = load_cases("eval/cases/fixture-count.yaml")
     assert len(cases) == 1
     assert cases[0]["id"] == "fixture-count"
     assert cases[0]["fixture"] is True
+
+
+def test_fixture_count_yaml_is_canary():
+    cases = load_cases("eval/cases/fixture-count.yaml")
+    assert cases[0]["canary"] is True
+
+
+def test_canary_read_h1_yaml_loads_as_fixture_canary():
+    cases = load_cases("eval/cases/canary-read-h1.yaml")
+    assert len(cases) == 1
+    c = cases[0]
+    assert c["id"] == "canary-read-h1"
+    assert c["canary"] is True
+    assert c["fixture"] is True
+    assert c["budget"]["steps"] == 1
+
+
+def test_load_cases_accepts_canary_field(tmp_path):
+    p = tmp_path / "case.yaml"
+    p.write_text(
+        yaml.dump(
+            [
+                {
+                    "id": "canary-case",
+                    "domain": "fixture",
+                    "category": "read-and-summarize",
+                    "task": "Read the H1",
+                    "canary": True,
+                    "expect": {"schema": {"title": "str"}, "validators": ["title.nonempty"]},
+                    "budget": {"steps": 1, "usd": 0.02, "seconds": 15},
+                }
+            ]
+        )
+    )
+    cases = load_cases(p)
+    assert len(cases) == 1
+    assert cases[0]["canary"] is True
 
 
 def test_validator_nonempty_passes():
@@ -1492,3 +1534,46 @@ def test_pass_statuses_is_public_module_attribute():
     from scripts.eval import PASS_STATUSES
 
     assert PASS_STATUSES == frozenset({"succeeded", "unverified"})
+
+
+# canary field on CaseResult (eval-runner canary spec)
+
+
+def test_case_result_canary_defaults_to_false():
+    cr = CaseResult(id="x", status="succeeded", steps=0, usd=0.0, l_tier_counts={}, validators=[])
+    assert cr.canary is False
+
+
+def test_case_result_canary_true_accepted():
+    cr = CaseResult(
+        id="x",
+        status="succeeded",
+        steps=0,
+        usd=0.0,
+        l_tier_counts={},
+        validators=[],
+        canary=True,
+    )
+    assert cr.canary is True
+
+
+def test_case_result_canary_serialized_in_json():
+    cr = CaseResult(
+        id="fixture-heading",
+        status="succeeded",
+        steps=0,
+        usd=0.0,
+        l_tier_counts={},
+        validators=[],
+        canary=True,
+    )
+    data = json.loads(json.dumps(asdict(cr)))
+    assert data["canary"] is True
+
+
+def test_case_result_non_canary_serialized_as_false():
+    cr = CaseResult(
+        id="live-x", status="succeeded", steps=0, usd=0.0, l_tier_counts={}, validators=[]
+    )
+    data = json.loads(json.dumps(asdict(cr)))
+    assert data["canary"] is False
