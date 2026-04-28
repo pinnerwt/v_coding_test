@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from scripts.score import _render_step_breakdown, generate_scoreboard
+import json
+
+from scripts.score import _render_step_breakdown, generate_scoreboard, main
 
 _STEP1 = {
     "step": 1,
@@ -102,10 +104,6 @@ def test_detail_flag_no_table_when_step_breakdown_is_empty():
 
 
 def test_detail_flag_forwarded_from_main(tmp_path, capsys):
-    import json
-
-    from scripts.score import main
-
     data = _make_data("failed", [_STEP1])
     results_file = tmp_path / "results.json"
     results_file.write_text(json.dumps(data))
@@ -168,3 +166,28 @@ def test_collapsible_block_not_emitted_when_detail_active():
     output = generate_scoreboard(data, detail=True)
     assert "<details>" not in output
     assert _HEADER in output
+
+
+def test_inline_detail_table_separated_from_case_row_by_blank_line():
+    data = _make_data("failed", [_STEP1])
+    output = generate_scoreboard(data, detail=True)
+    assert "\n\n| Step | Tool |" in output
+
+
+def test_details_block_summary_separated_from_table_by_blank_line():
+    data = _make_data("failed", [_STEP1])
+    output = generate_scoreboard(data)
+    assert "</summary>\n\n| Step | Tool |" in output
+
+
+def test_details_block_close_preceded_by_blank_line():
+    data = _make_data("failed", [_STEP1])
+    output = generate_scoreboard(data)
+    assert " |\n\n</details>" in output
+
+
+def test_unverified_case_no_step_breakdown_block():
+    data = _make_data("unverified", [_STEP1, _STEP2])
+    output = generate_scoreboard(data)
+    assert "<details>" not in output
+    assert _HEADER not in output
