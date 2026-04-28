@@ -84,3 +84,7 @@ Update the skills from what you have learned. Please also update /done_pr to ana
 For each iteration in /new_task2 : pick the change most likely to flip the most red cases to green on the next benchmark run. Implement, run benchmark, report delta. Stop when pass-rate plateaus or demo time arrives.
 
 Great. Let's archive the results in task2/RAEDME.md to a section called "basic_benchmark", and update the benchmark to the live one (web voyager)? Let's plan about this first.
+
+---
+
+For the rest, most of the developement is done automatically. Since claude allows adding prompt during run, I kept monitor the implementation and add follow up that I observed directly to task2/plan.md as a ticket. LLM is not reliable in the sense that it always try to solve the issues with special cases handler, while most of the time, a more general approach is preferred.
