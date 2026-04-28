@@ -1,0 +1,41 @@
+{
+  "run_at": "2026-04-28T00:00:00+00:00",
+  "cases": [
+    {
+      "id": "fixture-a",
+      "status": "failed",
+      "steps": 1,
+      "usd": 0.0008,
+      "prompt_tokens": 80,
+      "completion_tokens": 15,
+      "latency_ms_total": 500,
+      "escalations": [],
+      "replans": 0,
+      "cache_events": {}
+    },
+    {
+      "id": "fixture-b",
+      "status": "succeeded",
+      "steps": 3,
+      "usd": 0.0012,
+      "prompt_tokens": 120,
+      "completion_tokens": 25,
+      "latency_ms_total": 1500,
+      "escalations": [],
+      "replans": 0,
+      "cache_events": {}
+    },
+    {
+      "id": "fixture-c",
+      "status": "succeeded",
+      "steps": 2,
+      "usd": 0.0007,
+      "prompt_tokens": 70,
+      "completion_tokens": 12,
+      "latency_ms_total": 800,
+      "escalations": [],
+      "replans": 0,
+      "cache_events": {}
+    }
+  ]
+}

@@ -5,6 +5,8 @@ import json
 import sys
 from pathlib import Path
 
+from scripts.baseline_diff import generate_diff_markdown
+
 _SKIP_REASON_ORDER = [
     "live_disabled",
     "infra_unavailable",
@@ -225,6 +227,12 @@ def main(argv: list[str] | None = None) -> None:
         help="Path to README to update (default: task2/README.md)",
     )
     parser.add_argument("--output", default=None, help="Write scoreboard to this file")
+    parser.add_argument(
+        "--diff",
+        metavar="BASELINE_RESULTS_JSON",
+        default=None,
+        help="Path to baseline results JSON; appends Δ vs master diff block to output",
+    )
     args = parser.parse_args(argv)
 
     if args.results_file:
@@ -235,6 +243,15 @@ def main(argv: list[str] | None = None) -> None:
 
     data = json.loads(results_path.read_text())
     scoreboard = generate_scoreboard(data)
+
+    if args.diff is not None:
+        diff_path = Path(args.diff)
+        if not diff_path.exists():
+            print(f"error: --diff path does not exist: {args.diff}", file=sys.stderr)
+            sys.exit(1)
+        baseline_data = json.loads(diff_path.read_text())
+        diff_block = generate_diff_markdown(baseline_data, data)
+        scoreboard = scoreboard + "\n---\n" + diff_block
 
     if args.output:
         Path(args.output).write_text(scoreboard)

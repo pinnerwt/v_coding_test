@@ -12,9 +12,10 @@ from pathlib import Path
 from typing import Literal, get_args
 
 from agent.locator_cache import LocatorCache
+from scripts.baseline_diff import generate_diff_markdown
 from scripts.eval import (
-    _PASS_STATUSES,
     _SKIP_STATUS,
+    PASS_STATUSES,
     _run_case,
     build_clients,
     compute_exit_code,
@@ -112,7 +113,7 @@ def aggregate_repeats(
     runs = [_run_case(case, llm_client, browser, cache=cache) for _ in range(repeats)]
 
     all_skipped = all(r.status == _SKIP_STATUS for r in runs)
-    passed_runs = sum(1 for r in runs if r.status in _PASS_STATUSES)
+    passed_runs = sum(1 for r in runs if r.status in PASS_STATUSES)
 
     if all_skipped:
         repeat_status: RepeatStatus = "skipped"
@@ -144,7 +145,7 @@ def aggregate_repeats(
     median_steps = int(statistics.median(steps_values))
     mean_usd = sum(usd_values) / len(usd_values)
 
-    failing_runs = [r for r in runs if r.status not in _PASS_STATUSES and r.status != _SKIP_STATUS]
+    failing_runs = [r for r in runs if r.status not in PASS_STATUSES and r.status != _SKIP_STATUS]
     rep_run = failing_runs[-1] if failing_runs else runs[-1]
 
     return AggregatedCaseResult(
@@ -204,6 +205,22 @@ def write_outputs(results: dict, *, out_dir: Path) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "results.json").write_text(json.dumps(results, indent=2))
     (out_dir / "scoreboard.md").write_text(generate_scoreboard(results))
+
+
+def write_diff(branch: str, branch_data: dict, *, benchmark_root: Path) -> None:
+    if sanitize_branch(branch) == "master":
+        return
+    master_path = benchmark_root / "master" / "results.json"
+    if not master_path.exists():
+        print(
+            f"baseline-diff: master baseline not found at {master_path}; skipping diff.md",
+            file=sys.stderr,
+        )
+        return
+    master_data = json.loads(master_path.read_text())
+    diff_md = generate_diff_markdown(master_data, branch_data)
+    out_path = benchmark_root / sanitize_branch(branch) / "diff.md"
+    out_path.write_text(diff_md)
 
 
 def verify_benchmark(*, branch: str, base_date: str) -> None:
@@ -299,6 +316,7 @@ def main(argv: list[str] | None = None) -> int:
             "cases": [asdict(r) for r in agg_results],
         }
         write_outputs(data, out_dir=out_dir)
+        write_diff(branch, data, benchmark_root=_BENCHMARK_ROOT)
         print(f"Wrote: {out_dir}/results.json, {out_dir}/scoreboard.md")
         return compute_exit_code(data["cases"])
 
@@ -314,6 +332,7 @@ def main(argv: list[str] | None = None) -> int:
     data = json.loads(out_path.read_text())
     out_path.unlink()
     write_outputs(data, out_dir=out_dir)
+    write_diff(branch, data, benchmark_root=_BENCHMARK_ROOT)
     print(f"Wrote: {out_dir}/results.json, {out_dir}/scoreboard.md")
     return compute_exit_code(data["cases"])
 

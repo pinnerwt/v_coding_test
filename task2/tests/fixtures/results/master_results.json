@@ -1,0 +1,29 @@
+{
+  "run_at": "2026-04-20T00:00:00+00:00",
+  "cases": [
+    {
+      "id": "fixture-a",
+      "status": "succeeded",
+      "steps": 2,
+      "usd": 0.0010,
+      "prompt_tokens": 100,
+      "completion_tokens": 20,
+      "latency_ms_total": 1000,
+      "escalations": [],
+      "replans": 0,
+      "cache_events": {}
+    },
+    {
+      "id": "fixture-b",
+      "status": "failed",
+      "steps": 1,
+      "usd": 0.0005,
+      "prompt_tokens": 50,
+      "completion_tokens": 10,
+      "latency_ms_total": 2000,
+      "escalations": [],
+      "replans": 0,
+      "cache_events": {}
+    }
+  ]
+}

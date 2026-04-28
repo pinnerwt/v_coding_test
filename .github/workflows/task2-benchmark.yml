@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 concurrency:
   group: task2-benchmark-${{ github.head_ref }}
@@ -49,7 +50,32 @@ jobs:
           echo "date=$base_date" >> "$GITHUB_OUTPUT"
 
       - name: Verify benchmark recorded for branch
-        run: >
-          uv run python -m scripts.benchmark
-          --branch "${{ github.head_ref }}"
-          --verify "${{ steps.base.outputs.date }}"
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_DATE: ${{ steps.base.outputs.date }}
+        run: |
+          set -euo pipefail
+          uv run python -m scripts.benchmark --branch "$HEAD_REF" --verify "$BASE_DATE"
+
+      - name: Post diff as PR comment
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ github.head_ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          WORKSPACE: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          SAFE_BRANCH=$(uv run python -c "import sys; from scripts.benchmark import sanitize_branch; print(sanitize_branch(sys.argv[1]))" "$HEAD_REF")
+          DIFF_FILE="$WORKSPACE/task2/benchmark/${SAFE_BRANCH}/diff.md"
+          if [ ! -f "$DIFF_FILE" ] || [ ! -s "$DIFF_FILE" ]; then
+            echo "No diff.md found for branch ${SAFE_BRANCH}; skipping PR comment"
+            exit 0
+          fi
+          gh pr comment "$PR_NUMBER" \
+            --edit-last --body-file "$DIFF_FILE" \
+            --repo "$REPO" 2>/dev/null \
+          || gh pr comment "$PR_NUMBER" \
+            --body-file "$DIFF_FILE" \
+            --repo "$REPO"
