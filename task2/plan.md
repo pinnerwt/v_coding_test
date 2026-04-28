@@ -349,6 +349,8 @@ Urgency tags:
 
 ### P0 — unblocks other work
 
+- **#55** — URGENT: Investigate benchmark-score degradation across recent commits (user-flagged 2026-04-28).
+
 ### P1 — observed bugs / type-narrowing gaps
 
 *(none currently)*
