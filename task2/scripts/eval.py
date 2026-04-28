@@ -8,7 +8,7 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 
 import yaml
 
@@ -32,9 +32,11 @@ _REQUIRED_FIELDS = ("id", "domain", "category", "task", "expect", "budget")
 _PASS_STATUSES = frozenset({"succeeded", "unverified"})
 _FAIL_STATUSES = frozenset({"failed", "blocked", "timeout"})
 _SKIP_STATUS = "skipped"
-_VALID_SKIP_REASONS = frozenset(
-    {"live_disabled", "infra_unavailable", "fixture_missing", "feature_not_implemented"}
-)
+
+SkipReason = Literal[
+    "live_disabled", "infra_unavailable", "fixture_missing", "feature_not_implemented"
+]
+_VALID_SKIP_REASONS: frozenset[str] = frozenset(get_args(SkipReason))
 
 
 def load_cases(path: str | Path) -> list[dict]:
@@ -86,10 +88,7 @@ class CaseResult:
     cache_events: dict = field(default_factory=dict)
     failure_class: str | None = None
     failure_detail: str | None = None
-    skip_reason: (
-        Literal["live_disabled", "infra_unavailable", "fixture_missing", "feature_not_implemented"]
-        | None
-    ) = None
+    skip_reason: SkipReason | None = None
 
     def __post_init__(self) -> None:
         if self.status == _SKIP_STATUS:
@@ -274,7 +273,7 @@ def _run_case(case: dict[str, Any], llm_client: Any, browser: Any, cache: Any = 
     )
 
 
-def _skipped_result(case: dict, reason: str) -> CaseResult:
+def _skipped_result(case: dict, reason: SkipReason) -> CaseResult:
     return CaseResult(
         id=case["id"],
         status=_SKIP_STATUS,
