@@ -355,7 +355,6 @@ Urgency tags:
 
 ### P2 — measurable improvements
 
-- **#37** — Canary suite: must-always-pass cases, hard-blocking on regression.
 - **#38** — Per-step token / latency breakdown surfacing.
 - **#41** — Cache-hit visibility separate from invalidations.
 - **#42** — Failure-clustering histogram across the suite (depends on #31, which is done).
