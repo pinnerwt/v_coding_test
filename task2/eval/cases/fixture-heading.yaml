@@ -1,6 +1,7 @@
 - id: fixture-heading
   domain: fixture
   category: read-and-summarize
+  canary: true
   task: "Read the page heading and return it as title"
   expect:
     schema:

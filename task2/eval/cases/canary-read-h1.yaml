@@ -1,0 +1,15 @@
+id: canary-read-h1
+domain: fixture
+category: read-and-summarize
+canary: true
+task: "Read the H1 heading on the page and return it as title"
+expect:
+  schema:
+    title: str
+  validators:
+    - title.nonempty
+budget:
+  steps: 1
+  usd: 0.02
+  seconds: 15
+fixture: true

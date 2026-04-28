@@ -1,6 +1,7 @@
 - id: fixture-count
   domain: fixture
   category: search-and-extract
+  canary: true
   task: "Read all list items on the page and return them as items"
   expect:
     schema:
