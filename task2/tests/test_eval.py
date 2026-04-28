@@ -1692,7 +1692,7 @@ def test_fixture_count_with_listitem_intent_stub_llm(playwright_chromium):
             idx = self._call_index
             self._call_index += 1
             if idx == 0:
-                return _resp(_tc("read", {"intent": "listitem"}, "tc-read"))
+                return _resp(_tc("read", {"intent": "list items"}, "tc-read"))
             return _resp(
                 _tc(
                     "done",

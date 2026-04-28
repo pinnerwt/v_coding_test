@@ -23,11 +23,11 @@ Three fix options were considered (from the ticket):
 
 ## Decisions
 
-### Decision: Option (a) only — extend `_SUPPORTED_ROLES`
+### Decision: Option (a) plus role-alias normalization map
 
-**Chosen**: Add `"list"` and `"listitem"` to `_SUPPORTED_ROLES`. No new intent paths.
+**Chosen**: Add `"list"` and `"listitem"` to `_SUPPORTED_ROLES`, AND add `_ROLE_ALIASES = {"items": "listitem", "lists": "list"}` applied in `parse_intent` after lowercasing the role token.
 
-**Rationale**: The failing root cause is purely that the role token validator rejects the tokens before any DOM query. Playwright supports `list` and `listitem` as valid ARIA roles natively; `page.get_by_role("listitem")` returns all `<li>` elements. L1 will match when there is exactly one list item (unlikely in the fixture which has three), and L3 will disambiguate when there are multiple. For the `fixture-count` fixture (three `<li>` elements) the L1 call will raise `LocatorMiss(reason="ambiguous")`, fall to L3 (LLM disambiguation), and if that also struggles, fall to L4 vision. The integration test will use a stubbed LLM that confirms a passing outcome.
+**Rationale**: The failing root cause is purely that the role token validator rejects the tokens before any DOM query. Playwright supports `list` and `listitem` as valid ARIA roles natively; `page.get_by_role("listitem")` returns all `<li>` elements. L1 will match when there is exactly one list item (unlikely in the fixture which has three), and L3 will disambiguate when there are multiple. For the `fixture-count` fixture (three `<li>` elements) the L1 call will raise `LocatorMiss(reason="ambiguous")`, fall to L3 (LLM disambiguation), and if that also struggles, fall to L4 vision. The integration test will use a stubbed LLM that confirms a passing outcome. End-to-end verification under real Qwen3.5-27B confirmed the model emits `'list items'` (two words), with last token `items` — the alias map closes that gap so option (a) actually delivers `fixture-count` red→green.
 
 Option (b) adds a parser mode that does not flow through `role`/`name` at all, requiring non-trivial refactors to `LocateResult` and the locate ladder. No eval case currently demands it; adding it now violates the "green minimally" TDD rule.
 
@@ -37,9 +37,9 @@ Option (b) adds a parser mode that does not flow through `role`/`name` at all, r
 
 ### Decision: Test strategy
 
-- Unit test: `parse_intent` with `"the list items"` returns `("listitem", "the list")`, and with `"list"` returns `("list", None)`.
+- Unit test: `parse_intent` with `"list items"`, `"list"`, and `"listitem"` returns the expected pairs; alias-only inputs (`"items"`, `"lists"`) also return canonical pairs.
 
-  Note: `"the list items"` strips the leading article `"the"`, leaving tokens `["list", "items"]`; the last token is `"items"` which is NOT `"list"` or `"listitem"`. To correctly parse list intents, the natural phrasing from the LLM will need to end in `"list"` or `"listitem"` — for example `"the listitem"`, `"listitem"`, or `"list"`. The unit test MUST reflect the actual token grammar (last token is the role). The integration test stub will emit an intent that ends in a valid role token.
+  Note: `parse_intent('list items')` returns `('listitem', 'list')` because the role-alias map normalizes `items` → `listitem` after the article-stripping step. Unit tests cover both bare aliases (`'items'`, `'lists'`) and the production phrasing (`'list items'`).
 
 - Integration test: uses a fake LLM chat function; the `fixture-count` case runs against a stubbed agent that emits a locate call ending in `"listitem"` and a read/return step, asserting `status in PASS_STATUSES`.
 
@@ -52,7 +52,7 @@ Option (b) adds a parser mode that does not flow through `role`/`name` at all, r
 ## Migration Plan
 
 1. Red: write unit test and integration test (failing).
-2. Green: add `"list"` and `"listitem"` to `_SUPPORTED_ROLES`.
+2. Green: add `"list"` and `"listitem"` to `_SUPPORTED_ROLES` and add `_ROLE_ALIASES = {"items": "listitem", "lists": "list"}` to `agent/locate.py`, applying the alias map in `parse_intent` after lowercasing the role token.
 3. Green: confirm both tests pass.
 4. Add `canary: true` to `fixture-count.yaml`.
 5. Update canary-gate spec comment to enumerate three canary cases.

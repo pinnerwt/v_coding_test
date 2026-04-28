@@ -45,8 +45,6 @@ All three cases SHALL be `fixture: true` so they run in CI without `--live`.
 - **WHEN** `task2/eval/cases/fixture-count.yaml` is loaded via `scripts.eval.load_cases`
 - **THEN** the returned case dict SHALL have `canary == True` and `fixture == True`
 
-## MODIFIED Requirements
-
 ### Requirement: canary_gate CLI module
 
 `task2/scripts/canary_gate.py` SHALL be a runnable Python module invokable as `uv run python -m scripts.canary_gate --results <path>` from the `task2/` directory. The module SHALL accept one required CLI argument:

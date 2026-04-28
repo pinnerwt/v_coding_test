@@ -68,9 +68,3 @@ The supported role set SHALL be defined as a `Literal` alias so callers can type
 
 - **WHEN** a caller invokes `parse_intent("list items")`
 - **THEN** the call SHALL return `("listitem", "list")`
-
-#### Scenario: still-unknown role rejected
-
-- **WHEN** a caller invokes `parse_intent("Submit widget")`
-- **THEN** the call SHALL raise `IntentParseError`
-- **AND** the exception message SHALL include the offending role token `"widget"`
