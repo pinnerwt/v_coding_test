@@ -11,14 +11,15 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal, get_args
 
-from agent.locator_cache import LocatorCache
 from scripts.baseline_diff import generate_diff_markdown
 from scripts.eval import (
     _SKIP_STATUS,
     PASS_STATUSES,
+    SkipReason,
     _run_case,
     build_clients,
     compute_exit_code,
+    iter_runnable_subcases,
     load_cases,
     run_suite,
 )
@@ -53,7 +54,7 @@ class AggregatedCaseResult:
     replans: int = 0
     cache_events: dict = field(default_factory=dict)
     failure_class: str | None = None
-    skip_reason: str | None = None
+    skip_reason: SkipReason | None = None
     canary: bool = False
 
     def __post_init__(self) -> None:
@@ -65,16 +66,7 @@ class AggregatedCaseResult:
             raise ValueError(f"status {self.status!r} not in {sorted(_VALID_DERIVED_STATUSES)}")
 
 
-def _pre_run_skip_reason(case: dict, *, live: bool) -> str | None:
-    fixture_path = case.get("fixture_path")
-    if fixture_path is not None and not Path(fixture_path).exists():
-        return "fixture_missing"
-    if not live and not case.get("fixture", False):
-        return "live_disabled"
-    return None
-
-
-def _skipped_aggregate(case: dict, *, repeats: int, reason: str) -> AggregatedCaseResult:
+def _skipped_aggregate(case: dict, *, repeats: int, reason: SkipReason) -> AggregatedCaseResult:
     return AggregatedCaseResult(
         id=case["id"],
         repeat_status="skipped",
@@ -105,13 +97,8 @@ def aggregate_repeats(
     repeats: int,
     llm_client,
     browser,
-    live: bool = False,
     cache=None,
 ) -> AggregatedCaseResult:
-    skip_reason = _pre_run_skip_reason(case, live=live)
-    if skip_reason is not None:
-        return _skipped_aggregate(case, repeats=repeats, reason=skip_reason)
-
     canary = case.get("canary", False)
     runs = [
         _run_case(case, llm_client, browser, cache=cache, canary=canary) for _ in range(repeats)
@@ -294,26 +281,20 @@ def main(argv: list[str] | None = None) -> int:
     if args.repeats > _DEFAULT_REPEATS:
         agg_results: list[AggregatedCaseResult] = []
         with browser:
-            for parent_case in all_cases:
-                variants = parent_case.get("variants")
-                use_shared_cache = parent_case.get("shared_cache", False) and variants
-                shared_cache = LocatorCache(path=":memory:") if use_shared_cache else None
-
-                if variants:
-                    sub_cases = [
-                        {**parent_case, "id": f"{parent_case['id']}-{v}"} for v in variants
-                    ]
+            for case, shared_cache, skip_reason in iter_runnable_subcases(
+                all_cases, live=args.live
+            ):
+                if skip_reason is not None:
+                    agg_results.append(
+                        _skipped_aggregate(case, repeats=args.repeats, reason=skip_reason)
+                    )
                 else:
-                    sub_cases = [parent_case]
-
-                for case in sub_cases:
                     agg_results.append(
                         aggregate_repeats(
                             case,
                             repeats=args.repeats,
                             llm_client=llm_client,
                             browser=browser,
-                            live=args.live,
                             cache=shared_cache,
                         )
                     )

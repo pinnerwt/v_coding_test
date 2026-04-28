@@ -80,3 +80,5 @@ Now, let's create a meta skill that call /full_task2 , then /review_task2 with s
 Let's check the benchmark results. Propose different ways to improve the benchmark in task2/plan.md
 
 Update the skills from what you have learned. Please also update /done_pr to analyze why benchmark failed and add tickets to task2/plan.md
+
+For each iteration in /new_task2 : pick the change most likely to flip the most red cases to green on the next benchmark run. Implement, run benchmark, report delta. Stop when pass-rate plateaus or demo time arrives.
