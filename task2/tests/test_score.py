@@ -901,3 +901,21 @@ def test_failure_histogram_n_failed_counts_all_failed_cases():
     }
     output = generate_scoreboard(data)
     assert "**Failure histogram** (2 failed)" in output
+
+
+def test_failure_histogram_excludes_unknown_status():
+    from scripts.score import generate_scoreboard
+
+    data = {
+        "run_at": _make_run_at(),
+        "cases": [
+            _make_case("c1", "failed", failure_class="supervisor_halt"),
+            _make_case("c2", "unknown", failure_class="some_other_class"),
+        ],
+    }
+    output = generate_scoreboard(data)
+    histogram_end = output.index("| Case |")
+    histogram_section = output[:histogram_end]
+    assert "supervisor_halt" in histogram_section
+    assert "some_other_class" not in histogram_section
+    assert "**Failure histogram** (1 failed)" in histogram_section

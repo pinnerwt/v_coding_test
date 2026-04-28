@@ -38,7 +38,7 @@ def _render_failure_histogram(cases: list[dict]) -> str:
     n_failed = 0
     for case in cases:
         raw = case.get("status", "unknown")
-        if raw in ("succeeded", "unverified", "skipped"):
+        if raw not in ("failed", "blocked", "timeout"):
             continue
         n_failed += 1
         fc = case.get("failure_class")

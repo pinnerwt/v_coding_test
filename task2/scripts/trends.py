@@ -536,13 +536,17 @@ def render_failure_classes_svg(runs: list[Run], class_counts: list[dict[str, int
                 f'stroke="#eee" stroke-dasharray="2,2"/>'
             )
 
-    base_pts = " ".join(f"{x_at(i):.2f},{axis_y:.2f}" for i in range(n - 1, -1, -1))
+    cum: list[float] = [0.0] * n
     for cls in all_classes:
         color = color_map[cls]
-        vals = [c.get(cls, 0) for c in class_counts]
-        pts = " ".join(f"{x_at(i):.2f},{y_at(v):.2f}" for i, v in enumerate(vals))
-        parts.append(f'<polygon points="{pts} {base_pts}" fill="{color}" opacity="0.7"/>')
-        parts.append(f'<polyline points="{pts}" fill="none" stroke="{color}" stroke-width="1.5"/>')
+        top_vals = [cum[i] + class_counts[i].get(cls, 0) for i in range(n)]
+        top_pts = " ".join(f"{x_at(i):.2f},{y_at(v):.2f}" for i, v in enumerate(top_vals))
+        bottom_pts = " ".join(f"{x_at(i):.2f},{y_at(cum[i]):.2f}" for i in range(n - 1, -1, -1))
+        parts.append(f'<polygon points="{top_pts} {bottom_pts}" fill="{color}" opacity="0.7"/>')
+        parts.append(
+            f'<polyline points="{top_pts}" fill="none" stroke="{color}" stroke-width="1.5"/>'
+        )
+        cum = top_vals
 
     entry_w = max(90, plot_w // max(len(all_classes), 1))
     lx = _PAD_L

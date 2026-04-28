@@ -670,6 +670,47 @@ def test_flag_regression_returns_false_at_exactly_5pp_boundary():
     assert flag_regression(runs) is False
 
 
+def test_render_failure_classes_svg_polygons_are_cumulatively_stacked():
+    import re
+
+    from scripts.trends import render_failure_classes_svg
+
+    runs = [_make_run("b1", "2026-04-26T01:00:00+00:00", 0.0)]
+    class_counts = [{"alpha": 2, "beta": 3}]
+    svg = render_failure_classes_svg(runs, class_counts)
+
+    _W = 720
+    _H = 220
+    _PAD_L = 60
+    _PAD_R = 20
+    _PAD_T = 30
+    _PAD_B = 60
+    plot_w = _W - _PAD_L - _PAD_R
+    plot_h = _H - _PAD_T - _PAD_B
+    axis_y = _PAD_T + plot_h
+    y_max_raw = max(sum(c.values()) for c in class_counts)
+    y_max = y_max_raw * 1.15
+
+    def y_at(v):
+        return axis_y - (v / y_max) * plot_h
+
+    x0 = _PAD_L + plot_w / 2
+
+    polygons = re.findall(r'<polygon points="([^"]+)"', svg)
+    assert len(polygons) == 2, f"expected 2 polygons, got {len(polygons)}: {polygons}"
+
+    alpha_pts = polygons[0]
+    beta_pts = polygons[1]
+
+    alpha_top = f"{x0:.2f},{y_at(2):.2f}"
+    beta_top = f"{x0:.2f},{y_at(5):.2f}"
+    beta_baseline = f"{x0:.2f},{y_at(2):.2f}"
+
+    assert alpha_top in alpha_pts, f"alpha top {alpha_top!r} not in {alpha_pts!r}"
+    assert beta_top in beta_pts, f"beta top {beta_top!r} not in {beta_pts!r}"
+    assert beta_baseline in beta_pts, f"beta baseline {beta_baseline!r} not in {beta_pts!r}"
+
+
 def test_flag_regression_returns_false_when_latest_above_median():
     from scripts.trends import flag_regression
 
