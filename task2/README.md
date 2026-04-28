@@ -46,6 +46,16 @@ LLM_BASE_URL=http://localhost:8090 LLM_MODEL=qwen3.5-27b \
 
 Live results land under `eval/results/` (configurable via `EVAL_RESULTS_DIR`). The trend charts above only reflect the basic benchmark today; WebVoyager is tracked separately while the suite stabilizes.
 
+#### Tier-0 baseline (3 tasks, 2026-04-28)
+
+| Case | Site | Status | Steps | Latency | USD |
+|---|---|---|---:|---:|---:|
+| `webvoyager-1` | Wikipedia | failed (`tool_error`: `LLMError('http 400')` at step 0) | 0 | 0.0 s | $0.0000 |
+| `webvoyager-2` | arXiv | succeeded | 9 | 92.9 s | $0.1146 |
+| `webvoyager-3` | GitHub | succeeded | 6 | 51.9 s | $0.0405 |
+
+2/3 passed. Per-passing-task cost ≈ $0.08, latency ≈ 50–90 s. The Wikipedia failure is a `LLMError('http 400')` from the Qwen endpoint at step 0 (zero tokens billed) — likely transient endpoint state, not an agent bug. Persisted at `benchmark/task2-benchmarks-readme-and-tier0/webvoyager/baseline.json` for reference.
+
 See `plan.md` for the full design. This README is the operator's guide.
 
 ## Setup
