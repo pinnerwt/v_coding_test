@@ -1508,6 +1508,7 @@ def test_run_case_non_llm_error_failure_detail_is_repr():
 
     assert result.failure_class == "tool_error"
     assert result.failure_detail == repr(RuntimeError("unexpected"))
+    assert result.steps == 0
 
 
 # ---------------------------------------------------------------------------
@@ -1686,6 +1687,8 @@ def test_run_case_failure_detail_includes_llm_error_body():
     assert "status=400" in result.failure_detail
     assert "exceed_context_size_error" in result.failure_detail
     assert result.failure_class == "tool_error"
+    assert result.steps == 0
+    assert result.validators[0]["error"] == result.failure_detail
 
 
 def test_fixture_count_with_listitem_intent_stub_llm(playwright_chromium):

@@ -196,7 +196,8 @@ def _compact_messages(messages: list[dict], budget_chars: int) -> list[dict]:
                 replacement = _ELIDED_STATE_CONTENT
             elif (
                 m.get("role") == "tool"
-                and (last_state_idx is None or i < last_state_idx)
+                and last_state_idx is not None
+                and i < last_state_idx
                 and m.get("content") != _ELIDED_TOOL_CONTENT
             ):
                 replacement = _ELIDED_TOOL_CONTENT

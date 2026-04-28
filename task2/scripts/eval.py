@@ -267,7 +267,7 @@ def _run_case(
                 steps=0,
                 usd=0.0,
                 l_tier_counts={},
-                validators=[{"name": "exception", "ok": False, "error": repr(exc)}],
+                validators=[{"name": "exception", "ok": False, "error": failure_detail}],
                 failure_class="tool_error",
                 failure_detail=failure_detail,
                 canary=canary,
