@@ -1,7 +1,7 @@
 ---
 id: 91
 slug: per-step-phase-latency-breakdown
-status: active
+status: archived
 tier: 2
 urgency: P2
 axes:
@@ -15,9 +15,9 @@ evidence:
 - task2/agent/loop.py
 related:
 - 88
-filed_pr: null
-merged_pr: null
-archived_at: null
+filed_pr: 147
+merged_pr: 147
+archived_at: "2026-04-29"
 trigger: 2026-04-29 — user-driven webvoyager timeout investigation; ticket queue restart
 ---
 
