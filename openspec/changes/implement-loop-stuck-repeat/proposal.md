@@ -28,3 +28,4 @@ _(none — this change extends an existing capability)_
 - `task2/agent/trace.py` — no change required (`RunResult` lives in `loop.py`, not `trace.py`).
 - `task2/tests/agent/test_loop.py` — two new unit tests (positive stuck detection, negative healthy-alternation).
 - No API surface changes; `reason` defaults to `None` so all existing callers are unaffected.
+- Supervisor coexistence: `_stuck_buf` is cleared whenever the supervisor handles a dispatch (i.e. `supervisor._attempts` increases), ensuring stuck-detection does not pre-empt the supervisor's locator-escalation/halt/replan path for `read`-type calls.
