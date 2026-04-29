@@ -10,11 +10,11 @@
 
 ## 3. Update Existing Tests to New Contract
 
-- [ ] 3.1 Update `test_trim_history_drops_oldest_groups_outside_window` (keep_steps=4, 6 groups): change `kept_ids` to `{tc-1, tc-3, tc-4, tc-5, tc-6}` and `dropped_ids` to `{tc-2}`.
-- [ ] 3.2 Update `test_trim_history_respects_env_var` (HISTORY_TRIM_KEEP_STEPS=2, 6 groups): change `kept_ids` to `{tc-1, tc-5, tc-6}` and `dropped_ids` to `{tc-2, tc-3, tc-4}`.
-- [ ] 3.3 Update `test_trim_history_unparseable_env_var_falls_back_to_default` (default keep_steps=4, 6 groups): change `kept_ids` to `{tc-1, tc-3, tc-4, tc-5, tc-6}` and `dropped_ids` to `{tc-2}`.
-- [ ] 3.4 Rebuild `test_trim_history_drops_multi_tool_call_group_atomically` with 3 groups instead of 2. Use a single-tool-call anchor group (group 0, id=`tc-anchor`), a multi-tool-call middle group (group 1, ids=`tc-multi-a` and `tc-multi-b`), and a single-tool-call recent group (group 2, id=`tc-keep`). Call `trim_history(messages, keep_steps=1)`. Assert: `tc-multi-a` and `tc-multi-b` are absent from both tool result ids and assistant tool_call ids; `tc-anchor` and `tc-keep` are present. This preserves the original test intent (atomic drop of a multi-tool-call group) while accommodating the new anchor contract.
-- [ ] 3.5 Run `uv run pytest task2/tests/test_trim_history.py -x` and confirm all tests pass.
+- [x] 3.1 Update `test_trim_history_drops_oldest_groups_outside_window` (keep_steps=4, 6 groups): change `kept_ids` to `{tc-1, tc-3, tc-4, tc-5, tc-6}` and `dropped_ids` to `{tc-2}`.
+- [x] 3.2 Update `test_trim_history_respects_env_var` (HISTORY_TRIM_KEEP_STEPS=2, 6 groups): change `kept_ids` to `{tc-1, tc-5, tc-6}` and `dropped_ids` to `{tc-2, tc-3, tc-4}`.
+- [x] 3.3 Update `test_trim_history_unparseable_env_var_falls_back_to_default` (default keep_steps=4, 6 groups): change `kept_ids` to `{tc-1, tc-3, tc-4, tc-5, tc-6}` and `dropped_ids` to `{tc-2}`.
+- [x] 3.4 Rebuild `test_trim_history_drops_multi_tool_call_group_atomically` with 3 groups instead of 2. Use a single-tool-call anchor group (group 0, id=`tc-anchor`), a multi-tool-call middle group (group 1, ids=`tc-multi-a` and `tc-multi-b`), and a single-tool-call recent group (group 2, id=`tc-keep`). Call `trim_history(messages, keep_steps=1)`. Assert: `tc-multi-a` and `tc-multi-b` are absent from both tool result ids and assistant tool_call ids; `tc-anchor` and `tc-keep` are present. This preserves the original test intent (atomic drop of a multi-tool-call group) while accommodating the new anchor contract.
+- [x] 3.5 Run `uv run pytest task2/tests/test_trim_history.py -x` and confirm all tests pass.
 
 ## 4. Refactor Under Green
 
