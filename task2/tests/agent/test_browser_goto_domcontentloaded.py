@@ -68,7 +68,7 @@ def hanging_html_server() -> Iterator[str]:
                 self.send_header("Content-Type", "text/html")
                 self.send_header("Content-Length", "0")
                 self.end_headers()
-            except Exception:  # noqa: BLE001
+            except (BrokenPipeError, ConnectionResetError):
                 pass
 
         def log_message(self, format, *args):  # noqa: A002 - signature dictated by stdlib
