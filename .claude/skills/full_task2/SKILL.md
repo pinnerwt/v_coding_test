@@ -63,10 +63,11 @@ Invoke the **`/new_task2`** skill (no args). It runs its full 12-step flow: pick
 
 After it returns, read the handoff fields from the table above. Record:
 
-- `branch` (must start with `task2/`).
-- `change_name` (the kebab-case slug under `openspec/changes/`).
+- `branch` (starts with `task2/` for standard path; `chore/skills-` for the workflow-only fast path — see `/new_task2` Step 1a).
+- `change_name` (the kebab-case slug under `openspec/changes/`; **empty** for the workflow-only fast path because no change directory was created).
 - `pr_url`.
 - `ticket_number` and `ticket_title` from the final report (only used in the orchestrator's own final summary; not needed by Phase 2 or 3).
+- `is_workflow_only`: `true` if Phase 1's final report says `Path: workflow-only fast path`, else `false`. This determines whether Phase 2 runs and how Phase 3 is invoked.
 
 **Stop conditions** — do not advance to Phase 2 if any of these hold:
 
@@ -78,6 +79,8 @@ After it returns, read the handoff fields from the table above. Record:
 When the stop condition fires, print a single status line — `full_task2: stopped after Phase 1 — <reason>` — plus the PR URL if any, and exit. Do not auto-retry.
 
 ### 2. Phase 2 — `/review_task2`
+
+**Skip Phase 2 entirely if `is_workflow_only == true`.** The reviewer subagent reviews diffs through the lens of correctness / TDD / test coverage — none of which apply to skill prose. `/new_task2` Step 1a's fast path explicitly excludes Phase 2 from the workflow-only flow. Print one line `full_task2: Phase 2 skipped (workflow-only fast path)` and proceed to Phase 3.
 
 Invoke the **`/review_task2`** skill (no args). It runs the codex → plan → sonnet → simplify loop on the current branch's diff against master, committing any fixes at step 8.
 
@@ -106,7 +109,16 @@ Phase 3 will fail to merge a PR whose remote head lags behind local — pushing 
 
 ### 3. Phase 3 — `/done_pr`
 
-Invoke the **`/done_pr`** skill with the change name from Phase 1: `/done_pr <change-name>`. It handles archive → spec sync → benchmark capture → push → merge → master sync.
+**Workflow-only fast path (`is_workflow_only == true`):** there is no `change_name` and no OpenSpec directory to archive. Do **not** invoke `/done_pr` with a change-name argument it cannot resolve. Instead, run the merge sequence directly:
+
+```bash
+gh pr merge "$pr_url" --squash --delete-branch
+git checkout master && git pull --ff-only
+```
+
+Skip the benchmark and ticket-archive substeps — they are gated on `task2/` code changes (none here) and on the change directory existing (none here). Then jump to Phase 4.
+
+**Standard path:** invoke the **`/done_pr`** skill with the change name from Phase 1: `/done_pr <change-name>`. It handles archive → spec sync → benchmark capture → push → merge → master sync.
 
 `/done_pr` itself has a pre-flight check for working-tree state, the OpenSpec sync ordering rule, and the benchmark-then-merge ordering. Trust those — do not pre-run any of its substeps in this orchestrator.
 
