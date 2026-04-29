@@ -1,0 +1,38 @@
+---
+id: 85
+slug: goto-domcontentloaded-bound-slow-load-event
+status: active
+tier: 5
+urgency: P1
+axes:
+  pass_rate: 0
+  tokens_pct: 50
+  latency_pct: 50
+dependencies: []
+pre_flight_gates: []
+evidence:
+- task2/agent/browser.py
+- task2/agent/loop.py
+- task2/benchmark/task2-implement-fast-path-ticket-archival/webvoyager/20260429_104152.json
+related: []
+filed_pr: null
+merged_pr: null
+archived_at: null
+trigger: 'WebVoyager benchmark inspection on 2026-04-29 — webvoyager-1 (Wikipedia Turing-Award-2018 task) has timed out at 20 steps in every one of the last 8 benchmark runs (task2-implement-loop-stuck-repeat through task2-implement-fast-path-ticket-archival), costing ~$0.30 / ~310K prompt tokens / ~6 minutes wallclock per benchmark run. Cross-run latency profile is bimodal and consistent: steps 0-9 average ~7s/step, steps 10-19 average ~28s/step (4× slower) with the same prompt-token range (~22K). Tool calls are non-repeating (mix of `goto`/`read`/`click`), prompt tokens stay flat after step 10 (history truncation in play), no replans, only 1 escalation — the agent is making semantic progress on Wikipedia article pages but never converges to `done`. Root cause: `task2/agent/browser.py:83` `self._page.goto(url, wait_until="load")` blocks until ALL subresources (images, fonts, lazy scripts) finish; on Wikipedia article views this routinely takes 15-30s. Step 13''s `goto` measured 31964ms in the latest run; the surrounding read/click steps inherit the same load-state contention because Playwright''s implicit waits stall on the same `load` lifecycle that the goto initiated. No explicit timeout is passed either, so the only ceiling is Playwright''s 30s default — which is exactly what we see in the second-half latency distribution.'
+---
+
+85. **`Browser.goto` waits for `load` (all subresources) instead of `domcontentloaded`; webvoyager-1 spends ~half its 6-minute wallclock and ~half its $0.30 cost stalled on Wikipedia asset graphs.** The agent only needs the DOM and AX-tree to operate — `Accessibility.getFullAXTree` and `_body_text` both work as soon as DOMContentLoaded has fired. Waiting for `load` (all images, fonts, lazy-loaded scripts) is wasted time on content-heavy pages and is the dominant source of the 4× per-step slowdown in webvoyager-1's second half (steps 10-19 averaging ~28s/step vs ~7s/step for steps 0-9). The same wait-state contention also leaks into reads and clicks that follow a goto on a still-loading page, because Playwright's locator operations implicitly wait for the page lifecycle to settle. **Concrete fix:** change both `self._page.goto(url, wait_until="load")` calls in `task2/agent/browser.py:83` and `:89` to `self._page.goto(url, wait_until="domcontentloaded", timeout=15000)`. The 15s timeout is a hard ceiling for unreachable / slow-DCL pages — strictly tighter than Playwright's 30s default, so the only behavior changed for already-fast pages is the wait-until target. Optionally (and only if needed by a follow-up), add a swallow-on-timeout `try: self._page.wait_for_load_state("load", timeout=2000); except PlaywrightTimeoutError: pass` after the successful DCL goto, to give a small grace window for pages whose critical content lazy-loads via JS — but defer this until a fixture proves it's necessary, since the WebVoyager and live-* cases all read static-DOM content that DCL guarantees. **Tests:** add `task2/tests/agent/test_browser_goto_domcontentloaded.py` with three deterministic tests against a custom `http.server` handler (not the existing `fixture_server` shared session — this needs a per-test handler that holds an image request open):
+
+   1. `test_goto_returns_after_domcontentloaded_when_subresource_hangs` — handler serves `index.html` immediately (HTML body with `<img src="/slow.png">`) and blocks on `GET /slow.png` with a `time.sleep(8)` then 200 OK. Assert `Browser.goto` returns within 3 seconds (i.e. it did not wait for the slow image). Use `time.monotonic()` deltas, not wall clocks.
+   2. `test_goto_raises_navigation_error_on_dcl_timeout` — handler holds the HTML response itself for 20 seconds. Assert `Browser.goto` raises `NavigationError` within ~16 seconds (15s timeout + transient-retry slack), confirming the explicit `timeout=15000` is honored.
+   3. `test_goto_passes_wait_until_domcontentloaded_arg` — patch `b._page.goto` to capture `kwargs`, assert `kwargs["wait_until"] == "domcontentloaded"` and `kwargs["timeout"] == 15000`. Belt-and-suspenders for the contract.
+
+   Also update the three existing patched-goto tests at `task2/tests/agent/test_browser.py:148-187` (`test_goto_retries_once_on_transient_error`, `test_goto_does_not_retry_non_transient_error`, `test_goto_raises_navigation_error_on_second_transient_failure`): their `fake_goto(url, wait_until)` signature needs to absorb the new `timeout` kwarg — change to `fake_goto(url, **kwargs)` or `fake_goto(url, wait_until, timeout=...)`. The retry-on-transient assertion should still pass with the new contract, so this is signature plumbing only — no behavior change to the retry logic itself.
+
+   **Acceptance:** the new test 1 passes in <3 seconds (proving DCL semantics), all existing browser tests still pass (no regression on `test_goto_and_read_h1`, `test_read_*`, etc. — the fixture server's static HTML has DCL ≈ load time so the change is invisible to them), and a re-run of the WebVoyager benchmark on a branch that lands this fix shows webvoyager-1's `latency_ms_per_step` second-half average drop from ~28s/step to ≤10s/step (target: ≤10s; threshold for declaring success: ≥40% reduction in `latency_ms_total` for webvoyager-1 vs the prior baseline, i.e. ≤220s / ≤$0.20).
+
+   *Why useful:* webvoyager-1 has been the dominant cost and wallclock contributor in every WebVoyager run since the suite was added — every iteration of `/auto_task2` pays this tax even when the ticket has nothing to do with browser navigation. The latency_pct=50 / tokens_pct=50 estimate is grounded in the cross-run latency profile (steps 10-19 are ~70% of webvoyager-1's wallclock and the load-event wait is the documented dominant cost). pass_rate=0 because the agent will still likely time out — Wikipedia article navigation is a planner / context-budget problem, not a browser-speed problem; that's a separate ticket. But cutting per-step latency from 28s to ~7s gives the planner more steps within the existing 120s budget, which MAY incidentally flip the case to a non-timeout failure — that's gravy, not the load-bearing claim.
+
+   *Risks:* (a) some real-world pages render their target text only after a post-DCL JS hydration step (e.g. SPAs). For WebVoyager's seed suite (Wikipedia, arXiv, GitHub) this is not a concern — those pages are server-rendered and DCL-complete. If a future case hits this, add the swallow-on-timeout `wait_for_load_state("load", timeout=2000)` deferred above. (b) the goto-failure timing test is mildly flaky at exactly 15s due to the transient-retry path (one extra DCL attempt + 250ms sleep ≈ 30s worst-case if both attempts hit the timeout). Bound the assertion at 31s, not 16s, to absorb this. (c) the new test that holds an HTTP response for 20s must use a `daemon=True` thread and shut down cleanly even if the test fails — copy the `_start_fixture_server` / `_stop_fixture_server` shape from `task2/tests/conftest.py:20-42`.
+
+   *Trigger:* WebVoyager benchmark inspection on 2026-04-29 during `/auto_task2` iteration 2 — opened mid-iteration after the user redirected from ticket #39 to performance work, then chose to file as a standalone ticket rather than implement on a re-purposed branch.
