@@ -1,7 +1,7 @@
 ---
 id: 77
 slug: auto-task2-pipeline-speedup-parallelize-and-skip
-status: active
+status: archived
 tier: 1
 urgency: P2
 axes:
@@ -13,9 +13,10 @@ pre_flight_gates: []
 evidence: []
 related:
 - 76
-filed_pr: null
-merged_pr: null
-archived_at: null
+- 79
+filed_pr: 113
+merged_pr: 113
+archived_at: '2026-04-29'
 trigger: 'user-flagged on 2026-04-29 during `/auto_task2` iteration 2 — strict-serial loop wastes wall-clock and LLM tokens on tickets that don''t need every phase.'
 ---
 

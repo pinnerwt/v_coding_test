@@ -45,6 +45,65 @@ Invoke the `/full_task2` skill via the Skill tool, no args. Await completion. Th
 
 If `/full_task2` halts on any of its stop conditions — smoke regression that didn't converge, `/opsx:apply` design block, codex review thrash, merge conflict, no eligible ticket — **halt the auto loop**. Preserve the child skill's stop message verbatim; do not retry. The user invoked auto mode for routine work, not for papering over real blockers.
 
+#### 3a. Optional: parallel-worktree fan-out (manual concurrency, ticket #77 lever 1)
+
+When the next 2-N tickets in INDEX.md touch **disjoint** file sets, the orchestrator can prepare parallel worktrees so the user runs N concurrent Claude Code sessions, one per worktree. This roughly halves wall-clock when there are 2+ disjoint candidates available (typical with 14+ active tickets).
+
+**Why this is a runbook, not an automated step.** `/full_task2` runs inline in the main thread because `/new_task2` and `/review_task2` already spawn subagents internally and subagents-of-subagents silently break (documented in `full_task2/SKILL.md`). One Claude conversation therefore cannot fan out two parallel `/full_task2` runs via the Agent tool — only the human can, by opening N separate sessions with different `cwd`s. So this section sets up the worktrees and prints launch instructions; the actual parallelism happens user-side.
+
+**When to suggest fan-out.** Apply this BEFORE step 3's single-/full_task2 invocation, only when ALL of the following hold:
+- The user invoked `/auto_task2 --parallel N` (or equivalent), with N >= 2. If invoked plainly, default to single-track and skip this section.
+- INDEX.md has at least N tickets passing the cross-cutting filters (dependencies merged, pre-flight gates satisfied) per `/new_task2` Step 1's selection rule.
+- The top N candidates pass the **collision check** below.
+
+**Collision check.** For each of the top N candidates, derive an "implied touch set" from the ticket body (search for fenced filenames, `task2/...` paths, `agent/...`, `scripts/...` mentions). Pair-wise compare:
+- Two candidates conflict if their implied touch sets share any path under `task2/agent/**`, `task2/api/**`, `task2/prompts/**`, `task2/scripts/{score,bench,trends,webvoyager_trends,regen_tickets_index}.py`, or any single concrete file (e.g. `task2/scripts/score.py`).
+- Tickets with `task2/tickets/**`-only touch sets (process tickets) never conflict with code tickets.
+- When in doubt about a ticket's touch set, treat it as conflicting with everything — fall back to single-track for that iteration.
+
+If fewer than N non-conflicting candidates emerge, reduce N to the largest non-conflicting subset (minimum 1; if 1, skip fan-out and run single-track in step 3).
+
+**Worktree prep (orchestrator-side).** For each of the M (= effective parallel count) tickets:
+
+```bash
+WT_ID=<short ticket slug>
+git worktree add -b task2/<change-name>-w${WT_ID} ../vici-w-${WT_ID} master
+```
+
+Each worktree is a sibling directory that shares the `.git` object store but has its own working tree, branch, and HEAD. Conflicts at merge time are mediated by the master branch's protection (sequential PR squash) — the merge phase is intrinsically serial because `gh pr merge` against a protected branch refuses concurrent fast-forwards.
+
+**Launch instructions (printed to user, not executed).** After preparing worktrees, halt with this message verbatim:
+
+```
+auto_task2 parallel fan-out prepared:
+  worktree A: ../vici-w-<slug-A> on branch task2/<change-A>-wA — ticket #<A> <title>
+  worktree B: ../vici-w-<slug-B> on branch task2/<change-B>-wB — ticket #<B> <title>
+  ...
+
+To proceed, open M new Claude Code sessions, one per worktree. In each session:
+  cd ../vici-w-<slug-X>
+  /full_task2
+Each session runs independently. Their PRs land sequentially (master is protected; gh pr merge serializes on its own).
+After all M land, return to this session and re-invoke /auto_task2 to continue the loop.
+```
+
+Do NOT proceed past this halt automatically — the orchestrator's job ends after the worktrees are prepared. The user-side parallelism is what produces the wall-clock win. When the user resumes with `/auto_task2`, treat this as a fresh iteration: the worktrees may or may not have landed; reconcile with `git worktree list` and `gh pr list --head 'task2/*' --state merged` before picking again.
+
+**Cleanup of merged worktrees.** Before each new fan-out (or before exiting the loop), remove worktrees whose branches have been merged or deleted upstream:
+
+```bash
+git worktree list
+# for each ../vici-w-* whose branch is gone or merged:
+git worktree remove ../vici-w-<slug>
+```
+
+**Do NOT use parallel fan-out when:**
+- The next ticket is a tier-1 process/skill ticket that mutates the orchestrator skills themselves — those changes affect every concurrent session's skill files mid-run. Run tier-1 skill tickets single-track, then fan out the next batch.
+- The WebVoyager benchmark would run for any of the M tickets — the live-only WebVoyager run is a serialized resource (Qwen is one process, the public web is shared). With ticket #77 lever 2 in `/done_pr`, process-only tickets skip the benchmark entirely and can fan out freely; agent-touching tickets still serialize at `/done_pr` step 1a even when fanned-out.
+- Any candidate ticket has unmerged dependencies that another candidate is *currently implementing*. Treat the in-flight candidate as merged for filter purposes only after its PR lands.
+
+**Why this is filed as a runbook rather than wired up.** Confirmed in ticket #77 lever 1 design pass on 2026-04-29 — the spec called for `/auto_task2 --parallel N` to "spawn N /full_task2 runs in parallel git worktrees," but the subagent-of-subagent constraint makes literal in-process spawning impossible. Documenting the runbook here gives the user a concrete, reproducible mechanism without pretending the orchestrator can drive concurrent main-thread sessions.
+
 ### 4. Distill lessons learned
 
 This is the *point* of this wrapper. After `/full_task2` returns success, reflect on what just happened. The bar for emitting an update is **high** — only edit a SKILL.md when one of the following is true:
