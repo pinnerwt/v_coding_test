@@ -189,6 +189,47 @@ Connect this repo on the Zeabur dashboard, set the build root to the repo root (
 - `LLM_API_KEY` — API key (optional, omit for key-free endpoints)
 - `DB_PATH` — path inside the container for the SQLite DB (default `/tmp/vici.db`; set to a mounted volume path for persistence)
 
+#### Submitting a task
+
+Once deployed, the live URL exposes two interfaces. Replace `<URL>` with the live URL (e.g. `https://vici-task2.zeabur.app`) in the snippets below.
+
+**Browser form.** Visit `<URL>/` for a one-input HTML form. Type a natural-language task ("Open https://example.com and return the H1 text"), click `Run`, and the page polls until terminal status, then prints the full response JSON.
+
+**HTTP API.** Submit and poll directly:
+
+```bash
+# 1. Submit a task; the server returns {"id": "<run_id>"}
+curl -sX POST "$URL/tasks" \
+  -H 'Content-Type: application/json' \
+  -d '{"task":"Open https://example.com and return the H1 text"}'
+
+# 2. Poll until status is terminal (succeeded | failed | timeout | internal_error)
+curl -s "$URL/tasks/<run_id>"
+
+# 3. (Optional) Stream the per-step trace as NDJSON, one event per line
+curl -sN "$URL/tasks/<run_id>/trace"
+```
+
+**Terminal status values.** `status` ∈ `{running, succeeded, failed, timeout, internal_error}`; the first four are documented in `task2/api/server.py`. Stop polling as soon as `status != "running"`. The full response shape (result, totals, evidence, trace summary) is returned by `GET /tasks/<run_id>` once terminal.
+
+**Worked example.** End-to-end shell snippet a reviewer can paste once `<URL>` is the deployed Zeabur URL:
+
+```bash
+URL="https://<your-zeabur-url>"
+TASK='{"task":"Open https://example.com and return the H1 text"}'
+
+ID=$(curl -sX POST "$URL/tasks" -H 'Content-Type: application/json' -d "$TASK" | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')
+echo "run_id=$ID"
+
+while :; do
+  BODY=$(curl -s "$URL/tasks/$ID")
+  STATUS=$(echo "$BODY" | python3 -c 'import sys,json; print(json.load(sys.stdin)["status"])')
+  echo "status=$STATUS"
+  [ "$STATUS" != "running" ] && echo "$BODY" | python3 -m json.tool && break
+  sleep 2
+done
+```
+
 ## Configuration
 
 Environment variables consumed by the LLM client (see `agent/llm.py`):
