@@ -177,7 +177,8 @@ def _compact_messages(messages: list[dict], budget_chars: int) -> list[dict]:
             and STATE_MESSAGE_PREFIX in m["content"]
         )
 
-    total = sum(len(json.dumps(m)) for m in messages)
+    sizes = [len(json.dumps(m)) for m in messages]
+    total = sum(sizes)
     if total <= budget_chars:
         return messages
 
@@ -190,7 +191,7 @@ def _compact_messages(messages: list[dict], budget_chars: int) -> list[dict]:
     keep_tail_start = last_state_idx if last_state_idx is not None else len(messages)
     drop_idx = 1
     while total > budget_chars and drop_idx < keep_tail_start:
-        total -= len(json.dumps(messages[drop_idx]))
+        total -= sizes[drop_idx]
         drop_idx += 1
 
     if drop_idx == 1:
