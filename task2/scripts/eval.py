@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import sys
 import uuid
@@ -53,7 +54,10 @@ def _is_near_budget(steps: int, usd: float, latency_ms_total: int, budget: dict)
     for value, cap, divisor in axes:
         if cap is None or cap <= 0:
             continue
-        if (value / divisor) / cap >= _NEAR_BUDGET_THRESHOLD - 1e-9:
+        ratio = (value / divisor) / cap
+        if ratio >= _NEAR_BUDGET_THRESHOLD or math.isclose(
+            ratio, _NEAR_BUDGET_THRESHOLD, rel_tol=1e-9
+        ):
             return True
     return False
 
