@@ -1116,17 +1116,15 @@ def loop(
                     )
 
         _post_obs = observe.build_observation(browser, [])
-        post_fp: str | None = (
-            _post_obs.get("ax_fingerprint") if isinstance(_post_obs, dict) else None
-        )
+        post_fp = _post_obs.get("ax_fingerprint") if isinstance(_post_obs, dict) else None
         _no_progress_buf.append((post_fp, any_action_succeeded_this_step))
         if len(_no_progress_buf) > _NO_PROGRESS_K:
             _no_progress_buf.pop(0)
-        _fps = {fp for fp, _ in _no_progress_buf}
+        fps = {fp for fp, _ in _no_progress_buf}
         if (
             len(_no_progress_buf) == _NO_PROGRESS_K
-            and len(_fps) == 1
-            and None not in _fps
+            and len(fps) == 1
+            and None not in fps
             and all(not ok for _, ok in _no_progress_buf)
         ):
             _record_step(
