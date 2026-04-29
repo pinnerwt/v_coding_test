@@ -1,8 +1,8 @@
 ## 1. Failing Tests — total_usd under repeats=3 (Red phase)
 
-- [x] 1.1 In `task2/tests/test_bench_repeats.py`, add a test `test_scoreboard_total_usd_with_repeats`: construct a synthetic `data` dict with two non-skipped cases each having `usd=0.03` (sum of three runs at $0.01 each) and `repeats=3`; call `aggregate_repeats` to get the aggregated result and assert `result.usd == 0.03` (confirming the sum convention is preserved per-case).
+- [x] 1.1 In `task2/tests/test_bench_repeats.py`, add a test `test_aggregate_repeats_usd_is_sum_across_runs`: construct a synthetic `data` dict with two non-skipped cases each having `usd=0.03` (sum of three runs at $0.01 each) and `repeats=3`; call `aggregate_repeats` to get the aggregated result and assert `result.usd == 0.03` (confirming the sum convention is preserved per-case).
 - [x] 1.2 Concretely: use two cases with `usd=0.01` (current mean convention) and `repeats=3`; assert `generate_scoreboard` output contains `Total USD: $0.0600` (i.e. `0.01 × 3 runs × 2 cases = $0.06`). With the current code the test will fail because it reports `$0.0200`.
-- [x] 1.3 Run `uv run pytest task2/tests/test_bench_repeats.py::test_scoreboard_total_usd_with_repeats -x` from `task2/` and confirm it fails with an `AssertionError` (output shows `$0.0200` not `$0.0600`).
+- [x] 1.3 Run `uv run pytest task2/tests/test_bench_repeats.py::test_aggregate_repeats_usd_is_sum_across_runs -x` from `task2/` and confirm it fails with an `AssertionError` (output shows `$0.0200` not `$0.0600`).
 
 ## 2. Failing Tests — latency p50/p95 over per-run scalars (Red phase)
 
@@ -12,7 +12,7 @@
 ## 3. Production change — `AggregatedCaseResult.usd` → SUM convention
 
 - [x] 3.1 In `task2/scripts/benchmark.py`, locate `aggregate_repeats` and change the `usd` field computation from mean (`statistics.mean(usd_vals)` or equivalent) to sum (`sum(usd_vals)`). Update the inline comment if one exists.
-- [x] 3.2 Run `uv run pytest task2/tests/test_bench_repeats.py::test_scoreboard_total_usd_with_repeats -x` and confirm it now passes.
+- [x] 3.2 Run `uv run pytest task2/tests/test_bench_repeats.py::test_aggregate_repeats_usd_is_sum_across_runs -x` and confirm it now passes.
 - [x] 3.3 Run `uv run pytest task2/tests/test_bench_repeats.py -x` and confirm no regressions in the existing bench-repeats tests (the `usd` field semantics change should not break tests that only check `passed_runs`, `repeats`, `repeat_status`, or `median_latency_ms`).
 
 ## 4. Production change — latency percentile input in `generate_scoreboard`

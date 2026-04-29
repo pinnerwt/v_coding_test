@@ -749,7 +749,7 @@ def test_aggregate_repeats_mixed_pass_and_skip_classifies_as_partial():
     assert result.passed_runs == 1
 
 
-def test_scoreboard_total_usd_with_repeats():
+def test_aggregate_repeats_usd_is_sum_across_runs():
     from scripts.benchmark import aggregate_repeats
 
     side_effects = [_make_case_result("succeeded", usd=0.01) for _ in range(3)]
