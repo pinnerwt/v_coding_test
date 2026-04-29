@@ -28,7 +28,7 @@ curl -sf http://localhost:8090/v1/models -m 3 -o /dev/null && echo Qwen reachabl
 
 Any failure → **halt** with a one-line reason. Don't try to fix the environment from inside the loop (e.g. don't restart Qwen, don't `git stash`).
 
-Also confirm there is still work to do: read `task2/plan.md` and cross-check against `openspec/changes/` (active) and `openspec/changes/archive/` (done) to see whether any TDD ticket or benchmark-improvement ticket remains. If everything maps to an archived change, **halt with success**.
+Also confirm there is still work to do: read `task2/tickets/INDEX.md` (Active section) and cross-check each active ticket against `openspec/changes/archive/` to see whether any ticket remains unimplemented. If every active ticket maps to an archived change, **halt with success**.
 
 ### 2. Snapshot iteration state
 
@@ -149,7 +149,7 @@ Halt the loop on **any** of:
 
 - A pre-flight check fails in step 1.
 - `/full_task2` halts in step 3 with any blocker. Surface its message verbatim.
-- `task2/plan.md` has no eligible tickets remaining.
+- `task2/tickets/INDEX.md` Active section has no eligible tickets remaining.
 - Iteration count reaches **8**. Five tickets is a typical productive session; eight is a hard ceiling that protects against a runaway loop. If you hit it, stop and ask the user whether to extend.
 - The orchestrator detects `git status` dirty after step 5 push — that means a child skill left work uncommitted, which is a contract violation and warrants user attention.
 

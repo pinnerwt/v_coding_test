@@ -1,6 +1,6 @@
 ---
 name: "New Task2"
-description: Pick the next Task 2 ticket from task2/plan.md, scaffold an OpenSpec change, and drive it through implementation, verification, and simplification with commits along the way.
+description: Pick the next Task 2 ticket from task2/tickets/INDEX.md, scaffold an OpenSpec change, and drive it through implementation, verification, and simplification with commits along the way.
 category: Workflow
 tags: [task2, workflow, automation]
 ---
@@ -38,10 +38,10 @@ How to apply, in order:
    - **What is red and why.** Each failing case and its `failure_class` / step pattern. The "Failure histogram" block at the top of `scoreboard.md` (added in ticket #42) is the fastest summary.
    - **The headline aggregate numbers**: pass-rate (e.g. `5/9`), total USD / total tokens (or mean per-case tokens), p50 latency, p95 latency. These are the targets each candidate is judged against — write them down before scoring candidates.
 
-2. **Read the `## Undone` rubric in `task2/plan.md`** (between `## Benchmark improvements (candidates)` and `## Honest risks / tradeoffs`) and the long-form `## Benchmark improvements (candidates)` and `## TDD tickets` sections. Cross-check against `openspec/changes/archive/` for stale entries (archived directories carry a date prefix; strip it when matching). Skip the `### In flight` subsection. (Once #76 lands, this step reads `task2/tickets/INDEX.md` instead, with selection-time fields lifted from per-ticket frontmatter.)
+2. **Read `task2/tickets/INDEX.md`** to get the candidate list. The Active section lists all non-archived tickets sorted by id; the Archive section lists completed ones. Each row has: id, urgency, tier, axes (pass_rate/tokens_pct/latency_pct), dependencies, pre_flight_gates, one-line summary, and file path. For full ticket body, `Read` the individual file (column `file`). Cross-check against `openspec/changes/archive/` for stale active entries (archived directories carry a date prefix; strip it when matching). Skip any ticket whose file is in `task2/tickets/archive/`.
 
 2a. **Apply the cross-cutting filters.** For each candidate:
-   - **Dependencies.** Read the ticket's `dependencies:` frontmatter (or, on legacy plan.md entries, scan the body for `after #N lands` / `blocked on #N` / `requires #N` phrasing). For each listed id, confirm it is merged: either an `openspec/changes/archive/<date>-*/proposal.md` cites the ticket, OR `gh pr list --search '#<N>' --state merged --json number` returns a hit. If any dependency is unmerged, **drop this candidate** and add its first-unmerged dependency to the candidate set if it is not already there.
+   - **Dependencies.** Read the ticket's `dependencies:` frontmatter field from the ticket file. For each listed id, confirm it is merged: either an `openspec/changes/archive/<date>-*/proposal.md` cites the ticket, OR the ticket file lives under `task2/tickets/archive/`, OR `gh pr list --search '#<N>' --state merged --json number` returns a hit. If any dependency is unmerged, **drop this candidate** and add its first-unmerged dependency to the candidate set if it is not already there.
    - **Pre-flight gates.** Read `pre_flight_gates:` frontmatter (or the body's `*Risks:*`/`*Trigger:*` section for legacy entries) for explicit gate text. Run the corresponding check now (`gh pr list --head 'task2/*' --state open --json number,title` for "no other task2 PRs open"; `curl -sf http://localhost:8090/v1/models -m 3 -o /dev/null` for "Qwen reachable"). On gate failure, drop this candidate.
    The output of this step is a filtered candidate list. Record the per-candidate filter outcome in the iteration log (e.g. `iter N: #76 filtered (gate "no-other-task2-prs-open" fails — PR #108 open); #74 filtered (depends on #66 which is merged: still viable); #72 viable`).
 
@@ -121,7 +121,7 @@ git checkout -b task2/<change-name>
 
 If the working tree is dirty, **stop and ask** the user how to proceed — do not stash or discard. Two known patterns:
 
-- **`task2/plan.md` modified** — leftover from a prior run's Step 11 (follow-up ticket appended but never committed/pushed). Typical answer: carry into the next branch as a `docs(task2):` commit.
+- **New files in `task2/tickets/active/`** — leftover from a prior run's Step 11 (follow-up ticket files written but never committed/pushed). Typical answer: carry into the next branch as a `docs(task2):` commit.
 - **`.claude/skills/<name>/SKILL.md` or `.claude/commands/<name>.md` modified** — a sibling skill update authored in a separate lessons-learned thread (e.g. tightening `/done_pr`). Typical answer: commit on master *before* branching, as a `chore(skills):` commit. These are unrelated to task2 and don't belong in the PR.
 
 When in doubt, surface the diff and offer four options via **AskUserQuestion**: (a) commit on master and proceed, (b) carry into next branch, (c) discard, (d) pause for manual handling. Never silently stash or run `git restore`.
@@ -140,10 +140,10 @@ Agent call:
 - `description`: `Generate opsx artifacts for <change-name>`
 - `prompt`: include all of the following so the subagent can run autonomously:
   - The exact change name (kebab-case, derived in Step 1).
-  - The ticket number, title, and full ticket text from `task2/plan.md`.
+  - The ticket number, title, and full ticket text from the ticket file under `task2/tickets/`.
   - Instruction: "Invoke the `/opsx:ff` skill on `<change-name>`. Do not commit or push. Do not implement code — artifacts only."
   - Grounding sources to read before drafting:
-    - `task2/plan.md` (ticket acceptance criteria).
+    - The selected ticket file under `task2/tickets/` (ticket acceptance criteria; read via the `file` column in INDEX.md).
     - `task2/CLAUDE.md` and the rest of `task2/` for code conventions and existing structure.
     - Repo-root `CLAUDE.md` (TDD non-negotiable, `uv` + `ruff` tooling, no hardcoded LLM provider).
     - Existing main specs under `openspec/specs/` — `grep -rn "ticket #<N>" openspec/specs/` for the ticket number being implemented. If a prior change's spec contains a Note like "tracked under ticket #<N>" referring to *this* ticket, the MODIFIED delta MUST update that Note to drop the now-stale forward reference (the ticket is being implemented, not deferred). Missing this leaves the merged main spec pointing at a closed ticket.
@@ -282,7 +282,7 @@ Push the branch and open a PR against `master` using `gh`. **Read `.github/PULL_
 Section guidance (apply to whichever sections the current template defines):
 
 - **Task** — `task2`.
-- **Summary** — 1–3 bullets describing what the ticket adds, grounded in the ticket text from `task2/plan.md`.
+- **Summary** — 1–3 bullets describing what the ticket adds, grounded in the ticket text from the ticket file under `task2/tickets/`.
 - **Why** — the ticket motivation / failing test that drove the change.
 - **Before / After Diagram** (if present) — Mermaid (preferred — GitHub renders it) or ASCII showing the pre- and post-PR state. Keep it scoped to what this PR changed (e.g. a new module in the locator pipeline, a new step in the agent loop, a changed observation schema). Do not leave the empty skeleton from the template.
 - **TDD checklist** — every box checked (red-first commit, `uv run pytest` green, `uv run ruff check .` clean, `uv run ruff format --check .` clean, no scope creep).
@@ -307,41 +307,62 @@ If `gh pr create` fails because the branch already has an open PR, run `gh pr vi
 
 Capture the returned PR URL for the final report. Do **not** mark the PR ready-for-review-as-merge — leave merge to the user after `/opsx:archive`.
 
-### 11. Capture outstanding follow-ups in `task2/plan.md`
+### 11. Capture outstanding follow-ups as ticket files
 
-If any **outstanding follow-ups** surfaced during this run — design issues deferred from `/opsx:apply` or `/opsx:verify`, smoke-test gaps that pointed at adjacent code, scope-creep items consciously left out, or TODOs uncovered by `/simplify` — record them as new TDD tickets so a future `/new_task2` invocation can pick them up. Do **not** carry them only in the PR description or the conversation; the durable record lives in `task2/plan.md`.
+If any **outstanding follow-ups** surfaced during this run — design issues deferred from `/opsx:apply` or `/opsx:verify`, smoke-test gaps that pointed at adjacent code, scope-creep items consciously left out, or TODOs uncovered by `/simplify` — record them as new TDD ticket files so a future `/new_task2` invocation can pick them up. Do **not** carry them only in the PR description or the conversation; the durable record lives in `task2/tickets/`.
 
 What counts as a follow-up worth recording:
 - A concrete behavior gap with a plausible failing test (TDD-shaped).
 - A refactor that was out of scope for this ticket but is now clearly worth doing.
 - A design problem `/opsx:apply` flagged and stopped on, that you resolved by deferring rather than fixing in-scope.
 
-What does **not** belong in `plan.md`:
+What does **not** belong as a new ticket file:
 - One-off chores already captured in commits.
 - Speculative ideas without a test surface.
-- Anything already covered by an existing TDD ticket — extend that ticket's text instead of adding a duplicate.
+- Anything already covered by an existing active ticket — extend that ticket's file body instead of adding a duplicate.
 
-Procedure (every follow-up gets recorded **twice** — full text in the appropriate numbered section, plus a one-line entry in the `## Undone` rubric so Step 1 of the next run can find it by urgency):
+Procedure for each follow-up:
 
-1. Open `task2/plan.md`. Find the `## TDD tickets` / `## Benchmark improvements (candidates)` numbered list near the bottom and note the highest existing ticket number. Also locate the `## Undone` rubric (between `## Benchmark improvements (candidates)` and `## Honest risks / tradeoffs`).
-2. For each follow-up, **assign an urgency tag** before writing the entry. Use the same rubric Step 1 reads:
-   - **P0** — unblocks other tickets or removes recurring debug friction (e.g. ticket #44 unblocks every Task 7.1's live-Qwen smoke check; ticket #45 removes "smoke failed but I can't tell why" rounds).
-   - **P1** — observed bug or correctness gap blocking the brief's done bar (drift suite 100%, fixture eval ≥80%, live ≥60%).
+1. Find the highest existing ticket number: `ls task2/tickets/active/ task2/tickets/archive/ | grep -oE '^[0-9]+' | sort -n | tail -1`. Assign the next number.
+2. **Assign an urgency tag** (P0/P1/P2/P3) and **tier** (1-6) using the same rubric Step 1 reads:
+   - **P0** — unblocks other tickets or removes recurring debug friction.
+   - **P1** — observed bug or correctness gap blocking the brief's done bar.
    - **P2** — measurable improvement to eval / scoreboard / mechanisms.
    - **P3** — nice-to-have polish.
-   When in doubt, default to P2. Be honest about P0 — overuse devalues the tag, and the next run will pick it first.
-3. Append a new full-text entry to `## TDD tickets` or `## Benchmark improvements (candidates)` (whichever section's style fits better) continuing the numbering. Match the style of existing tickets: a bold lead (module path or short title), a one-sentence description of the gap, and then concrete acceptance criteria / tests phrased the same way as nearby entries (e.g. ticket 23 `CDP session reuse in observe.build_observation` for shape).
-4. Add a one-line entry to the `## Undone` rubric under the right urgency subsection: `- **#<N>** — <short title>. <one-line "why it matters" if not obvious from the title>.` Do NOT duplicate the full ticket text in the rubric — the rubric is an index, the numbered section is the spec.
-5. Each ticket must be self-contained — a fresh `/new_task2` run with no conversation context should be able to pick it up from the rubric line alone (it'll read the full text via the ticket number). Reference file paths and existing symbols rather than "the thing we discussed."
-6. If a follow-up overlaps an existing ticket (e.g. you found another sub-case of ticket N), edit that ticket's text rather than adding a new line; do not create silent duplicates. If the existing ticket's urgency should change in light of the new evidence, update its rubric line at the same time.
+   - **Tier**: 1=process/standards, 2=measurement, 3=stop-the-bleeding, 4=diagnostic, 5=benchmark-impact, 6=hygiene.
+3. Write `task2/tickets/active/<NNN>-<slug>.md` with all 14 required frontmatter fields:
+   ```yaml
+   ---
+   id: <N>
+   slug: <kebab-case-title>
+   status: active
+   tier: <1-6>
+   urgency: <P0-P3>
+   axes:
+     pass_rate: <estimated int delta, 0 if unknown>
+     tokens_pct: <estimated int delta, 0 if unknown>
+     latency_pct: <estimated int delta, 0 if unknown>
+   dependencies: [<list of int ids, or empty>]
+   pre_flight_gates: [<list of gate strings, or empty>]
+   evidence: []
+   related: [<int ids of related tickets>]
+   filed_pr: null
+   merged_pr: null
+   archived_at: null
+   trigger: "<ISO date> — <workflow event that surfaced the ticket>"
+   ---
+   ```
+   Body: the full ticket text (self-contained so a fresh `/new_task2` run can pick it up cold).
+4. Run `uv run python task2/scripts/regen_tickets_index.py` to update `task2/tickets/INDEX.md`.
+5. If a follow-up overlaps an existing ticket, edit that ticket file's body and update its `axes` / `urgency` if warranted instead of adding a duplicate.
 
-Commit the plan update on its own, on the same branch, then push so the open PR picks it up:
+Commit the new ticket files and the updated INDEX.md on the same branch, then push:
 
 ```bash
 cd task2 && uv run ruff format . && uv run ruff check . && uv run pytest && cd ..
-git add task2/plan.md
+git add task2/tickets/active/<NNN>-<slug>.md task2/tickets/INDEX.md
 git commit -m "$(cat <<'EOF'
-docs(task2): record follow-ups surfaced by <change-name>
+docs(task2): file ticket #<N> — <short title>
 
 Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
 EOF
@@ -349,7 +370,7 @@ EOF
 git push
 ```
 
-The pre-commit gate still applies even though only `plan.md` changed — never `--no-verify`. If you also need to update the PR body to reference the new ticket numbers, do it with `gh pr edit --body-file ...` reusing the temp file from Step 10.
+The pre-commit gate still applies — never `--no-verify`. If you also need to update the PR body to reference the new ticket numbers, do it with `gh pr edit --body-file ...` reusing the temp file from Step 10.
 
 If there are zero follow-ups, skip this step entirely — do not create an empty commit and do not invent items to record.
 
@@ -364,7 +385,7 @@ Print a short summary to the user:
 - Simplify status (clean / commits added).
 - Smoke test status — verify and simplify always run before this; report `pass` (first run) or `pass after N loops` if Step 9's regression-test → verify → simplify → re-run-smoke loop fired (Step 9 explicitly re-invokes Steps 7–8). Never word this as "no verify/simplify needed" — those are mandatory steps, not optional ones bypassed by a green smoke test.
 - PR URL.
-- Outstanding follow-ups: either "none" or the numbered list of new tickets appended to `task2/plan.md` in Step 11 (with their numbers).
+- Outstanding follow-ups: either "none" or the numbered list of new ticket files written to `task2/tickets/active/` in Step 11 (with their ids).
 - Suggested next step: `/opsx:archive <change-name>` (do **not** archive automatically).
 
 ## Guardrails

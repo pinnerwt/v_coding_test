@@ -128,8 +128,8 @@ Print one block with:
 - PR: `<pr_url>` — `MERGED`.
 - Merge commit: `<merge_commit_sha>`.
 - Phase commit counts: `phase1_commits` (from `/new_task2`), `phase2_commits` (from `/review_task2`, often 0), `phase3_commits` (archive + benchmark).
-- Outstanding follow-ups from Phase 1 step 11 (numbered ticket entries appended to `task2/plan.md`), or `none`.
-- Suggested next: `/full_task2` again if there are more tickets in `task2/plan.md`, otherwise stop.
+- Outstanding follow-ups from Phase 1 step 11 (new ticket files written to `task2/tickets/active/`), or `none`.
+- Suggested next: `/full_task2` again if there are active tickets remaining in `task2/tickets/INDEX.md`, otherwise stop.
 
 ## Guardrails
 

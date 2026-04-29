@@ -47,12 +47,12 @@
 
 ## 8. Skill updates — update .claude/commands/ in lockstep
 
-- [ ] 8.1 Edit `.claude/commands/new_task2.md` step 1: replace "read task2/plan.md" with "read task2/tickets/INDEX.md; parse axes, tier, urgency, dependencies, pre_flight_gates, one-line summary; score and rank candidates; page in selected ticket file for full body".
-- [ ] 8.2 Edit `.claude/commands/new_task2.md` step 11: replace "append ticket prose to task2/plan.md" with "write new ticket file at `task2/tickets/active/<NNN>-<slug>.md` with all required frontmatter; run `uv run python task2/scripts/regen_tickets_index.py`".
-- [ ] 8.3 Edit `.claude/commands/done_pr.md` steps 1b and 1b': replace `grep task2/plan.md` with `grep task2/tickets/active/` when finding the current ticket for archival.
-- [ ] 8.4 Edit `.claude/commands/done_pr.md` step 1c: replace the two-commit pattern (plan.md edit + archival note) with: `git mv task2/tickets/active/<NNN>-<slug>.md task2/tickets/archive/<NNN>-<slug>.md`; update `status: archived`, `merged_pr`, `archived_at` in the moved file's frontmatter; run `uv run python task2/scripts/regen_tickets_index.py`; commit all in one commit.
-- [ ] 8.5 Edit `.claude/commands/review_task2.md` step 3: replace cross-check grep target from `task2/plan.md` to `task2/tickets/active/`.
-- [ ] 8.6 Verify each edited skill file opens and reads cleanly. Run `uv run pytest task2/` — confirm no regressions.
+- [x] 8.1 Edit `.claude/commands/new_task2.md` step 1: replace "read task2/plan.md" with "read task2/tickets/INDEX.md; parse axes, tier, urgency, dependencies, pre_flight_gates, one-line summary; score and rank candidates; page in selected ticket file for full body".
+- [x] 8.2 Edit `.claude/commands/new_task2.md` step 11: replace "append ticket prose to task2/plan.md" with "write new ticket file at `task2/tickets/active/<NNN>-<slug>.md` with all required frontmatter; run `uv run python task2/scripts/regen_tickets_index.py`".
+- [x] 8.3 Edit `.claude/skills/done_pr/SKILL.md` steps 1b and 1b': replace plan.md targets with `task2/tickets/active/` for new ticket filing.
+- [x] 8.4 Edit `.claude/skills/done_pr/SKILL.md` step 1c: replace the Undone rubric scrub with: `git mv task2/tickets/active/<NNN>-<slug>.md task2/tickets/archive/<NNN>-<slug>.md`; update `status: archived`, `merged_pr`, `archived_at` in the moved file's frontmatter; run `uv run python task2/scripts/regen_tickets_index.py`; commit all in one commit.
+- [x] 8.5 Edit `.claude/commands/review_task2.md` step 3: replace cross-check grep target from `task2/plan.md` to `task2/tickets/active/`.
+- [x] 8.6 Verify each edited skill file opens and reads cleanly. Run `uv run pytest task2/` — confirm no regressions.
 
 ## 9. Documentation
 
