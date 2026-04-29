@@ -109,14 +109,82 @@ Phase 3 will fail to merge a PR whose remote head lags behind local — pushing 
 
 ### 3. Phase 3 — `/done_pr`
 
-**Workflow-only fast path (`is_workflow_only == true`):** there is no `change_name` and no OpenSpec directory to archive. Do **not** invoke `/done_pr` with a change-name argument it cannot resolve. Instead, run the merge sequence directly:
+**Workflow-only fast path (`is_workflow_only == true`):** there is no `change_name` and no OpenSpec directory to archive. Do **not** invoke `/done_pr` with a change-name argument it cannot resolve. Instead, run the merge sequence directly, then execute the 5-step post-merge ticket-archival sequence below.
+
+**Step 1 — Merge:**
 
 ```bash
 gh pr merge "$pr_url" --squash --delete-branch
 git checkout master && git pull --ff-only
 ```
 
-Skip the benchmark and ticket-archive substeps — they are gated on `task2/` code changes (none here) and on the change directory existing (none here). Then jump to Phase 4.
+Skip the benchmark substep — it is gated on `task2/` code changes (none here).
+
+**Step 2 — Parse ticket number from merged PR title:**
+
+```bash
+pr_title=$(gh pr view "$pr_url" --json title -q .title)
+# pr_title typically ends with "(#NN)" from the squash-merge subject
+```
+
+Extract `ticket_number` with: `re.search(r'\(#(\d+)\)\s*$', pr_title)` (or the shell equivalent: `echo "$pr_title" | grep -oP '\(#\K\d+(?=\)\s*$)'`).
+
+If the parse returns nothing (human edited the squash subject in the merge dialog), print:
+
+```
+full_task2 Phase 3: WARNING — could not parse ticket number from PR title "<title>"; skipping ticket archival. Run manually: (cd task2 && uv run python scripts/archive_workflow_only_ticket.py --slug <slug> --ticket-number <NNN> --pr-number <PR-NN> --date <YYYY-MM-DD>)
+```
+
+Then jump to Phase 4 without failing.
+
+**Step 3 — Archive the ticket file:**
+
+`<slug>` and `<NNN>` come from the ticket selected in Phase 1. `<PR-NN>` is the PR number parsed from `$pr_url` (e.g. `gh pr view "$pr_url" --json number -q .number`). `<YYYY-MM-DD>` is today (`date -I`).
+
+```bash
+ticket_slug="<slug-from-phase-1>"   # e.g. fast-path-ticket-archival-hygiene
+ticket_num=<NNN>                     # e.g. 082
+pr_num=$(gh pr view "$pr_url" --json number -q .number)
+iso_date=$(date -I)
+
+(cd task2 && uv run python scripts/archive_workflow_only_ticket.py \
+  --slug "$ticket_slug" \
+  --ticket-number "$ticket_num" \
+  --pr-number "$pr_num" \
+  --date "$iso_date")
+```
+
+This edits `task2/tickets/active/<NNN>-<slug>.md` frontmatter (`status: archived`, `merged_pr`, `archived_at`), `git mv`s it to `task2/tickets/archive/`, and regenerates `task2/tickets/INDEX.md`.
+
+**Step 4 — Commit on a chore branch (master is branch-protected; direct push is rejected):**
+
+This is the same shape as the `chore/skills-lessons-<change>` PRs in `/auto_task2` step 5 — small commit on a `chore/*` branch, `gh pr create`, auto-merge. Prior art: PRs #112, #113, #114.
+
+```bash
+git checkout -b "chore/archive-ticket-${pr_num}"
+git add "task2/tickets/active/${ticket_num:0:3}-${ticket_slug}.md" 2>/dev/null || true  # deletion
+git add "task2/tickets/archive/${ticket_num:0:3}-${ticket_slug}.md"
+git add "task2/tickets/INDEX.md"
+git commit -m "docs(task2): archive ticket #${ticket_num} — ${ticket_slug}
+
+Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
+git push -u origin "chore/archive-ticket-${pr_num}"
+```
+
+Note: `git add` on the deleted active file may show "pathspec did not match" if `git mv` already handled it — the `2>/dev/null || true` guards against that. Use `git status --porcelain` to confirm the right files are staged before committing.
+
+**Step 5 — Open PR and auto-merge:**
+
+```bash
+gh pr create \
+  --title "docs(task2): archive ticket #${ticket_num} — ${ticket_slug}" \
+  --body "Automated post-merge archival for workflow-only ticket #${ticket_num}. Merged via PR #${pr_num}." \
+  --base master
+gh pr merge "chore/archive-ticket-${pr_num}" --squash --delete-branch --auto
+git checkout master && git pull --ff-only
+```
+
+Then jump to Phase 4.
 
 **Standard path:** invoke the **`/done_pr`** skill with the change name from Phase 1: `/done_pr <change-name>`. It handles archive → spec sync → benchmark capture → push → merge → master sync.
 
