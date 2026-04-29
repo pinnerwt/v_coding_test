@@ -365,3 +365,86 @@ def test_cases_annotation_reflects_dropped_case():
     }
     out = generate_diff_markdown(master, branch)
     assert "Cases: 2 common, +0 added, -1 dropped" in out
+
+
+# ---------------------------------------------------------------------------
+# Empty-side guard — n/a aggregate lines
+# ---------------------------------------------------------------------------
+
+_NON_EMPTY = {
+    "run_at": "2026-04-20T00:00:00+00:00",
+    "cases": [
+        {"id": "c1", "status": "succeeded", "usd": 0.01, "latency_ms_total": 1000},
+    ],
+}
+_EMPTY = {"run_at": "2026-04-20T00:00:00+00:00", "cases": []}
+
+
+def test_empty_master_emits_na_pass_rate():
+    from scripts.baseline_diff import generate_diff_markdown
+
+    out = generate_diff_markdown(_EMPTY, _NON_EMPTY)
+    assert "Δ pass-rate: n/a (master had 0 ran cases)" in out
+
+
+def test_empty_master_emits_na_usd():
+    from scripts.baseline_diff import generate_diff_markdown
+
+    out = generate_diff_markdown(_EMPTY, _NON_EMPTY)
+    assert "Δ total USD: n/a (master had 0 ran cases)" in out
+
+
+def test_empty_master_emits_na_latency():
+    from scripts.baseline_diff import generate_diff_markdown
+
+    out = generate_diff_markdown(_EMPTY, _NON_EMPTY)
+    assert "Δ p50 latency: n/a (master had 0 ran cases)" in out
+    assert "Δ p95 latency: n/a (master had 0 ran cases)" in out
+
+
+def test_empty_master_does_not_emit_plus_zero_pct():
+    from scripts.baseline_diff import generate_diff_markdown
+
+    out = generate_diff_markdown(_EMPTY, _NON_EMPTY)
+    assert "Δ pass-rate: +0%" not in out
+
+
+def test_empty_branch_emits_na():
+    from scripts.baseline_diff import generate_diff_markdown
+
+    out = generate_diff_markdown(_NON_EMPTY, _EMPTY)
+    assert "Δ pass-rate: n/a (branch had 0 ran cases)" in out
+    assert "Δ total USD: n/a (branch had 0 ran cases)" in out
+    assert "Δ p50 latency: n/a (branch had 0 ran cases)" in out
+    assert "Δ p95 latency: n/a (branch had 0 ran cases)" in out
+
+
+def test_both_empty_emits_na_both_sides():
+    from scripts.baseline_diff import generate_diff_markdown
+
+    out = generate_diff_markdown(_EMPTY, _EMPTY)
+    assert "Δ pass-rate: n/a (both sides had 0 ran cases)" in out
+    assert "Δ total USD: n/a (both sides had 0 ran cases)" in out
+    assert "Δ p50 latency: n/a (both sides had 0 ran cases)" in out
+    assert "Δ p95 latency: n/a (both sides had 0 ran cases)" in out
+
+
+def test_empty_master_still_emits_cases_annotation():
+    from scripts.baseline_diff import generate_diff_markdown
+
+    out = generate_diff_markdown(_EMPTY, _NON_EMPTY)
+    assert "Cases: 0 common, +1 added, -0 dropped" in out
+
+
+def test_empty_branch_still_emits_cases_annotation():
+    from scripts.baseline_diff import generate_diff_markdown
+
+    out = generate_diff_markdown(_NON_EMPTY, _EMPTY)
+    assert "Cases: 0 common, +0 added, -1 dropped" in out
+
+
+def test_both_empty_still_emits_cases_annotation():
+    from scripts.baseline_diff import generate_diff_markdown
+
+    out = generate_diff_markdown(_EMPTY, _EMPTY)
+    assert "Cases: 0 common, +0 added, -0 dropped" in out
