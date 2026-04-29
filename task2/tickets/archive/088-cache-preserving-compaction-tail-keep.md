@@ -1,7 +1,7 @@
 ---
 id: 88
 slug: cache-preserving-compaction-tail-keep
-status: active
+status: archived
 tier: 5
 urgency: P0
 axes:
@@ -15,8 +15,8 @@ evidence:
 - task2/benchmark/task2-implement-fast-path-ticket-archival/webvoyager/20260429_104152.json
 related: []
 filed_pr: null
-merged_pr: null
-archived_at: null
+merged_pr: 144
+archived_at: "2026-04-29"
 trigger: 2026-04-29 — user-driven webvoyager timeout investigation; ticket queue restart
 ---
 

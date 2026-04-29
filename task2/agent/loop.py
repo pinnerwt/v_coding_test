@@ -165,8 +165,6 @@ TOOLS: list[dict] = [
 
 
 _DEFAULT_CONTEXT_CHAR_BUDGET: int = 80_000
-_ELIDED_STATE_CONTENT = "Current state: <elided>"
-_ELIDED_TOOL_CONTENT = "<read tool result elided>"
 _STUCK_REPEAT_K: int = 3
 _NO_TOOL_CALL_K: int = 3
 
@@ -179,7 +177,8 @@ def _compact_messages(messages: list[dict], budget_chars: int) -> list[dict]:
             and STATE_MESSAGE_PREFIX in m["content"]
         )
 
-    total = sum(len(json.dumps(m)) for m in messages)
+    sizes = [len(json.dumps(m)) for m in messages]
+    total = sum(sizes)
     if total <= budget_chars:
         return messages
 
@@ -189,33 +188,21 @@ def _compact_messages(messages: list[dict], budget_chars: int) -> list[dict]:
             last_state_idx = i
             break
 
-    changed = True
-    while total > budget_chars and changed:
-        changed = False
-        for i in range(1, len(messages)):
-            m = messages[i]
-            replacement: str | None = None
-            if _is_state_msg(m) and i != last_state_idx and m["content"] != _ELIDED_STATE_CONTENT:
-                replacement = _ELIDED_STATE_CONTENT
-            elif (
-                m.get("role") == "tool"
-                and last_state_idx is not None
-                and i < last_state_idx
-                and m.get("content") != _ELIDED_TOOL_CONTENT
-            ):
-                replacement = _ELIDED_TOOL_CONTENT
-            if replacement is None:
-                continue
-            old_size = len(json.dumps(m))
-            new_msg = {**m, "content": replacement}
-            new_size = len(json.dumps(new_msg))
-            messages[i] = new_msg
-            total += new_size - old_size
-            changed = True
-            if total <= budget_chars:
-                break
+    if last_state_idx is None:
+        return messages
 
-    return messages
+    keep_tail_start = last_state_idx
+    drop_idx = 1
+    while total > budget_chars and drop_idx < keep_tail_start:
+        total -= sizes[drop_idx]
+        drop_idx += 1
+
+    while drop_idx < keep_tail_start and not _is_state_msg(messages[drop_idx]):
+        drop_idx += 1
+
+    if drop_idx == 1:
+        return messages
+    return [messages[0]] + messages[drop_idx:]
 
 
 @dataclass(frozen=True)
