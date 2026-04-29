@@ -73,7 +73,7 @@ Wraps up an OpenSpec-driven PR end-to-end: archive → commit → push → merge
      - One-sentence description of what the trace shows or doesn't show.
      - Concrete TDD-shaped acceptance criterion: a failing test that reproduces the symptom (deterministic fixture if possible), and a passing test that asserts the fix.
      - Reference any related existing ticket so the implementer knows whether to extend or add fresh.
-   - Run `uv run python task2/scripts/regen_tickets_index.py` to update INDEX.md.
+   - Run `(cd task2 && uv run python scripts/regen_tickets_index.py)` to update INDEX.md.
    - Stage `task2/tickets/active/<NNN>-<slug>.md` and `task2/tickets/INDEX.md` on their own and commit:
      ```
      docs(task2): file ticket #<N> — <short title> (webvoyager benchmark failure from <branch>)
@@ -112,7 +112,7 @@ Wraps up an OpenSpec-driven PR end-to-end: archive → commit → push → merge
      - **Per-case cost/token bloat without status change**: same case still passes but uses 2-3× more tokens/steps. Cause: a prompt or observation change made the agent take a longer path. *Fix shape:* needs a per-case trace investigation ticket — file a "diagnose `<case-id>` token regression at SHA `<merge_sha>`" ticket pointing at the new run JSON and the baseline JSON.
      - **Aggregate slowdown without per-case localization**: every case got marginally slower (typical of an LLM-side change or a prompt size increase). *Fix shape:* file an audit ticket pointing at `agent/loop.py` (prompt size growth?) and `agent/llm.py` (sampling change?), with the per-case diff included as evidence.
    - For each distinct causal pattern, write a new ticket file `task2/tickets/active/<NNN>-<slug>.md` (continuing numbering from the highest existing ticket — check both active and archive dirs: `ls task2/tickets/active/ task2/tickets/archive/ | grep -oE '^[0-9]+' | sort -n | tail -1`). Each file MUST be self-contained per the same rules as step 1b: bold lead, one-sentence symptom, TDD-shaped acceptance criterion, *Why useful* tied to the specific axis regression observed (cite the exact `task2/benchmark/<branch>/webvoyager/<timestamp>.json` paths and the % deltas), and a *Trigger:* line naming `/done_pr`'s aggregate-regression check on `<date>`.
-   - Run `uv run python task2/scripts/regen_tickets_index.py` to update INDEX.md.
+   - Run `(cd task2 && uv run python scripts/regen_tickets_index.py)` to update INDEX.md.
    - Stage new `task2/tickets/active/<NNN>-<slug>.md` files and `task2/tickets/INDEX.md` and commit:
      ```
      docs(task2): file ticket #<N> — <short title> (webvoyager aggregate regression from <branch>)
@@ -134,7 +134,7 @@ Wraps up an OpenSpec-driven PR end-to-end: archive → commit → push → merge
      - `status: archived`
      - `merged_pr: <PR number>` — use `gh pr view --json number -q .number` to get the current PR number.
      - `archived_at: <YYYY-MM-DD>` — today's date in ISO-8601 format.
-   - Run `uv run python task2/scripts/regen_tickets_index.py` to update `task2/tickets/INDEX.md`.
+   - Run `(cd task2 && uv run python scripts/regen_tickets_index.py)` to update `task2/tickets/INDEX.md`.
    - Stage the moved file and INDEX.md and commit in a single commit. **Do not** stage by the *original* path (`git add task2/tickets/active/<NNN>-*.md`) — after `git mv`, the source path no longer exists in the working tree and `git add` rejects it with `pathspec '...' did not match any files`. Use `git add -u task2/tickets/` (picks up the rename plus the post-edit modification) followed by `git add task2/tickets/archive/<NNN>-*.md task2/tickets/INDEX.md` (idempotent — covers the dest path and INDEX.md). Confirm `git status --porcelain task2/tickets/` shows one `R` (rename) plus one `M` (INDEX.md) before commit. Why: confirmed in PR #115 on 2026-04-29 — the first commit attempt named the active/-side path and was rejected, costing one cycle. How to apply: always stage by destination path (or use `-u`) for `git mv` follow-ups; the source path is a phantom after the move.
      ```
      docs(task2): archive ticket #<N> — <short title>
