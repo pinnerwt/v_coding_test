@@ -1,7 +1,7 @@
 ---
 id: 90
 slug: inject-expect-schema-into-system-prompt
-status: active
+status: archived
 tier: 3
 urgency: P0
 axes:
@@ -17,8 +17,8 @@ evidence:
 - task2/scripts/eval.py
 related: []
 filed_pr: null
-merged_pr: null
-archived_at: null
+merged_pr: 142
+archived_at: "2026-04-29"
 trigger: 2026-04-29 — user-driven webvoyager timeout investigation; ticket queue restart
 ---
 
