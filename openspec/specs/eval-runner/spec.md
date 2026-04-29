@@ -139,6 +139,7 @@ The eval runner SHALL write a results JSON to `task2/eval/results/<ts>.json` (wh
           "tool_calls": [<str>]
         }
       ],
+      "near_budget": <bool>,
       "l_tier_counts": { "<tier>": <int>, ... },
       "validators": [{ "name": "<expr>", "ok": <bool> }, ...]
     }
@@ -155,6 +156,14 @@ The eval runner SHALL write a results JSON to `task2/eval/results/<ts>.json` (wh
 - `validators`: list of validator results, one per entry in `expect.validators`. Empty list `[]` is valid when `expect.validators` is empty or the case was skipped.
 
 All new fields (`prompt_tokens`, `completion_tokens`, `latency_ms_total`, `latency_ms_per_step`, `step_breakdown`) SHALL default to zero / empty when a case is skipped or the loop returns zero-metric results.
+
+Each per-case entry SHALL include a `near_budget: bool` field. `near_budget` SHALL be `True` when the case `status` is in `{succeeded, unverified}` AND any of the following ratios is `≥ 0.80`:
+
+- `steps / budget.steps`
+- `usd / budget.usd`
+- `latency_ms_total / 1000 / budget.seconds`
+
+`near_budget` SHALL be `False` for any case whose `status` is not in `{succeeded, unverified}` (i.e. failed, blocked, timeout, skipped) regardless of how close its observed metrics came to the budget. When the case's `budget` dict omits a given axis, that axis SHALL be ignored in the ratio computation; only present axes are considered.
 
 #### Scenario: Results JSON exists after runner completes
 - **WHEN** `scripts/eval.py` is invoked and all cases complete (or are skipped)
@@ -188,6 +197,49 @@ All new fields (`prompt_tokens`, `completion_tokens`, `latency_ms_total`, `laten
 - **WHEN** the results JSON is read back from disk
 - **THEN** the case entry SHALL have `"prompt_tokens"` and `"latency_ms_per_step"` keys
 - **AND** their values SHALL be non-zero
+
+#### Scenario: near_budget is True at 80% of step budget on a passing case
+
+- **GIVEN** a case with `budget = {"steps": 5, "usd": 1.0, "seconds": 30}`
+- **AND** a `RunResult(status="succeeded", steps=4, usd=0.0, latency_ms_total=0)` returned by the loop
+- **WHEN** `_run_case` builds the `CaseResult`
+- **THEN** the returned `CaseResult.near_budget` SHALL be `True`
+
+#### Scenario: near_budget is False just below threshold on a passing case
+
+- **GIVEN** a case with `budget = {"steps": 5, "usd": 1.0, "seconds": 30}`
+- **AND** a `RunResult(status="succeeded", steps=3, usd=0.0, latency_ms_total=0)` returned by the loop
+- **WHEN** `_run_case` builds the `CaseResult`
+- **THEN** the returned `CaseResult.near_budget` SHALL be `False`
+
+#### Scenario: near_budget is False for a failed/timeout case at the cap
+
+- **GIVEN** a case with `budget = {"steps": 5, "usd": 1.0, "seconds": 30}`
+- **AND** a `RunResult(status="timeout", steps=5, usd=0.0, latency_ms_total=0)` returned by the loop
+- **WHEN** `_run_case` builds the `CaseResult`
+- **THEN** the returned `CaseResult.near_budget` SHALL be `False`
+
+#### Scenario: near_budget trips on the usd axis
+
+- **GIVEN** a case with `budget = {"steps": 5, "usd": 0.05, "seconds": 30}`
+- **AND** a `RunResult(status="succeeded", steps=1, usd=0.04, latency_ms_total=0)` returned by the loop
+- **WHEN** `_run_case` builds the `CaseResult`
+- **THEN** the returned `CaseResult.near_budget` SHALL be `True`
+
+#### Scenario: near_budget trips on the seconds axis
+
+- **GIVEN** a case with `budget = {"steps": 5, "usd": 1.0, "seconds": 30}`
+- **AND** a `RunResult(status="succeeded", steps=1, usd=0.0, latency_ms_total=24_000)` returned by the loop
+- **WHEN** `_run_case` builds the `CaseResult`
+- **THEN** the returned `CaseResult.near_budget` SHALL be `True`
+
+#### Scenario: near_budget ignores axes absent from the budget dict
+
+- **GIVEN** a case with `budget = {"steps": 5}` (no `usd` or `seconds` keys)
+- **AND** a `RunResult(status="succeeded", steps=4, usd=999.0, latency_ms_total=999_999)` returned by the loop
+- **WHEN** `_run_case` builds the `CaseResult`
+- **THEN** the returned `CaseResult.near_budget` SHALL be `True` (tripped by the present `steps` axis)
+- **AND** the absent `usd` and `seconds` axes SHALL not raise or contribute to the decision
 
 ### Requirement: Eval runner CLI
 The system SHALL expose `scripts/eval.py` as a runnable script from `task2/` via `uv run python scripts/eval.py`. The CLI SHALL accept the following optional flags:

@@ -103,8 +103,12 @@ def _render_case_status(case: dict) -> str:
     if repeats > 1:
         passed_runs = case.get("passed_runs", 0)
         glyph = "✓" if passed_runs == repeats else "✗"
-        return f"{passed_runs}/{repeats} {glyph}"
-    return case.get("status", "unknown")
+        base = f"{passed_runs}/{repeats} {glyph}"
+    else:
+        base = case.get("status", "unknown")
+    if case.get("near_budget", False):
+        return f"{base} ⚠️"
+    return base
 
 
 def generate_scoreboard(data: dict, *, detail: bool = False) -> str:

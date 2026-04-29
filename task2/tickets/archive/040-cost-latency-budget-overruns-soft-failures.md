@@ -1,7 +1,7 @@
 ---
 id: 40
 slug: cost-latency-budget-overruns-soft-failures
-status: active
+status: archived
 tier: 2
 urgency: P3
 axes:
@@ -13,8 +13,8 @@ pre_flight_gates: []
 evidence: []
 related: []
 filed_pr: null
-merged_pr: null
-archived_at: null
+merged_pr: 121
+archived_at: '2026-04-29'
 trigger: Cost & latency budget overruns as soft failures.
 ---
 

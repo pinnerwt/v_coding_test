@@ -23,6 +23,7 @@ from agent.trace import (
 from scripts.eval import (
     CaseResult,
     _aggregate_diagnostics,
+    _is_near_budget,
     _run_case,
     load_cases,
     run_suite,
@@ -106,6 +107,178 @@ def test_run_case_captures_goto_exception_as_failed():
     assert result.status == "failed"
     assert result.failure_class == "tool_error"
     assert "nav fail" in result.failure_detail
+
+
+def test_is_near_budget_steps_axis_at_threshold_trips():
+    assert (
+        _is_near_budget(
+            steps=4,
+            usd=0.0,
+            latency_ms_total=0,
+            budget={"steps": 5, "usd": 1.0, "seconds": 30},
+        )
+        is True
+    )
+
+
+def test_is_near_budget_steps_axis_just_below_threshold_does_not_trip():
+    assert (
+        _is_near_budget(
+            steps=3,
+            usd=0.0,
+            latency_ms_total=0,
+            budget={"steps": 5, "usd": 1.0, "seconds": 30},
+        )
+        is False
+    )
+
+
+def test_is_near_budget_usd_axis_at_threshold_trips():
+    assert (
+        _is_near_budget(
+            steps=1,
+            usd=0.04,
+            latency_ms_total=0,
+            budget={"steps": 5, "usd": 0.05, "seconds": 30},
+        )
+        is True
+    )
+
+
+def test_is_near_budget_seconds_axis_at_threshold_trips():
+    assert (
+        _is_near_budget(
+            steps=1,
+            usd=0.0,
+            latency_ms_total=24_000,
+            budget={"steps": 5, "usd": 1.0, "seconds": 30},
+        )
+        is True
+    )
+
+
+def test_is_near_budget_ignores_axes_absent_from_budget():
+    assert (
+        _is_near_budget(
+            steps=4,
+            usd=999.0,
+            latency_ms_total=999_999,
+            budget={"steps": 5},
+        )
+        is True
+    )
+
+
+def test_is_near_budget_returns_false_when_no_axis_trips():
+    assert (
+        _is_near_budget(
+            steps=1,
+            usd=0.01,
+            latency_ms_total=1_000,
+            budget={"steps": 5, "usd": 0.05, "seconds": 30},
+        )
+        is False
+    )
+
+
+def test_is_near_budget_empty_budget_returns_false():
+    assert (
+        _is_near_budget(
+            steps=999,
+            usd=999.0,
+            latency_ms_total=999_999,
+            budget={},
+        )
+        is False
+    )
+
+
+def test_is_near_budget_skips_non_positive_caps_but_honors_present_axes():
+    assert (
+        _is_near_budget(
+            steps=999,
+            usd=0.04,
+            latency_ms_total=999_999,
+            budget={"steps": 0, "usd": 0.05, "seconds": -30},
+        )
+        is True
+    )
+
+
+def test_is_near_budget_all_non_positive_caps_returns_false():
+    assert (
+        _is_near_budget(
+            steps=999,
+            usd=999.0,
+            latency_ms_total=999_999,
+            budget={"steps": 0, "usd": 0, "seconds": 0},
+        )
+        is False
+    )
+
+
+def test_run_case_sets_near_budget_when_succeeded_at_80pct_steps():
+    canned = RunResult(
+        status="succeeded",
+        result={"title": "x"},
+        evidence={"url": "http://x", "text_snippet": "x"},
+        verifier={"ok": True, "reasons": []},
+        steps=4,
+        usd=0.0,
+        latency_ms_total=0,
+    )
+    with patch("scripts.eval.loop", return_value=canned):
+        result = _run_case(_FIXTURE_CASE, llm_client=MagicMock(), browser=MagicMock())
+    assert result.status == "succeeded"
+    assert result.near_budget is True
+
+
+def test_run_case_clears_near_budget_when_succeeded_below_80pct():
+    canned = RunResult(
+        status="succeeded",
+        result={"title": "x"},
+        evidence={"url": "http://x", "text_snippet": "x"},
+        verifier={"ok": True, "reasons": []},
+        steps=3,
+        usd=0.0,
+        latency_ms_total=0,
+    )
+    with patch("scripts.eval.loop", return_value=canned):
+        result = _run_case(_FIXTURE_CASE, llm_client=MagicMock(), browser=MagicMock())
+    assert result.status == "succeeded"
+    assert result.near_budget is False
+
+
+def test_run_case_sets_near_budget_on_unverified_status_at_80pct():
+    canned = RunResult(
+        status="unverified",
+        result={"title": "x"},
+        evidence={"url": "http://x", "text_snippet": "x"},
+        verifier={"ok": False, "reasons": ["evidence missing"]},
+        steps=4,
+        usd=0.0,
+        latency_ms_total=0,
+    )
+    with patch("scripts.eval.loop", return_value=canned):
+        result = _run_case(_FIXTURE_CASE, llm_client=MagicMock(), browser=MagicMock())
+    assert result.status == "unverified"
+    assert result.near_budget is True
+
+
+def test_run_case_failed_status_has_near_budget_false_even_at_cap():
+    canned = RunResult(
+        status="timeout",
+        result=None,
+        evidence=None,
+        verifier=None,
+        steps=5,
+        usd=0.0,
+        latency_ms_total=0,
+    )
+    with patch("scripts.eval.loop", return_value=canned):
+        result = _run_case(_FIXTURE_CASE, llm_client=MagicMock(), browser=MagicMock())
+    assert result.status == "timeout"
+    assert result.near_budget is False
 
 
 def test_results_json_shape(tmp_path):
