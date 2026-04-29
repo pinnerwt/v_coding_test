@@ -697,6 +697,9 @@ def test_render_failure_classes_svg_polygons_are_cumulatively_stacked():
         return axis_y - (v / y_max) * plot_h
 
     x0 = _PAD_L + plot_w / 2
+    bar_half = plot_w * 0.15
+    x_left = x0 - bar_half
+    x_right = x0 + bar_half
 
     polygons = re.findall(r'<polygon points="([^"]+)"', svg)
     assert len(polygons) == 2, f"expected 2 polygons, got {len(polygons)}: {polygons}"
@@ -704,13 +707,42 @@ def test_render_failure_classes_svg_polygons_are_cumulatively_stacked():
     alpha_pts = polygons[0]
     beta_pts = polygons[1]
 
-    alpha_top = f"{x0:.2f},{y_at(2):.2f}"
-    beta_top = f"{x0:.2f},{y_at(5):.2f}"
-    beta_baseline = f"{x0:.2f},{y_at(2):.2f}"
+    # Cumulative-stacking math is unchanged: alpha y top = y_at(2), beta y top = y_at(5),
+    # beta baseline = y_at(2). What changed: each y appears at BOTH x_left and x_right.
+    for x in (x_left, x_right):
+        alpha_top = f"{x:.2f},{y_at(2):.2f}"
+        beta_top = f"{x:.2f},{y_at(5):.2f}"
+        beta_baseline = f"{x:.2f},{y_at(2):.2f}"
+        assert alpha_top in alpha_pts, f"alpha top {alpha_top!r} not in {alpha_pts!r}"
+        assert beta_top in beta_pts, f"beta top {beta_top!r} not in {beta_pts!r}"
+        assert beta_baseline in beta_pts, f"beta baseline {beta_baseline!r} not in {beta_pts!r}"
 
-    assert alpha_top in alpha_pts, f"alpha top {alpha_top!r} not in {alpha_pts!r}"
-    assert beta_top in beta_pts, f"beta top {beta_top!r} not in {beta_pts!r}"
-    assert beta_baseline in beta_pts, f"beta baseline {beta_baseline!r} not in {beta_pts!r}"
+
+def test_render_failure_classes_svg_single_run_polygons_have_nonzero_area():
+    import re
+
+    from scripts.trends import render_failure_classes_svg
+
+    runs = [_make_run("b1", "2026-04-26T01:00:00+00:00", 0.0)]
+    class_counts = [{"alpha": 2, "beta": 3}]
+    svg = render_failure_classes_svg(runs, class_counts)
+
+    polygons = re.findall(r'<polygon points="([^"]+)"', svg)
+    assert len(polygons) == 2, f"expected 2 polygons, got {len(polygons)}: {polygons}"
+
+    def shoelace_area(pts_str: str) -> float:
+        coords = [tuple(float(c) for c in p.split(",")) for p in pts_str.split()]
+        n = len(coords)
+        s = 0.0
+        for i in range(n):
+            x1, y1 = coords[i]
+            x2, y2 = coords[(i + 1) % n]
+            s += x1 * y2 - x2 * y1
+        return abs(s) / 2.0
+
+    for i, pts in enumerate(polygons):
+        area = shoelace_area(pts)
+        assert area > 0.0, f"polygon {i} has zero area; points={pts!r}"
 
 
 def test_flag_regression_returns_false_when_latest_above_median():

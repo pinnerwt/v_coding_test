@@ -507,6 +507,17 @@ def render_failure_classes_svg(runs: list[Run], class_counts: list[dict[str, int
     def y_at(v: float) -> float:
         return axis_y - (v / y_max) * plot_h
 
+    # For n == 1 a single x position collapses each polygon to a zero-area shape;
+    # widen to two columns around x_at(0) so polygons render as visible rectangles.
+    if n == 1:
+        bar_half = plot_w * 0.15
+        col_xs = [x_at(0) - bar_half, x_at(0) + bar_half]
+        col_counts = [class_counts[0], class_counts[0]]
+    else:
+        col_xs = [x_at(i) for i in range(n)]
+        col_counts = class_counts
+    n_cols = len(col_xs)
+
     parts: list[str] = []
     parts.append(
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {_W} {_H}" '
@@ -536,12 +547,14 @@ def render_failure_classes_svg(runs: list[Run], class_counts: list[dict[str, int
                 f'stroke="#eee" stroke-dasharray="2,2"/>'
             )
 
-    cum: list[float] = [0.0] * n
+    cum: list[float] = [0.0] * n_cols
     for cls in all_classes:
         color = color_map[cls]
-        top_vals = [cum[i] + class_counts[i].get(cls, 0) for i in range(n)]
-        top_pts = " ".join(f"{x_at(i):.2f},{y_at(v):.2f}" for i, v in enumerate(top_vals))
-        bottom_pts = " ".join(f"{x_at(i):.2f},{y_at(cum[i]):.2f}" for i in range(n - 1, -1, -1))
+        top_vals = [cum[i] + col_counts[i].get(cls, 0) for i in range(n_cols)]
+        top_pts = " ".join(f"{col_xs[i]:.2f},{y_at(v):.2f}" for i, v in enumerate(top_vals))
+        bottom_pts = " ".join(
+            f"{col_xs[i]:.2f},{y_at(cum[i]):.2f}" for i in range(n_cols - 1, -1, -1)
+        )
         parts.append(f'<polygon points="{top_pts} {bottom_pts}" fill="{color}" opacity="0.7"/>')
         parts.append(
             f'<polyline points="{top_pts}" fill="none" stroke="{color}" stroke-width="1.5"/>'
