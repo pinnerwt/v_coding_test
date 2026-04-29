@@ -31,7 +31,7 @@ TDD shape:
 
 1. **Unit test on the prompt-builder**: assert that tool-result messages older than N steps are dropped from the conversation history passed to the LLM. The test must fail before the trim is implemented and pass after.
 
-2. **Benchmark assertion**: `webvoyager-1` achieves `status="succeeded"` and `reason is None` within the 120s budget in a fresh benchmark run after the trim is applied.
+2. **Benchmark assertion**: `webvoyager-1` achieves `status="succeeded"` and `reason is None` within the 120s budget in **at least 2 of 3 consecutive fresh benchmark runs** after the trim is applied. The 2-of-3 qualifier accounts for live-web and LLM nondeterminism (network jitter, sampling variance) and avoids a flaky completion gate; a single passing run is insufficient.
 
 ## References
 

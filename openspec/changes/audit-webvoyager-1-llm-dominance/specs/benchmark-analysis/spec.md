@@ -6,7 +6,7 @@ The test module `task2/tests/test_benchmark_analysis.py` SHALL contain a functio
 
 - The first case in the `cases` array SHALL have `reason == "seconds_budget"`.
 - The case SHALL have exactly 13 entries in `step_breakdown`.
-- For the median step (step index 6, i.e. step 7 in 1-based numbering) and all steps with index >= 1 (step 2 onward), `latency_breakdown_ms.llm_ms / latency_breakdown_ms.dispatch_ms` SHALL be greater than 5.
+- For every step with zero-based index >= 1 (step 2 onward, indices 1-12), `latency_breakdown_ms.llm_ms` SHALL be greater than `5 * latency_breakdown_ms.dispatch_ms`. The multiplicative form is required to avoid `ZeroDivisionError` on any future cached step where `dispatch_ms == 0`.
 - `step_breakdown[-1]["prompt_tokens"]` (final step) SHALL be at least 10× `step_breakdown[0]["prompt_tokens"]` (step 1), documenting prompt-token accumulation as lever (a).
 
 The test docstring SHALL encode the lever ranking: (a) prompt-trim saves ~28s (30% of ~94s LLM total, largest ROI), (b) path-shorten saves ~20s (remove 3 steps × 6.5s), (c) observation-trim saves ~6s (step-1 only); and SHALL name prompt-trim as the winning lever.
@@ -26,7 +26,7 @@ The test SHALL use only the Python standard library (`json`, `pathlib`) — no f
 #### Scenario: LLM dominates dispatch on all non-goto-initial steps
 
 - **WHEN** `latency_breakdown_ms` is read for each of steps 2-13 (indices 1-12 in zero-based `step_breakdown`)
-- **THEN** `llm_ms / dispatch_ms` SHALL be greater than `5` for every such step
+- **THEN** `llm_ms` SHALL be greater than `5 * dispatch_ms` for every such step (multiplicative form, safe when `dispatch_ms == 0`)
 
 #### Scenario: Prompt tokens grow at least 10x from step 1 to step 13
 

@@ -39,6 +39,6 @@ def test_step_breakdown_per_step_llm_dominance_in_run_json():
 
     for step in step_breakdown[1:]:
         lb = step["latency_breakdown_ms"]
-        assert lb["llm_ms"] / lb["dispatch_ms"] > 5
+        assert lb["llm_ms"] > 5 * lb["dispatch_ms"]
 
     assert step_breakdown[-1]["prompt_tokens"] >= 10 * step_breakdown[0]["prompt_tokens"]
