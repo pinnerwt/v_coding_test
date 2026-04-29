@@ -34,7 +34,7 @@ _REQUIRED_FIELDS = frozenset(
 )
 _VALID_STATUSES_ACTIVE = frozenset(["active", "in-flight"])
 _VALID_STATUSES_ARCHIVE = frozenset(["merged", "archived", "dropped"])
-_VALID_TIERS = frozenset(range(1, 7))
+_VALID_TIERS = frozenset(range(0, 7))
 _VALID_GATES = frozenset(["no-other-task2-prs-open", "qwen-reachable", "no-benchmark-in-flight"])
 _VALID_URGENCIES = frozenset(["P0", "P1", "P2", "P3"])
 
@@ -107,7 +107,7 @@ def test_schema_all_required_fields():
         for subfield in ("pass_rate", "tokens_pct", "latency_pct"):
             assert subfield in axes, f"{path.name}: axes.{subfield} missing"
             assert isinstance(axes[subfield], int), f"{path.name}: axes.{subfield} must be int"
-        assert fm["tier"] in _VALID_TIERS, f"{path.name}: tier={fm['tier']} not in 1..6"
+        assert fm["tier"] in _VALID_TIERS, f"{path.name}: tier={fm['tier']} not in 0..6"
         assert isinstance(fm["dependencies"], list), f"{path.name}: dependencies must be list"
         for dep in fm["dependencies"]:
             assert isinstance(dep, int), f"{path.name}: dependency {dep!r} must be int"
