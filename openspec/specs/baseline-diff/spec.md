@@ -24,6 +24,10 @@ where `master` and `branch` are parsed `results.json` dicts (keys: `run_at`, `ca
    - `dropped` — present only in master (no branch entry).
 3. Emit a per-case delta table with columns: `Case`, `Master status`, `Branch status`, `Delta`.
 4. Emit aggregate delta lines: pass-rate delta (Δ%), total USD delta (ΔΔ$), p50 latency delta (Δms), p95 latency delta (Δms). Deltas SHALL be signed (e.g. `+3`, `-120`). The p50 and p95 latency deltas SHALL be computed over **only the cases whose `id` appears in both master and branch** (the intersection). If the intersection is empty, the latency delta cells SHALL render as `—` rather than a numeric value.
+   - **Empty-side guard**: when `len(master["cases"]) == 0` OR `len(branch["cases"]) == 0`, the `Δ pass-rate`, `Δ total USD`, `Δ p50 latency`, and `Δ p95 latency` lines SHALL each emit `n/a (<reason>)` instead of a numeric delta, where `<reason>` is:
+     - `master had 0 ran cases` if only the master side is empty.
+     - `branch had 0 ran cases` if only the branch side is empty.
+     - `both sides had 0 ran cases` if both sides are empty.
 5. Prepend a header showing the `run_at` timestamps of both files.
 6. Mark regression rows with `⚠️ REGRESSION` in the `Delta` column.
 7. Mark improvement rows with `✅ IMPROVEMENT` in the `Delta` column.
@@ -90,6 +94,36 @@ The function SHALL be pure: no file I/O, no subprocess calls. All inputs and out
 - **THEN** the output SHALL contain `Δ p50 latency: —`
 - **AND** the output SHALL contain `Δ p95 latency: —`
 - **AND** the output SHALL contain `Cases: 0 common, +2 added, -2 dropped`
+
+#### Scenario: Master with empty cases list paired with non-empty branch emits n/a
+
+- **GIVEN** `master` has `cases: []` (zero cases)
+- **AND** `branch` has one or more non-empty cases
+- **WHEN** `generate_diff_markdown(master, branch)` is called
+- **THEN** the output SHALL contain `Δ pass-rate: n/a (master had 0 ran cases)`
+- **AND** the output SHALL contain `Δ total USD: n/a (master had 0 ran cases)`
+- **AND** the output SHALL contain `Δ p50 latency: n/a (master had 0 ran cases)`
+- **AND** the output SHALL contain `Δ p95 latency: n/a (master had 0 ran cases)`
+- **AND** the output SHALL NOT contain `Δ pass-rate: +0%`
+
+#### Scenario: Non-empty master paired with empty branch emits n/a
+
+- **GIVEN** `master` has one or more non-empty cases
+- **AND** `branch` has `cases: []` (zero cases)
+- **WHEN** `generate_diff_markdown(master, branch)` is called
+- **THEN** the output SHALL contain `Δ pass-rate: n/a (branch had 0 ran cases)`
+- **AND** the output SHALL contain `Δ total USD: n/a (branch had 0 ran cases)`
+- **AND** the output SHALL contain `Δ p50 latency: n/a (branch had 0 ran cases)`
+- **AND** the output SHALL contain `Δ p95 latency: n/a (branch had 0 ran cases)`
+
+#### Scenario: Both master and branch empty emits n/a with both-sides reason
+
+- **GIVEN** both `master` and `branch` have `cases: []`
+- **WHEN** `generate_diff_markdown(master, branch)` is called
+- **THEN** the output SHALL contain `Δ pass-rate: n/a (both sides had 0 ran cases)`
+- **AND** the output SHALL contain `Δ total USD: n/a (both sides had 0 ran cases)`
+- **AND** the output SHALL contain `Δ p50 latency: n/a (both sides had 0 ran cases)`
+- **AND** the output SHALL contain `Δ p95 latency: n/a (both sides had 0 ran cases)`
 
 ### Requirement: Latency delta population annotation is emitted after latency rows
 
