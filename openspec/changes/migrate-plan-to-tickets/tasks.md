@@ -18,26 +18,26 @@
 
 ## 4. Green — Write regen script and seed INDEX.md
 
-- [ ] 4.1 Create `task2/scripts/regen_tickets_index.py` (~80 LOC). Read all `task2/tickets/active/*.md` and `task2/tickets/archive/*.md` frontmatter using PyYAML. Write `task2/tickets/INDEX.md` with: active section sorted ascending by id, archive section sorted ascending by archived_at. Include columns: id, urgency, tier, axes (pass_rate/tokens_pct/latency_pct), dependencies, pre_flight_gates, one-line summary, file path.
-- [ ] 4.2 Run `uv run python task2/scripts/regen_tickets_index.py` to produce `task2/tickets/INDEX.md`.
-- [ ] 4.3 Run `uv run pytest task2/tests/test_migrate_plan_to_tickets.py -x` — confirm idempotency test passes green.
-- [ ] 4.4 Run full test suite `uv run pytest task2/` — confirm no regressions.
+- [x] 4.1 Create `task2/scripts/regen_tickets_index.py` (~80 LOC). Read all `task2/tickets/active/*.md` and `task2/tickets/archive/*.md` frontmatter using PyYAML. Write `task2/tickets/INDEX.md` with: active section sorted ascending by id, archive section sorted ascending by archived_at. Include columns: id, urgency, tier, axes (pass_rate/tokens_pct/latency_pct), dependencies, pre_flight_gates, one-line summary, file path.
+- [x] 4.2 Run `uv run python task2/scripts/regen_tickets_index.py` to produce `task2/tickets/INDEX.md`.
+- [x] 4.3 Run `uv run pytest task2/tests/test_migrate_plan_to_tickets.py -x` — confirm idempotency test passes green.
+- [x] 4.4 Run full test suite `uv run pytest task2/` — confirm no regressions.
 
 ## 5. Red — Write failing sync test
 
-- [ ] 5.1 Create `task2/tests/test_tickets_index.py`. Add assertions (all initially red before ticket files exist with correct data):
+- [x] 5.1 Create `task2/tests/test_tickets_index.py`. Add assertions (all initially red before ticket files exist with correct data):
   - Schema: every active and archive file has all 14 required frontmatter fields; `axes` has all three numeric sub-fields; `tier ∈ {1..6}`; `dependencies` is a list of ints; `pre_flight_gates` only contains known gate vocabulary.
   - Index mirrors frontmatter: for every ticket file, INDEX.md row matches id, urgency, tier, axes, dependencies, pre_flight_gates.
   - Directory/status consistency: no active file has archived status; no archive file has active status.
   - Dependency resolution: every id in any `dependencies` list resolves to an existing ticket file (active or archive).
-- [ ] 5.2 Run `uv run pytest task2/tests/test_tickets_index.py -x` — confirm tests fail red (frontmatter fields may be incomplete or INDEX.md not yet seeded correctly).
+- [x] 5.2 Run `uv run pytest task2/tests/test_tickets_index.py -x` — confirm tests fail red (frontmatter fields may be incomplete or INDEX.md not yet seeded correctly).
 
 ## 6. Green — Fix frontmatter and regen to satisfy sync test
 
-- [ ] 6.1 Inspect test failures; patch any ticket files where frontmatter is incomplete or incorrect (e.g., missing `axes` sub-fields, wrong `pre_flight_gates` values, status/directory mismatch).
-- [ ] 6.2 Run `uv run python task2/scripts/regen_tickets_index.py` to update INDEX.md after any frontmatter fixes.
-- [ ] 6.3 Run `uv run pytest task2/tests/test_tickets_index.py -x` — confirm all assertions pass green.
-- [ ] 6.4 Run full test suite `uv run pytest task2/` — confirm no regressions.
+- [x] 6.1 Inspect test failures; patch any ticket files where frontmatter is incomplete or incorrect (e.g., missing `axes` sub-fields, wrong `pre_flight_gates` values, status/directory mismatch).
+- [x] 6.2 Run `uv run python task2/scripts/regen_tickets_index.py` to update INDEX.md after any frontmatter fixes.
+- [x] 6.3 Run `uv run pytest task2/tests/test_tickets_index.py -x` — confirm all assertions pass green.
+- [x] 6.4 Run full test suite `uv run pytest task2/` — confirm no regressions.
 
 ## 7. Collapse plan.md and extract PLAN.md
 
