@@ -1,0 +1,35 @@
+signature:
+  tier: 2
+  primary_axis: n/a
+  first_touched_file_pattern: task2/scripts/*.py
+version: 1
+description: >
+  Tier-2 measurement ticket adding or extending a scoreboard / baseline-diff /
+  trends / failure-classification field rendered by task2/scripts/*.py.
+  Typical pattern: a new per-case field on CaseResult (eval.py) flows through
+  to a new column or annotation in score.py's render path, with helpers
+  isolated for direct unit-testing.
+when_to_use: >
+  Ticket frontmatter has tier=2 and the body's first inline-backticked file
+  path is under task2/scripts/ (e.g. task2/scripts/score.py,
+  task2/scripts/eval.py, task2/scripts/benchmark.py, task2/scripts/trends.py,
+  task2/scripts/baseline_diff.py). Typical pattern: add CaseResult field
+  with a default that keeps old results JSONs valid; add a helper function
+  isolated for direct unit-testing; render through score.py's per-case
+  status cell or as a new section. Before writing the spec.md, grep
+  openspec/specs/<capability>/spec.md to determine ADDED vs MODIFIED — for
+  this cluster the requirement title (typically "score.py reads a results
+  JSON and emits a markdown scoreboard") OFTEN already exists, so the
+  primary delta block frequently is "## MODIFIED Requirements" rather than
+  "## ADDED Requirements". Flip the spec delta header accordingly.
+when_not_to_use: >
+  Skip this template when the change rewrites scoreboard layout structurally
+  (column add/remove that reorders the per-case header — needs richer
+  scaffolding than the helper-+-column-render skeleton provides). Skip when
+  the ticket touches multiple unrelated scripts in one change (e.g.
+  baseline_diff.py + trends.py + benchmark.py simultaneously — the
+  cross-script integration bullets are out of cluster). Skip when the
+  ticket is a pure script refactor with no new field, helper, or rendered
+  output (those are tier-6 hygiene). Skip when the change introduces a new
+  CLI flag and no rendered-output change (the helper-then-render skeleton
+  does not match a flag-only diff).

@@ -26,5 +26,5 @@ Lookup table for `/new_task2` step 4's template-cache step. Each row maps a tick
 
 | signature.tier | signature.primary_axis | signature.first_touched_file_pattern | template_dir | version | description |
 |---|---|---|---|---|---|
-
-(no entries yet — populate via the procedure in `README.md` § "Adding a new template")
+| 5 | n/a | task2/agent/*.py | tier5-agent-module | 1 | Tier-5 ticket adding a new module or extending one module under task2/agent/ (e.g. new tool branch in loop.py, new helper module like observe / supervisor, single-capability extension). |
+| 2 | n/a | task2/scripts/*.py | tier2-scoreboard-math | 1 | Tier-2 ticket adding or extending a scoreboard / baseline-diff / trends / failure-classification field rendered by task2/scripts/*.py (helper-then-render pattern with backward-compatible defaults). |
