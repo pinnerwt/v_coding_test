@@ -2,7 +2,7 @@
 
 ### Requirement: RunResult carries an optional reason field
 
-`agent.loop.RunResult` SHALL gain an additional field `reason: str | None = None`. The field SHALL default to `None` so all existing construction sites that do not pass `reason` continue to compile and run without modification. When the loop exits via stuck-state early-termination, the field SHALL be set to `"stuck_repeat"`. For all other terminal paths (`done`, `fail`, `timeout`, supervisor halt) the field SHALL remain `None` unless explicitly set by that path.
+`agent.loop.RunResult` SHALL gain an additional field `reason: RunResultReason | None = None`, where `RunResultReason = Literal["stuck_repeat"]` is a module-level alias declared alongside `RunStatus`. The field SHALL default to `None` so all existing construction sites that do not pass `reason` continue to compile and run without modification. When the loop exits via stuck-state early-termination, the field SHALL be set to `"stuck_repeat"`. For all other terminal paths (`done`, `fail`, `timeout`, supervisor halt) the field SHALL remain `None` unless explicitly set by that path. Future failure modes SHALL be added as deliberate extensions of the `RunResultReason` Literal alias rather than as free-text strings.
 
 #### Scenario: RunResult constructed without reason defaults to None
 

@@ -15,7 +15,7 @@ The relevant symbols in `loop.py`:
 **Goals:**
 - Detect when the LLM emits K=3 byte-identical `(tool_name, args)` tuples in a row and exit with `RunResult(status="failed", reason="stuck_repeat")` before exhausting `max_steps`.
 - Bound worst-case cost for stuck cases to ~K steps instead of `max_steps`.
-- Add `reason: str | None = None` to `RunResult` so the caller can distinguish a stuck exit from a locator-halt exit.
+- Add `reason: RunResultReason | None = None` to `RunResult` (with `RunResultReason = Literal["stuck_repeat"]`) so the caller can distinguish a stuck exit from a locator-halt exit via a closed Literal set rather than free-text.
 - Keep all existing callers unaffected (the new field defaults to `None`).
 
 **Non-Goals:**
@@ -41,9 +41,9 @@ Alternative considered: comparing `tool_call.arguments` strings directly (raw JS
 
 `_STUCK_REPEAT_K: int = 3` at module scope. Rationale: K=2 would false-positive on any deliberate retry (e.g. `goto` → same URL after a transient error). K=3 still terminates well before `max_steps=20` and the test from the ticket ("K=3 identical calls → exit with `steps == 3`") directly validates this constant.
 
-**D4: `RunResult.reason: str | None = None`**
+**D4: `RunResult.reason: RunResultReason | None = None`**
 
-Adding a `reason` field to the frozen dataclass allows callers (eval runner, tests) to distinguish `"stuck_repeat"` exits from other `"failed"` exits without parsing free-text. The field defaults to `None` so all current `RunResult(...)` constructions with no `reason` kwarg continue to work.
+Adding a `reason` field to the frozen dataclass allows callers (eval runner, tests) to distinguish `"stuck_repeat"` exits from other `"failed"` exits without parsing free-text. Per the `Literal`-over-`str` rule for closed value sets, the field is typed `RunResultReason | None` where `RunResultReason = Literal["stuck_repeat"]` — a future failure-mode value is a deliberate one-line addition to the alias rather than a free-text contract loosening. The field defaults to `None` so all current `RunResult(...)` constructions with no `reason` kwarg continue to work.
 
 **D5: Early exit emits `_record_step` before returning**
 

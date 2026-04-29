@@ -5,7 +5,7 @@
 
 ## 2. Green — implement RunResult.reason field
 
-- [x] 2.1 In `task2/agent/loop.py`, add `reason: str | None = None` as a field to the `RunResult` frozen dataclass (place it after `verifier` and before `steps` so it reads as a semantic qualifier, matching the design decision).
+- [x] 2.1 In `task2/agent/loop.py`, declare `RunResultReason = Literal["stuck_repeat"]` next to the existing `RunStatus` alias and add `reason: RunResultReason | None = None` as a field to the `RunResult` frozen dataclass (place it after `verifier` and before `steps` so it reads as a semantic qualifier, matching the design decision).
 - [x] 2.2 Run the failing test again (`uv run pytest task2/tests/agent/test_loop.py::test_loop_stuck_repeat_exits_early -x`) — it should now advance past the `reason` attribute error and fail only on the `status`/`steps` assertions.
 
 ## 3. Green — implement K-buffer and early-exit in loop()

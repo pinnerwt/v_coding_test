@@ -9,7 +9,7 @@ After PR #101 fixed the Qwen HTTP 400 crash via `_compact_messages`, the webvoya
 - Args are canonicalized via `json.dumps(args, sort_keys=True)` so dict-key ordering does not cause false misses.
 - `K=3` is defined as a module-level constant `_STUCK_REPEAT_K = 3`.
 - The `reason` field is the literal string `"stuck_repeat"`.
-- The `RunResult` dataclass gains a `reason: str | None = None` field to carry per-failure context (used by `"stuck_repeat"` and potentially future failure modes).
+- The `RunResult` dataclass gains a `reason: RunResultReason | None = None` field (with `RunResultReason = Literal["stuck_repeat"]`) to carry per-failure context as a closed value set; future failure modes are deliberate additions to the alias.
 - Out of scope: the optional AX-tree digest variant from ticket #70 (filed as a follow-up).
 
 ## Capabilities
@@ -28,4 +28,4 @@ _(none — this change extends an existing capability)_
 - `task2/agent/trace.py` — no change required (`RunResult` lives in `loop.py`, not `trace.py`).
 - `task2/tests/agent/test_loop.py` — two new unit tests (positive stuck detection, negative healthy-alternation).
 - No API surface changes; `reason` defaults to `None` so all existing callers are unaffected.
-- Supervisor coexistence: `_stuck_buf` is cleared whenever the supervisor handles a dispatch (i.e. `supervisor._attempts` increases), ensuring stuck-detection does not pre-empt the supervisor's locator-escalation/halt/replan path for `read`-type calls.
+- Supervisor coexistence: `_stuck_buf` is cleared whenever the supervisor handles a dispatch (detected via `supervisor.total_attempts()` increasing across the dispatch), ensuring stuck-detection does not pre-empt the supervisor's locator-escalation/halt/replan path for `read`-type calls.

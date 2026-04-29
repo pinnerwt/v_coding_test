@@ -3471,8 +3471,6 @@ class _StubBrowserWithMissPage:
 
 
 def test_loop_stuck_repeat_does_not_preempt_supervisor_halt():
-    """4 identical read(intent=X) calls must exhaust the supervisor (halt path),
-    not be terminated early by stuck-repeat detection."""
     read_tc = [
         _response_with_tool_call(
             _tool_call("read", {"intent": "Submit button"}, call_id=f"tc-r{i}")
