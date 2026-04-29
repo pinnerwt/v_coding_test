@@ -5,20 +5,20 @@
 
 ## 2. Green — Implement `trim_history`
 
-- [ ] 2.1 Add the `trim_history(messages: list[dict], keep_steps: int | None = None) -> list[dict]` function to `task2/agent/loop.py`, immediately below `_compact_messages`. The function SHALL:
+- [x] 2.1 Add the `trim_history(messages: list[dict], keep_steps: int | None = None) -> list[dict]` function to `task2/agent/loop.py`, immediately below `_compact_messages`. The function SHALL:
   - Parse `keep_steps` from `HISTORY_TRIM_KEEP_STEPS` env var (int, default 4) if not provided explicitly.
   - Walk `messages` (skipping index 0, the system prompt) to identify tool-result groups: a group is one `role="assistant"` message with `tool_calls` followed by its paired `role="tool"` messages sharing those `tool_call_id` values.
   - Count groups from the most recent; drop groups older than `keep_steps` (both the assistant message and its paired tool results).
   - Never drop `role="user"` messages.
   - Return a new list without mutating the input.
-- [ ] 2.2 Wire the call into `loop()`: after the line `messages = _compact_messages(messages, _budget)` (line ~854), insert `messages = trim_history(messages)` so trim runs on every step before the LLM call.
-- [ ] 2.3 Run `uv run pytest task2/tests/test_trim_history.py -x` and confirm green.
+- [x] 2.2 Wire the call into `loop()`: after the line `messages = _compact_messages(messages, _budget)` (line ~854), insert `messages = trim_history(messages)` so trim runs on every step before the LLM call.
+- [x] 2.3 Run `uv run pytest task2/tests/test_trim_history.py -x` and confirm green.
 
 ## 3. Refactor Under Green
 
-- [ ] 3.1 Run `uv run pytest task2/` to confirm the full test suite passes (no regressions).
-- [ ] 3.2 Run `uv run ruff check task2/agent/loop.py task2/tests/test_trim_history.py` and fix any lint issues.
-- [ ] 3.3 Run `uv run ruff format task2/agent/loop.py task2/tests/test_trim_history.py` and commit the result.
+- [x] 3.1 Run `uv run pytest task2/` to confirm the full test suite passes (no regressions).
+- [x] 3.2 Run `uv run ruff check task2/agent/loop.py task2/tests/test_trim_history.py` and fix any lint issues.
+- [x] 3.3 Run `uv run ruff format task2/agent/loop.py task2/tests/test_trim_history.py` and commit the result.
 
 ## 4. Post-Implementation Benchmark Verification (manual gate)
 

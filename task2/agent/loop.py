@@ -206,6 +206,46 @@ def _compact_messages(messages: list[dict], budget_chars: int) -> list[dict]:
     return [messages[0]] + messages[drop_idx:]
 
 
+def trim_history(messages: list[dict], keep_steps: int | None = None) -> list[dict]:
+    if keep_steps is None:
+        try:
+            keep_steps = int(os.environ.get("HISTORY_TRIM_KEEP_STEPS", "4"))
+        except ValueError:
+            keep_steps = 4
+
+    groups: list[tuple[int, list[int]]] = []
+    i = 1
+    while i < len(messages):
+        m = messages[i]
+        if m.get("role") == "assistant" and m.get("tool_calls"):
+            call_ids = {tc["id"] for tc in m["tool_calls"]}
+            j = i + 1
+            tool_indices: list[int] = []
+            while (
+                j < len(messages)
+                and messages[j].get("role") == "tool"
+                and messages[j].get("tool_call_id") in call_ids
+            ):
+                tool_indices.append(j)
+                j += 1
+            if tool_indices:
+                groups.append((i, tool_indices))
+                i = j
+                continue
+        i += 1
+
+    if len(groups) <= keep_steps:
+        return list(messages)
+
+    drop_groups = groups[: len(groups) - keep_steps]
+    drop_indices: set[int] = set()
+    for asst_idx, tool_idxs in drop_groups:
+        drop_indices.add(asst_idx)
+        drop_indices.update(tool_idxs)
+
+    return [m for idx, m in enumerate(messages) if idx not in drop_indices]
+
+
 @dataclass(frozen=True)
 class RunResult:
     status: RunStatus
@@ -852,6 +892,7 @@ def loop(
             events.append(_DecisionMarker())
 
         messages = _compact_messages(messages, _budget)
+        messages = trim_history(messages)
         t_llm_start = time.monotonic()
         response = llm_client.chat(messages, tools=TOOLS)
 

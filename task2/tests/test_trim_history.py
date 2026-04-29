@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-
 import pytest
 
 from agent.loop import trim_history
@@ -20,7 +18,9 @@ def _group(n: int) -> tuple[dict, dict]:
     assistant = {
         "role": "assistant",
         "content": None,
-        "tool_calls": [{"id": call_id, "type": "function", "function": {"name": "goto", "arguments": "{}"}}],
+        "tool_calls": [
+            {"id": call_id, "type": "function", "function": {"name": "goto", "arguments": "{}"}}
+        ],
     }
     tool_result = {"role": "tool", "tool_call_id": call_id, "content": f"result {n}"}
     return assistant, tool_result
