@@ -10,9 +10,9 @@ The `usd` field definition SHALL change from mean to sum convention:
 
 #### Scenario: AggregatedCaseResult.usd is the sum of per-run usd values
 
-- **GIVEN** `aggregate_repeats` is called with `repeats=3` and `_run_case` returning `usd=0.01` on each of the three runs
+- **GIVEN** `aggregate_repeats` is called with `repeats=3` and `_run_case` returning `usd` values of `0.01`, `0.02`, and `0.04` across the three runs
 - **WHEN** `aggregate_repeats` returns the `AggregatedCaseResult`
-- **THEN** `result.usd` SHALL equal `0.03` (sum: `0.01 × 3`)
+- **THEN** `result.usd` SHALL equal `0.07` (sum: `0.01 + 0.02 + 0.04`), distinguishing the sum convention from any implementation that returns a mean of distinct per-run values
 
 #### Scenario: generate_scoreboard total_usd correctly sums usd fields under repeats=3
 
