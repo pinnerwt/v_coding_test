@@ -9,7 +9,7 @@ Rules:
 2. The most recent state turn SHALL be kept verbatim. The "most recent state" is defined as the last `user`-role message whose `content` contains the substring `"Current state: "`. This message and any messages after it (e.g. the most recent `tool` results corresponding to the upcoming decision) SHALL never be dropped.
 3. To bring `total <= budget_chars`, the function SHALL drop messages from index `1` upward (i.e. oldest first), advancing past `last_state_idx` is forbidden.
 4. The function SHALL drop *whole messages*; it SHALL NOT mutate any kept message's content. A kept message in the result SHALL satisfy `kept_message is input_message_at_some_index_j` for some `j` in the original list.
-5. The kept tail SHALL begin at a turn boundary — after the size-based drop completes, the function SHALL advance the drop boundary forward (without exceeding `last_state_idx`) until the next kept non-system message is a user-role state message. This prevents orphaning a `tool` message whose corresponding `assistant` `tool_calls` parent has been dropped, which OpenAI-compatible LLM APIs reject.
+5. The kept tail SHALL begin at a turn boundary — after the size-based drop completes, the function SHALL advance the drop boundary forward (without exceeding `last_state_idx`, which is itself a state message and thus a valid stop) until the next kept non-system message is a user-role state message. This prevents orphaning a `tool` message whose corresponding `assistant` `tool_calls` parent has been dropped, which OpenAI-compatible LLM APIs reject.
 6. When `total <= budget_chars` on entry, the function SHALL return `messages` unchanged.
 7. When even `[messages[0], messages[last_state_idx:]]` exceeds `budget_chars`, the function SHALL return that minimum-keep set rather than dropping the system or last-state messages. The LLM client is responsible for handling the oversize prompt in that pathological case.
 8. When `last_state_idx is None` (no user-role state message present), the function SHALL NOT drop any messages — it returns the input list unchanged. This case is unreachable under the production loop, which always appends a fresh state message before invoking the function.
@@ -54,6 +54,14 @@ The constants `_ELIDED_STATE_CONTENT` and `_ELIDED_TOOL_CONTENT` SHALL NOT exist
 - **AND** a list `L2 = L1 + [new_state_msg, new_tool_msg]` (new turn appended) that also exceeds `budget_chars`, compacted to `R2 = _compact_messages(L2, budget_chars)`
 - **THEN** the kept overlap region of `R2` (i.e. messages in `R2` that originated from `L1`) SHALL be a contiguous tail of `R1` — formally, there SHALL exist indices `k, m` such that `R2[1:m] == R1[k:]` field-for-field
 - **AND** this property SHALL hold even when more messages were dropped on the second pass than on the first
+
+#### Scenario: no state message present is a no-op
+
+- **GIVEN** a `messages` list whose total size exceeds `budget_chars`
+- **AND** no `user`-role message in the list contains the substring `"Current state: "` (i.e. `last_state_idx` is `None`)
+- **WHEN** `_compact_messages(messages, budget_chars)` is called
+- **THEN** the function SHALL return `messages` unchanged (the same list object)
+- **AND** the function SHALL NOT drop or mutate any message
 
 #### Scenario: drops align to turn boundaries
 

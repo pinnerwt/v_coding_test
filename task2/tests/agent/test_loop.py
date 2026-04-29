@@ -3346,7 +3346,23 @@ def test_loop_preserves_most_recent_observation_after_compaction():
     ]
     assert len(state_msgs) >= 1
     last_user_state_msg = state_msgs[-1]
-    assert "<elided>" not in last_user_state_msg["content"]
+
+    assert "ax_tree_digest" in last_user_state_msg["content"]
+    assert _LARGE_AX_TREE[:64] in last_user_state_msg["content"]
+
+    if len(state_msgs) >= 2 and len(stub_llm.all_messages) >= 2:
+        prev_call = stub_llm.all_messages[-2]
+        prev_state_msgs = [
+            m
+            for m in prev_call
+            if m.get("role") == "user" and "Current state: " in m.get("content", "")
+        ]
+        if prev_state_msgs:
+            assert any(m is state_msgs[-2] for m in prev_state_msgs), (
+                "state msg from the prior step should be the same object across "
+                "chat calls (compaction must not copy/mutate kept messages)"
+            )
+
     assert last_messages[0]["role"] == "system"
     assert last_messages[0]["content"] == _build_system_prompt("dummy task")
 
@@ -3361,7 +3377,13 @@ def test_compact_messages_kept_tail_byte_identical():
             {
                 "role": "assistant",
                 "content": None,
-                "tool_calls": [{"id": f"tc-{i}", "name": "goto", "arguments": "{}"}],
+                "tool_calls": [
+                    {
+                        "id": f"tc-{i}",
+                        "type": "function",
+                        "function": {"name": "goto", "arguments": "{}"},
+                    }
+                ],
             }
         )
         messages.append({"role": "tool", "tool_call_id": f"tc-{i}", "content": "T" * 500})
@@ -3449,6 +3471,20 @@ def test_compact_messages_minimum_keep_set_when_over_budget():
     assert out[1] is last_state
 
 
+def test_compact_messages_no_op_when_no_state_message_present():
+    from agent.loop import _compact_messages
+
+    messages: list[dict] = [{"role": "system", "content": "S" * 200}]
+    for i in range(20):
+        messages.append({"role": "user", "content": f"plain user msg {i} " + ("x" * 500)})
+        messages.append({"role": "assistant", "content": f"reply {i} " + ("y" * 500)})
+
+    snapshot = [dict(m) for m in messages]
+    out = _compact_messages(messages, budget_chars=1_000)
+    assert out is messages
+    assert messages == snapshot
+
+
 def test_compact_messages_drops_at_turn_boundary():
     from agent.loop import _compact_messages
 
@@ -3481,6 +3517,13 @@ def test_compact_messages_drops_at_turn_boundary():
     for m in out:
         if m.get("role") == "tool":
             assert m["tool_call_id"] in kept_assistant_tc_ids
+
+    kept_tool_call_ids = {m["tool_call_id"] for m in out if m.get("role") == "tool"}
+    for tc_id in kept_assistant_tc_ids:
+        assert tc_id in kept_tool_call_ids, (
+            f"assistant tool_call id {tc_id!r} kept without its tool result — "
+            "OpenAI-compatible APIs reject this"
+        )
 
 
 # ---------------------------------------------------------------------------
