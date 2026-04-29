@@ -39,13 +39,13 @@ Alternative: compute the timestamps inside `_record_step` using `t0` plus two mo
 
 For the no-tool-call branch (where `dispatch_ms` is trivially 0 ms), `t_dispatch_start` is set immediately before the `if not response.tool_calls:` check so that `dispatch_ms` equals zero (no dispatch actually happens). For the normal path, `t_dispatch_start` is set immediately before the `for tool_call in response.tool_calls:` loop and `_record_step` is called after the loop, so `dispatch_ms` covers all tool calls in the step.
 
-### Decision 4: `t_obs_start` replaces `t0` as the "start of step" anchor only for observation
+### Decision 4: `t0` doubles as the observation-phase anchor
 
-`t0` continues to be used as the step-total anchor (`step_ms = (time.monotonic() - t0) * 1000`) ensuring `latency_ms` is unchanged. `t_obs_start = time.monotonic()` is captured just before `build_observation`, and since `t_obs_start` is set immediately after `t0`, the two differ by at most a few microseconds of bookkeeping — within the ±5 ms invariant tolerance.
+`t0` is captured at the top of each loop iteration immediately before `observe.build_observation(...)` and continues to anchor the step-total measurement (`step_ms = (time.monotonic() - t0) * 1000`). It also anchors `observation_ms = int((t_llm_start - t0) * 1000)`. A separate `t_obs_start` was considered but rejected: it would have been a back-to-back `time.monotonic()` reading separated from `t0` by a few microseconds — well below the ±5 ms invariant tolerance — adding only bookkeeping noise.
 
 ## Risks / Trade-offs
 
 - [Bookkeeping overhead] The three extra `time.monotonic()` calls add ~1–3 µs per step — well within the ±5 ms tolerance. → No mitigation needed.
 - [no-tool-call path dispatch_ms] When the LLM emits no tool calls, `t_dispatch_start` is set before the `if not response.tool_calls:` guard, so `dispatch_ms = int((time.monotonic() - t_dispatch_start) * 1000)` will be 0–1 ms. This is correct. → Document in test.
 - [Multiple `_record_step` call sites] There are ~7 call sites in `loop()`. All must receive the `latency_breakdown` dict; missing one would leave a step entry without the key. → The unit test's JSON-schema scenario will catch any omission.
-- [Step 1 plan call overhead] `plan_module.plan()` is called inside the step 1 iteration between `t_obs_start` and `t_llm_start`; its latency is therefore attributed to `observation_ms` for step 1. This is acceptable — plan() is semantically part of "building the initial observation context" and tracking it separately would require a fourth phase. Document as a known quirk.
+- [Step 1 plan call overhead] `plan_module.plan()` is called inside the step 1 iteration between `t0` and `t_llm_start`; its latency is therefore attributed to `observation_ms` for step 1. This is acceptable — plan() is semantically part of "building the initial observation context" and tracking it separately would require a fourth phase. Document as a known quirk.

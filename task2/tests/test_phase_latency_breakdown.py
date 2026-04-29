@@ -197,3 +197,9 @@ def test_latency_breakdown_present_on_all_entries_including_no_tool_call():
             assert key in lbm, f"missing key {key!r} in step {entry['step']}"
             assert lbm[key] is not None, f"None value for {key!r} in step {entry['step']}"
             assert isinstance(lbm[key], int), f"{key!r} is not int in step {entry['step']}"
+        total = lbm["observation_ms"] + lbm["llm_ms"] + lbm["dispatch_ms"]
+        diff = abs(total - entry["latency_ms"])
+        assert diff <= 5, (
+            f"step {entry['step']}: obs+llm+dispatch={total} "
+            f"vs latency_ms={entry['latency_ms']}, diff={diff}"
+        )

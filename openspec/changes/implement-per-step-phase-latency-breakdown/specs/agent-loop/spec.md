@@ -2,17 +2,17 @@
 
 ### Requirement: Per-step phase latency breakdown
 
-The system SHALL capture three monotonic timestamps inside each iteration of `loop()` and write them under a `latency_breakdown_ms` key in every `step_breakdown` entry.
+The system SHALL capture monotonic timestamps inside each iteration of `loop()` and write them under a `latency_breakdown_ms` key in every `step_breakdown` entry.
 
-- `t_obs_start` SHALL be captured immediately before `observe.build_observation(...)` is called.
+- `t0` (the existing per-step anchor used for `step_ms`) SHALL serve as the observation start.
 - `t_llm_start` SHALL be captured immediately before `llm_client.chat(...)` is called.
 - `t_dispatch_start` SHALL be captured immediately before the `for tool_call in response.tool_calls:` loop begins (or, when no tool calls are present, immediately before the no-tool-call branch is evaluated).
-- `observation_ms` SHALL equal `int((t_llm_start - t_obs_start) * 1000)`.
+- `observation_ms` SHALL equal `int((t_llm_start - t0) * 1000)`.
 - `llm_ms` SHALL equal `int((t_dispatch_start - t_llm_start) * 1000)`.
 - `dispatch_ms` SHALL equal `int((time.monotonic() - t_dispatch_start) * 1000)` computed at the `_record_step` call site.
 - The `latency_breakdown_ms` dict written into `step_breakdown[i]` SHALL have exactly the keys `observation_ms`, `llm_ms`, and `dispatch_ms`, all integers.
 - The dict SHALL be present on every `step_breakdown` entry regardless of how the step exits (no-tool-call, `done`, `fail`, `stuck_repeat`, replan-exhaustion, max-steps). No entry SHALL have a missing or `null` `latency_breakdown_ms`.
-- Sum invariant: `abs((observation_ms + llm_ms + dispatch_ms) - latency_ms) <= 5` SHALL hold for every step in a run, allowing ±5 ms for bookkeeping overhead between `t0` and `t_obs_start`.
+- Sum invariant: `abs((observation_ms + llm_ms + dispatch_ms) - latency_ms) <= 5` SHALL hold for every step in a run, allowing ±5 ms for bookkeeping overhead.
 
 #### Scenario: Phase ranges match stub sleep durations
 
