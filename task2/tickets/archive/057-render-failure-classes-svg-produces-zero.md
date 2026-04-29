@@ -1,7 +1,7 @@
 ---
 id: 57
 slug: render-failure-classes-svg-produces-zero
-status: active
+status: archived
 tier: 2
 urgency: P3
 axes:
@@ -13,8 +13,8 @@ pre_flight_gates: []
 evidence: []
 related: []
 filed_pr: 135
-merged_pr: null
-archived_at: null
+merged_pr: 135
+archived_at: '2026-04-29'
 trigger: 'surfaced by review subagent on PR #83 (iteration 2); deferred from `implement-failure-clustering-histogram`
   because spec scenarios use `n == 2`.'
 ---
