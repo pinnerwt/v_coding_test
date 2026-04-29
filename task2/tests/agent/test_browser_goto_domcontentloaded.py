@@ -10,7 +10,9 @@ import pytest
 from agent.browser import Browser, NavigationError
 
 
-def _start_server(handler_cls: type[BaseHTTPRequestHandler]) -> tuple[ThreadingHTTPServer, threading.Thread, str]:
+def _start_server(
+    handler_cls: type[BaseHTTPRequestHandler],
+) -> tuple[ThreadingHTTPServer, threading.Thread, str]:
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler_cls)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -79,7 +81,9 @@ def hanging_html_server() -> Iterator[str]:
         _stop_server(server, thread)
 
 
-def test_goto_returns_after_domcontentloaded_when_subresource_hangs(playwright_chromium, slow_subresource_server):
+def test_goto_returns_after_domcontentloaded_when_subresource_hangs(
+    playwright_chromium, slow_subresource_server
+):
     with Browser(playwright_browser=playwright_chromium) as b:
         start = time.monotonic()
         b.goto(slow_subresource_server + "/")
