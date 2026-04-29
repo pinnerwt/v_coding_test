@@ -2,7 +2,7 @@
 id: 75
 slug: locator-miss-backoff-after-n-2
 status: active
-tier: 1
+tier: 5
 urgency: P2
 axes:
   pass_rate: 0
