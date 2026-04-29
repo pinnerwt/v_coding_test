@@ -174,13 +174,19 @@ Wraps up an OpenSpec-driven PR end-to-end: archive → commit → push → merge
 
    ```bash
    pr_num=$(gh pr view --json number -q .number)
-   # Wait up to 5 minutes for any in-flight checks. --watch exits 1 on failure, 0 on success.
-   gh pr checks "$pr_num" --watch --required 2>&1 | tail -10
+   # Wait for in-flight checks. --watch exits 1 on failure, 0 on success.
+   # Do NOT pass --required: this repo's branch protection does not mark any check
+   # as required, so --required filters EVERYTHING out and the command silently
+   # returns "no required checks reported" without polling at all — the very class
+   # of silent no-op that caused PR #145 to merge red. Confirmed 2026-04-29: the
+   # actual `task2 CI` `test` and `verify` jobs are reported only by the unfiltered
+   # form. Use the unfiltered command.
+   gh pr checks "$pr_num" --watch 2>&1 | tail -20
    ```
 
-   If `gh pr checks --watch` exits non-zero, list the failing jobs:
+   If `gh pr checks --watch` exits non-zero (or the tail shows any non-`pass` row), list the failing jobs:
    ```bash
-   gh pr checks "$pr_num" --json name,bucket,link -q '.[] | select(.bucket=="fail") | "\(.name): \(.link)"'
+   gh pr checks "$pr_num" | awk '$2 != "pass" && $2 != "skipping" {print}'
    ```
    Inspect logs of each failing job (`gh run view <run_id> --log-failed | tail -80`), fix the underlying defect on this branch, push, and re-run this gate. Do not merge with red checks; do not skip checks via `--admin`; do not patch tests to make them pass.
 
