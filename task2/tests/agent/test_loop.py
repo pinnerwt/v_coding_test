@@ -3580,3 +3580,64 @@ def test_no_tool_call_repeat_resets_on_tool_call():
     assert result.status == "timeout"
     assert result.steps == 20
     assert result.reason is None
+
+
+# ---------------------------------------------------------------------------
+# expect threading into system prompt
+# ---------------------------------------------------------------------------
+
+
+class _CapturingDoneLLMClient:
+    def __init__(self) -> None:
+        self.captured_system_content: str | None = None
+
+    def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
+        if tools is None:
+            return ChatResponse(
+                content='{"steps": ["do the task"], "expected_end_state": "done"}',
+                tool_calls=[],
+                finish_reason="stop",
+                model="fake",
+                usage=Usage(prompt_tokens=0, completion_tokens=0, total_tokens=0),
+                raw={},
+                usd=0.0,
+            )
+        if self.captured_system_content is None:
+            for m in messages:
+                if m.get("role") == "system":
+                    self.captured_system_content = m["content"]
+                    break
+        return ChatResponse(
+            content=None,
+            tool_calls=[
+                ToolCall(
+                    id="tc-done",
+                    name="done",
+                    arguments=json.dumps(
+                        {
+                            "result": {"answer": "X"},
+                            "evidence": {"url": "http://x", "text_snippet": "X"},
+                        }
+                    ),
+                )
+            ],
+            finish_reason="tool_calls",
+            model="fake",
+            usage=_DUMMY_USAGE,
+            raw={},
+        )
+
+
+def test_loop_threads_expect_to_system_prompt():
+    stub_browser = _StubBrowserForCompaction()
+    stub_llm = _CapturingDoneLLMClient()
+    with patch("agent.loop.observe.build_observation", return_value="state: ok"):
+        loop(
+            "find the price",
+            stub_browser,
+            stub_llm,
+            expect={"schema": {"answer": "str"}, "validators": ["answer.nonempty"]},
+        )
+    assert stub_llm.captured_system_content is not None
+    assert "MUST" in stub_llm.captured_system_content
+    assert "answer" in stub_llm.captured_system_content

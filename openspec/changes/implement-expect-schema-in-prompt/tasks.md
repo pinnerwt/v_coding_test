@@ -10,7 +10,7 @@
 
 5. - [x] **Green** — Confirm the guard in `_build_system_prompt` uses `if expect and expect.get("schema")` (truthy check), so an empty schema dict does not trigger injection. Run all four tests from tasks 1-4 and confirm they all pass.
 
-6. - [ ] **Red** — Add `test_loop_threads_expect_to_system_prompt` in `task2/tests/test_loop.py`. Stub `LLMClient` to capture the messages list from each `chat()` call and immediately return a terminal `done` tool call. Call `loop("find the price", browser, stub_llm, expect={"schema": {"answer": "str"}, "validators": ["answer.nonempty"]})`. Assert that the first captured message (role=`system`) contains both `"MUST"` and `"answer"`. Run and confirm it fails with `TypeError` (loop does not yet accept `expect`).
+6. - [x] **Red** — Add `test_loop_threads_expect_to_system_prompt` in `task2/tests/test_loop.py`. Stub `LLMClient` to capture the messages list from each `chat()` call and immediately return a terminal `done` tool call. Call `loop("find the price", browser, stub_llm, expect={"schema": {"answer": "str"}, "validators": ["answer.nonempty"]})`. Assert that the first captured message (role=`system`) contains both `"MUST"` and `"answer"`. Run and confirm it fails with `TypeError` (loop does not yet accept `expect`).
 
 7. - [ ] **Green** — In `task2/agent/loop.py`, add `expect: dict | None = None` as a keyword-only parameter to `loop()`. Thread it into the `_build_system_prompt(task, expect=expect)` call on the line that builds the initial system message. Run all tests through task 6 and confirm they pass.
 
