@@ -1,7 +1,7 @@
 ---
 id: 51
 slug: aggregation-aware-scoreboard-rollups-when-repeats
-status: active
+status: archived
 tier: 2
 urgency: P2
 axes:
@@ -15,9 +15,9 @@ related:
 - 37
 - 36
 - 75
-filed_pr: null
-merged_pr: null
-archived_at: null
+filed_pr: 111
+merged_pr: 111
+archived_at: '2026-04-29'
 trigger: 'surfaced by review subagent on PR #75 (iteration 3).'
 ---
 
