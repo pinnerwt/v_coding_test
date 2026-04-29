@@ -14,7 +14,7 @@
 
 - [x] 3.1 Add `_NO_PROGRESS_K: int = 4` module-level constant in `task2/agent/loop.py`
 - [x] 3.2 Initialize `_no_progress_buf: list[tuple[str, bool]] = []` at the start of `loop()` alongside the existing `_stuck_buf = []` and `_consecutive_no_tool_call_steps = 0`
-- [x] 3.3 Track `any_action_succeeded_this_step: bool = False` at the top of each step iteration; set to `True` when a `click` or `type` tool call's result does not start with `"Error:"`
+- [x] 3.3 Track `any_action_succeeded_this_step: bool = False` at the top of each step iteration; set to `True` when a `click`, `type`, `goto`, or `read` tool call's result does not start with `"Error:"` (the wider set covers exploratory `goto` + `read` flows where the AX fingerprint is constant from step 1 onward — see design Decision 3)
 - [x] 3.4 After the tool-call dispatch loop completes (and only when there were tool calls — i.e. the no-tool-call branch was NOT taken), capture `post_fp = observe.build_observation(browser, []).get("ax_fingerprint")` and append `(post_fp, any_action_succeeded_this_step)` to `_no_progress_buf`
 - [x] 3.5 Trim `_no_progress_buf` to the last `_NO_PROGRESS_K` entries
 - [x] 3.6 Check bail condition: `len(_no_progress_buf) == _NO_PROGRESS_K` AND `len({fp for fp, _ in _no_progress_buf}) == 1` AND `all(not ok for _, ok in _no_progress_buf)`; if true, call `_record_step(...)` then return `RunResult(status="failed", reason="no_progress", result=None, evidence=None, verifier=None, steps=step_num, prompt_tokens=cum_prompt_tokens, completion_tokens=cum_completion_tokens, usd=cum_usd, latency_ms_total=sum(latency_ms_per_step), latency_ms_per_step=latency_ms_per_step, step_breakdown=step_breakdown)`

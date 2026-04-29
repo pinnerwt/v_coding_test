@@ -4,7 +4,7 @@ The agent loop's existing stuck-detection (`_stuck_buf`) only fires when the **s
 
 ## What Changes
 
-- Add a **parallel** `_no_progress_buf` to `agent/loop.py` (list of the last `_NO_PROGRESS_K=4` `(ax_fingerprint, any_action_succeeded)` tuples). The buf is populated at the end of each step's dispatch, keyed on the post-dispatch AX fingerprint and whether any `click`/`type` returned `outcome="ok"` or `"nav"` during that step.
+- Add a **parallel** `_no_progress_buf` to `agent/loop.py` (list of the last `_NO_PROGRESS_K=4` `(ax_fingerprint, any_action_succeeded)` tuples). The buf is populated at the end of each step's dispatch, keyed on the post-dispatch AX fingerprint and whether any `click`/`type`/`goto`/`read` tool call's result did not start with `"Error:"` during that step (the wider set covers exploratory flows; see design Decision 3).
 - When all 4 entries in the buffer share the same fingerprint AND all have `any_action_succeeded=False`, the loop returns early with `RunResult(status="failed", reason="no_progress")`, after emitting a normal step record (so latency breakdown and cost metrics are preserved).
 - Extend `RunResultReason` Literal to include `"no_progress"` alongside the existing `"stuck_repeat"`, `"no_tool_call_repeat"`, and `"seconds_budget"` values.
 - The existing `_stuck_buf` mechanism is **not changed**; both guards run in parallel, whichever fires first wins.
