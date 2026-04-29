@@ -60,6 +60,75 @@ def _git_add_and_commit(repo_root: Path, paths: list[Path]) -> None:
     )
 
 
+def _make_fake_run(regen_calls_collector=None):
+    def fake_run(args, **kwargs):
+        if args[:2] == ["git", "mv"]:
+            src = Path(args[2])
+            dst = Path(args[3])
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            src.rename(dst)
+
+            class R:
+                returncode = 0
+
+            return R()
+        if "regen_tickets_index" in str(args):
+            if regen_calls_collector is not None:
+                regen_calls_collector.append(kwargs)
+
+            class R:
+                returncode = 0
+
+            return R()
+        raise AssertionError(f"Unexpected subprocess.run call: {args}")
+
+    return fake_run
+
+
+def test_archives_ticket_successfully(tmp_path):
+    """Happy path: file moves active→archive, frontmatter updated, INDEX regen invoked."""
+    from scripts.archive_workflow_only_ticket import archive_workflow_only_ticket
+
+    repo_root = tmp_path
+    active_dir = repo_root / "task2" / "tickets" / "active"
+    archive_dir = repo_root / "task2" / "tickets" / "archive"
+    archive_dir.mkdir(parents=True, exist_ok=True)
+
+    ticket_path = _write_ticket(
+        active_dir, 82, "fast-path-ticket-archival-hygiene", MINIMAL_FRONTMATTER
+    )
+    _setup_git_repo(repo_root)
+    _git_add_and_commit(repo_root, [ticket_path])
+
+    regen_calls: list = []
+    with patch(
+        "scripts.archive_workflow_only_ticket.subprocess.run",
+        side_effect=_make_fake_run(regen_calls),
+    ):
+        archive_workflow_only_ticket(
+            slug="fast-path-ticket-archival-hygiene",
+            ticket_number=82,
+            pr_number=125,
+            iso_date="2026-04-29",
+            repo_root=repo_root,
+        )
+
+    expected_archive = archive_dir / "082-fast-path-ticket-archival-hygiene.md"
+    assert expected_archive.exists()
+    assert not (active_dir / "082-fast-path-ticket-archival-hygiene.md").exists()
+
+    text = expected_archive.read_text()
+    end = text.index("---", 3)
+    fm = yaml.safe_load(text[3:end])
+    assert fm["merged_pr"] == 125
+    assert fm["archived_at"] == "2026-04-29"
+    assert fm["status"] == "archived"
+
+    assert len(regen_calls) == 1
+    regen_cwd = regen_calls[0].get("cwd")
+    assert regen_cwd is not None and "task2" in str(regen_cwd)
+
+
 def test_archives_ticket_idempotently(tmp_path):
     """Archive a ticket once (success), then a second call is a no-op."""
     from scripts.archive_workflow_only_ticket import archive_workflow_only_ticket
