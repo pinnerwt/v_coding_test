@@ -1,12 +1,12 @@
 ## 1. Red — failing tests
 
-- [ ] 1.1 In `task2/tests/test_baseline_diff.py`, add `test_empty_master_emits_na_pass_rate` — assert `generate_diff_markdown({"run_at": "...", "cases": []}, branch_non_empty)` contains `Δ pass-rate: n/a (master had 0 ran cases)`.
-- [ ] 1.2 Add `test_empty_master_emits_na_usd` — assert same call contains `Δ total USD: n/a (master had 0 ran cases)`.
-- [ ] 1.3 Add `test_empty_master_emits_na_latency` — assert same call contains `Δ p50 latency: n/a (master had 0 ran cases)` and `Δ p95 latency: n/a (master had 0 ran cases)`.
-- [ ] 1.4 Add `test_empty_master_does_not_emit_plus_zero_pct` — assert output does NOT contain `Δ pass-rate: +0%`.
-- [ ] 1.5 Add `test_empty_branch_emits_na` — assert `generate_diff_markdown(master_non_empty, {"run_at": "...", "cases": []})` contains `Δ pass-rate: n/a (branch had 0 ran cases)`, `Δ total USD: n/a (branch had 0 ran cases)`, `Δ p50 latency: n/a (branch had 0 ran cases)`, `Δ p95 latency: n/a (branch had 0 ran cases)`.
-- [ ] 1.6 Add `test_both_empty_emits_na_both_sides` — assert `generate_diff_markdown({"run_at": "...", "cases": []}, {"run_at": "...", "cases": []})` contains `Δ pass-rate: n/a (both sides had 0 ran cases)` and likewise for USD and latency lines.
-- [ ] 1.7 Run `uv run pytest task2/tests/test_baseline_diff.py -x` from `task2/` and confirm the new tests fail with `AssertionError` (current code emits `+0%` / `+$0.0000`).
+- [x] 1.1 In `task2/tests/test_baseline_diff.py`, add `test_empty_master_emits_na_pass_rate` — assert `generate_diff_markdown({"run_at": "...", "cases": []}, branch_non_empty)` contains `Δ pass-rate: n/a (master had 0 ran cases)`.
+- [x] 1.2 Add `test_empty_master_emits_na_usd` — assert same call contains `Δ total USD: n/a (master had 0 ran cases)`.
+- [x] 1.3 Add `test_empty_master_emits_na_latency` — assert same call contains `Δ p50 latency: n/a (master had 0 ran cases)` and `Δ p95 latency: n/a (master had 0 ran cases)`.
+- [x] 1.4 Add `test_empty_master_does_not_emit_plus_zero_pct` — assert output does NOT contain `Δ pass-rate: +0%`.
+- [x] 1.5 Add `test_empty_branch_emits_na` — assert `generate_diff_markdown(master_non_empty, {"run_at": "...", "cases": []})` contains `Δ pass-rate: n/a (branch had 0 ran cases)`, `Δ total USD: n/a (branch had 0 ran cases)`, `Δ p50 latency: n/a (branch had 0 ran cases)`, `Δ p95 latency: n/a (branch had 0 ran cases)`.
+- [x] 1.6 Add `test_both_empty_emits_na_both_sides` — assert `generate_diff_markdown({"run_at": "...", "cases": []}, {"run_at": "...", "cases": []})` contains `Δ pass-rate: n/a (both sides had 0 ran cases)` and likewise for USD and latency lines.
+- [x] 1.7 Run `uv run pytest task2/tests/test_baseline_diff.py -x` from `task2/` and confirm the new tests fail with `AssertionError` (current code emits `+0%` / `+$0.0000`).
 
 ## 2. Green — minimal implementation
 
