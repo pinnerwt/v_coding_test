@@ -3560,8 +3560,13 @@ def test_compact_messages_drops_at_turn_boundary():
             {
                 "role": "assistant",
                 "content": None,
-                "tool_calls": [{"id": f"tc-{i}", "type": "function",
-                                "function": {"name": "goto", "arguments": "{}"}}],
+                "tool_calls": [
+                    {
+                        "id": f"tc-{i}",
+                        "type": "function",
+                        "function": {"name": "goto", "arguments": "{}"},
+                    }
+                ],
             }
         )
         messages.append({"role": "tool", "tool_call_id": f"tc-{i}", "content": "T" * 400})
@@ -3846,3 +3851,144 @@ def test_loop_threads_expect_to_system_prompt():
     assert system_msg["role"] == "system"
     assert "MUST" in system_msg["content"]
     assert "answer" in system_msg["content"]
+
+
+# ---------------------------------------------------------------------------
+# budget_seconds wall-clock cutoff (ticket #89)
+# ---------------------------------------------------------------------------
+
+
+class _SleepingLLMClient:
+    """Sleeps `sleep_s` seconds on every non-planner chat call and returns a
+    non-terminal `goto` tool call so the loop runs until something else cuts it
+    off (max_steps or budget_seconds).
+    """
+
+    def __init__(self, sleep_s: float):
+        self._sleep_s = sleep_s
+        self._step = 0
+
+    def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
+        if tools is None:
+            return _plan_stub_response()
+        import time as _t
+
+        _t.sleep(self._sleep_s)
+        self._step += 1
+        return ChatResponse(
+            content=None,
+            tool_calls=[
+                ToolCall(
+                    id=f"tc-{self._step}",
+                    name="goto",
+                    arguments=json.dumps({"url": f"http://example.invalid/{self._step}"}),
+                )
+            ],
+            finish_reason="tool_calls",
+            model="fake",
+            usage=Usage(prompt_tokens=10, completion_tokens=5, total_tokens=15),
+            raw={},
+            usd=0.001,
+        )
+
+
+def test_loop_terminates_on_budget_seconds():
+    stub_llm = _SleepingLLMClient(sleep_s=1.0)
+    stub_browser = _StubBrowserForCompaction()
+    with patch("agent.loop.observe.build_observation", return_value="state: ok"):
+        result = loop(
+            "dummy task",
+            browser=stub_browser,
+            llm_client=stub_llm,
+            max_steps=100,
+            budget_seconds=2.5,
+        )
+    assert result.status == "timeout"
+    assert result.reason == "seconds_budget"
+    assert 2 <= result.steps <= 4, f"expected 2..4 steps, got {result.steps}"
+    assert len(result.latency_ms_per_step) == result.steps
+    assert result.latency_ms_total == sum(result.latency_ms_per_step)
+
+
+def test_loop_no_budget_seconds_default_unchanged():
+    """Without budget_seconds, the loop completes on the natural happy path."""
+    done_call = _tool_call(
+        "done",
+        {
+            "result": {"answer": "X"},
+            "evidence": {"url": "http://x", "text_snippet": "X"},
+        },
+        call_id="tc-done",
+    )
+    fake_llm = _FakeLLMClient([_response_with_tool_call(done_call)])
+    with patch("agent.loop.observe.build_observation", return_value="state: ok"):
+        result = loop("task", _StubBrowserForCompaction(), fake_llm, max_steps=5)
+    assert result.status == "succeeded"
+    assert result.reason is None
+
+
+def test_run_case_threads_seconds_budget(monkeypatch):
+    """`_run_case` SHALL pass `budget_seconds=case['budget']['seconds']` to loop()."""
+    from scripts import eval as eval_mod
+
+    captured: dict = {}
+
+    def _fake_loop(*args, **kwargs):
+        captured.update(kwargs)
+        return RunResult(
+            status="succeeded",
+            result={"answer": "ok"},
+            evidence={"url": "http://x", "text_snippet": "ok"},
+            verifier=None,
+            steps=1,
+            prompt_tokens=0,
+            completion_tokens=0,
+            usd=0.0,
+            latency_ms_total=0,
+            latency_ms_per_step=[0],
+            step_breakdown=[
+                {
+                    "step": 1,
+                    "latency_ms": 0,
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "usd": 0.0,
+                    "tool_calls": ["done"],
+                }
+            ],
+            reason=None,
+        )
+
+    monkeypatch.setattr(eval_mod, "loop", _fake_loop)
+
+    class _NoopBrowser:
+        def goto(self, url):
+            pass
+
+    class _NoopLLM:
+        def chat(self, *a, **kw):
+            raise AssertionError("loop is mocked; LLM should not be called")
+
+    case = {
+        "id": "demo-1",
+        "domain": "demo",
+        "category": "demo",
+        "task": "demo task",
+        "expect": {"schema": {"answer": "str"}, "validators": ["answer.nonempty"]},
+        "budget": {"steps": 5, "usd": 0.01, "seconds": 42},
+    }
+    eval_mod._run_case(case, llm_client=_NoopLLM(), browser=_NoopBrowser())
+
+    assert captured.get("budget_seconds") == 42
+
+
+def test_loop_budget_seconds_signature_accepts_kwarg():
+    import inspect
+
+    from agent import loop as loop_mod
+
+    sig = inspect.signature(loop_mod.loop)
+    assert "budget_seconds" in sig.parameters
+    p = sig.parameters["budget_seconds"]
+    assert p.default is None
+    assert p.kind == inspect.Parameter.KEYWORD_ONLY
