@@ -41,6 +41,22 @@ _REQUIRED_FIELDS = ("id", "domain", "category", "task", "expect", "budget")
 PASS_STATUSES = frozenset({"succeeded", "unverified"})
 FAIL_STATUSES = frozenset({"failed", "blocked", "timeout"})
 _SKIP_STATUS = "skipped"
+_NEAR_BUDGET_THRESHOLD = 0.80
+
+
+def _is_near_budget(steps: int, usd: float, latency_ms_total: int, budget: dict) -> bool:
+    axes = (
+        (steps, budget.get("steps"), 1),
+        (usd, budget.get("usd"), 1),
+        (latency_ms_total, budget.get("seconds"), 1000),
+    )
+    for value, cap, divisor in axes:
+        if cap is None or cap <= 0:
+            continue
+        if (value / divisor) / cap >= _NEAR_BUDGET_THRESHOLD - 1e-9:
+            return True
+    return False
+
 
 SkipReason = Literal[
     "live_disabled", "infra_unavailable", "fixture_missing", "feature_not_implemented"
@@ -99,6 +115,7 @@ class CaseResult:
     failure_detail: str | None = None
     skip_reason: SkipReason | None = None
     canary: bool = False
+    near_budget: bool = False
 
     def __post_init__(self) -> None:
         if self.status == _SKIP_STATUS:
@@ -278,6 +295,12 @@ def _run_case(
         run_result.result or {},
     )
     failure_class, failure_detail = _classify_failure(events, validator_results, run_result.status)
+    near_budget = run_result.status in PASS_STATUSES and _is_near_budget(
+        run_result.steps,
+        run_result.usd,
+        run_result.latency_ms_total,
+        case.get("budget", {}),
+    )
     return CaseResult(
         id=case["id"],
         status=run_result.status,
@@ -296,6 +319,7 @@ def _run_case(
         failure_class=failure_class,
         failure_detail=failure_detail,
         canary=canary,
+        near_budget=near_budget,
     )
 
 

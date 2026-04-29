@@ -110,45 +110,75 @@ def test_run_case_captures_goto_exception_as_failed():
 
 
 def test_is_near_budget_steps_axis_at_threshold_trips():
-    assert _is_near_budget(
-        steps=4, usd=0.0, latency_ms_total=0,
-        budget={"steps": 5, "usd": 1.0, "seconds": 30},
-    ) is True
+    assert (
+        _is_near_budget(
+            steps=4,
+            usd=0.0,
+            latency_ms_total=0,
+            budget={"steps": 5, "usd": 1.0, "seconds": 30},
+        )
+        is True
+    )
 
 
 def test_is_near_budget_steps_axis_just_below_threshold_does_not_trip():
-    assert _is_near_budget(
-        steps=3, usd=0.0, latency_ms_total=0,
-        budget={"steps": 5, "usd": 1.0, "seconds": 30},
-    ) is False
+    assert (
+        _is_near_budget(
+            steps=3,
+            usd=0.0,
+            latency_ms_total=0,
+            budget={"steps": 5, "usd": 1.0, "seconds": 30},
+        )
+        is False
+    )
 
 
 def test_is_near_budget_usd_axis_at_threshold_trips():
-    assert _is_near_budget(
-        steps=1, usd=0.04, latency_ms_total=0,
-        budget={"steps": 5, "usd": 0.05, "seconds": 30},
-    ) is True
+    assert (
+        _is_near_budget(
+            steps=1,
+            usd=0.04,
+            latency_ms_total=0,
+            budget={"steps": 5, "usd": 0.05, "seconds": 30},
+        )
+        is True
+    )
 
 
 def test_is_near_budget_seconds_axis_at_threshold_trips():
-    assert _is_near_budget(
-        steps=1, usd=0.0, latency_ms_total=24_000,
-        budget={"steps": 5, "usd": 1.0, "seconds": 30},
-    ) is True
+    assert (
+        _is_near_budget(
+            steps=1,
+            usd=0.0,
+            latency_ms_total=24_000,
+            budget={"steps": 5, "usd": 1.0, "seconds": 30},
+        )
+        is True
+    )
 
 
 def test_is_near_budget_ignores_axes_absent_from_budget():
-    assert _is_near_budget(
-        steps=4, usd=999.0, latency_ms_total=999_999,
-        budget={"steps": 5},
-    ) is True
+    assert (
+        _is_near_budget(
+            steps=4,
+            usd=999.0,
+            latency_ms_total=999_999,
+            budget={"steps": 5},
+        )
+        is True
+    )
 
 
 def test_is_near_budget_returns_false_when_no_axis_trips():
-    assert _is_near_budget(
-        steps=1, usd=0.01, latency_ms_total=1_000,
-        budget={"steps": 5, "usd": 0.05, "seconds": 30},
-    ) is False
+    assert (
+        _is_near_budget(
+            steps=1,
+            usd=0.01,
+            latency_ms_total=1_000,
+            budget={"steps": 5, "usd": 0.05, "seconds": 30},
+        )
+        is False
+    )
 
 
 def test_run_case_sets_near_budget_when_succeeded_at_80pct_steps():
