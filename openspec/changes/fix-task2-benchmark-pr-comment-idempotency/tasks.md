@@ -3,8 +3,11 @@
 - [ ] 1.1 Create `task2/tests/test_workflow_pr_comment.py`. The test SHALL:
   - Load `.github/workflows/task2-benchmark.yml` relative to the repo root using `pathlib.Path` and `yaml.safe_load`.
   - Navigate to `workflow["jobs"]["verify"]["steps"]` and find the step whose `name` equals `"Post diff as PR comment"`.
-  - Assert the step's `run` string contains `gh api repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments` (the detection call).
+  - Assert the step's `run` string contains `gh api` and `/comments` (the detection call shape — env-var-based, since the workflow uses `$REPO`/`$PR_NUMBER` not `${{ ... }}` literals inside `run:`).
+  - Assert the step's `run` string contains `select(.user.login == "github-actions[bot]")` (the `--jq` filter pinning detection by author identity).
   - Assert the step's `run` string contains `gh api --method PATCH` (the update call).
+  - Assert the step's `run` string contains `-F "body=@` (typed-field form so `gh api` reads file contents; `-f` would send the literal `@<filename>` string).
+  - Assert the step's `run` string does NOT contain `--edit-last` (the deprecated path) or `2>/dev/null` (the silent-swallow pattern).
   - Assert the `workflow["permissions"]["issues"]` equals `"write"`.
 - [ ] 1.2 Run `uv run pytest task2/tests/test_workflow_pr_comment.py -x` from `task2/` and confirm every assertion **fails** — the current YAML uses `--edit-last` and has no `issues: write` permission, so all three asserts fail for the expected reason.
 - [ ] 1.3 Commit the new test file as `test(task2): red YAML-shape test for idempotent PR comment step (#52)`.
@@ -26,8 +29,8 @@
     --jq '.[] | select(.user.login == "github-actions[bot]") | .id' \
     | tail -1)
   if [ -n "$COMMENT_ID" ]; then
-    gh api --method PATCH "/repos/$REPO/issues/comments/$COMMENT_ID" \
-      -f "body=@$DIFF_FILE"
+    gh api --method PATCH "repos/$REPO/issues/comments/$COMMENT_ID" \
+      -F "body=@$DIFF_FILE"
   else
     gh pr comment "$PR_NUMBER" --body-file "$DIFF_FILE" --repo "$REPO"
   fi
@@ -37,7 +40,8 @@
   - Do NOT add `2>/dev/null` anywhere.
   - Do NOT use `--edit-last`.
   - The detection `gh api` call runs inside `set -e`; any non-zero exit propagates immediately.
-  - `-f "body=@$DIFF_FILE"` (file-reference form) is used for the PATCH body to correctly handle multi-line Markdown.
+  - `-F "body=@$DIFF_FILE"` (typed-field form, capital F) is used for the PATCH body so that `@<filename>` is interpreted as "read file contents" — the `-f`/`--raw-field` flag does NOT interpret `@<filename>` and would send the literal string `@/path/...` as the comment body.
+  - Both `gh api` URLs use the `repos/...` form (no leading slash) for consistency.
 
 - [ ] 2.3 Run `uv run pytest task2/tests/test_workflow_pr_comment.py -x` from `task2/` and confirm all assertions **pass**.
 - [ ] 2.4 Run `uv run pytest task2/` to confirm no existing tests are broken.
