@@ -117,6 +117,7 @@ class CaseResult:
     cache_events: dict = field(default_factory=dict)
     failure_class: str | None = None
     failure_detail: str | None = None
+    reason: str | None = None
     skip_reason: SkipReason | None = None
     canary: bool = False
     near_budget: bool = False
@@ -324,6 +325,7 @@ def _run_case(
         cache_events=cache_events,
         failure_class=failure_class,
         failure_detail=failure_detail,
+        reason=run_result.reason,
         canary=canary,
         near_budget=near_budget,
     )
