@@ -30,6 +30,12 @@ The serialized JSON written by `asdict(CaseResult)` SHALL include a `"reason"` k
 - **WHEN** `_run_case` builds the `CaseResult`
 - **THEN** the returned `CaseResult.reason` SHALL equal `"no_progress"`
 
+#### Scenario: no_tool_call_repeat termination propagates reason to CaseResult
+
+- **GIVEN** `_run_case` is invoked with a stubbed `loop` returning `RunResult(status="failed", reason="no_tool_call_repeat", result=None, evidence=None, steps=3, prompt_tokens=100, completion_tokens=50, usd=0.005, latency_ms_total=1500, latency_ms_per_step=[500]*3, step_breakdown=[])`
+- **WHEN** `_run_case` builds the `CaseResult`
+- **THEN** the returned `CaseResult.reason` SHALL equal `"no_tool_call_repeat"`
+
 #### Scenario: stuck_repeat termination propagates reason to CaseResult
 
 - **GIVEN** `_run_case` is invoked with a stubbed `loop` returning `RunResult(status="failed", reason="stuck_repeat", result=None, evidence=None, steps=3, prompt_tokens=100, completion_tokens=50, usd=0.005, latency_ms_total=1500, latency_ms_per_step=[500]*3, step_breakdown=[])`
@@ -41,6 +47,18 @@ The serialized JSON written by `asdict(CaseResult)` SHALL include a `"reason"` k
 - **GIVEN** `run_suite` is invoked on a tiny in-memory fixture-only case list with a stubbed `loop`
 - **WHEN** the run completes and writes the results JSON
 - **THEN** every entry under the JSON's case-list (whatever the top-level container key is) SHALL have a `"reason"` key whose value is either `null` or one of the recognized `RunResultReason` strings
+
+#### Scenario: serialized benchmark JSON has reason null on a succeeded case
+
+- **GIVEN** `run_suite` is invoked with a stubbed `loop` returning `RunResult(status="succeeded", reason=None, ...)`
+- **WHEN** the run completes and writes the results JSON
+- **THEN** the case's serialized `"reason"` value SHALL be `null`
+
+#### Scenario: skipped-path CaseResult has reason None
+
+- **GIVEN** `_skipped_result` is invoked with a `live_disabled` skip reason
+- **WHEN** the skipped `CaseResult` is constructed
+- **THEN** the returned `CaseResult.reason` SHALL be `None` (the `skip_reason` field carries the skipped-path diagnostic, not `reason`)
 
 #### Scenario: exception-path CaseResult has reason None
 

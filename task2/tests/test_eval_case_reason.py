@@ -53,6 +53,24 @@ def test_run_case_propagates_reason_no_progress():
     assert result.reason == "no_progress"
 
 
+def test_run_case_propagates_reason_no_tool_call_repeat():
+    canned = RunResult(
+        status="failed",
+        result=None,
+        evidence=None,
+        verifier=None,
+        reason="no_tool_call_repeat",
+        steps=3,
+        prompt_tokens=100,
+        completion_tokens=50,
+        usd=0.005,
+        latency_ms_total=1500,
+    )
+    with patch("scripts.eval.loop", return_value=canned):
+        result = _run_case(_FIXTURE_CASE, llm_client=MagicMock(), browser=MagicMock())
+    assert result.reason == "no_tool_call_repeat"
+
+
 def test_run_case_propagates_reason_stuck_repeat():
     canned = RunResult(
         status="failed",
@@ -129,6 +147,14 @@ def test_bench_json_reason_is_null_on_succeeded(tmp_path):
         out = run_suite(cases=[_FIXTURE_CASE], results_dir=tmp_path)
     data = json.loads(out.read_text())
     assert data["cases"][0]["reason"] is None
+
+
+def test_skipped_result_has_reason_none():
+    from scripts.eval import _skipped_result
+
+    skipped = _skipped_result(_FIXTURE_CASE, "live_disabled")
+    assert skipped.status == "skipped"
+    assert skipped.reason is None
 
 
 def test_run_case_exception_path_has_reason_none():

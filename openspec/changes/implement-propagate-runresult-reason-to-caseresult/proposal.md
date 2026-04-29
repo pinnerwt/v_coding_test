@@ -21,7 +21,7 @@
 ## Impact
 
 - **Code**: `task2/scripts/eval.py` — add `reason` field to `CaseResult` dataclass; wire `run_result.reason` into the success-path constructor.
-- **Tests**: `task2/tests/` — four new unit tests (seconds_budget propagation; no_progress propagation; succeeded reason=None; benchmark JSON includes `"reason"` key on every case dict).
+- **Tests**: `task2/tests/test_eval_case_reason.py` — nine new unit tests covering: propagation of all four `RunResultReason` values (`seconds_budget`, `no_progress`, `stuck_repeat`, `no_tool_call_repeat`); succeeded-path `reason=None`; benchmark JSON includes `"reason"` key on failed and succeeded cases; skipped-path `reason=None`; exception-path `reason=None`.
 - **Specs**: `openspec/specs/eval-runner/spec.md` — delta applied from this change's `specs/eval-runner/spec.md`.
 - No changes to `agent/loop.py`, no new external dependencies.
 - Downstream effect: the next post-merge benchmark JSON will have a populated `reason` field on every failed/timeout case; `/done_pr` step 1b' can read it directly when computing per-case regression deltas, removing a class of measurement-blind ticket-selection failures.
