@@ -4,6 +4,7 @@ import types
 import unittest.mock
 
 import pytest
+from playwright.sync_api import Error as PlaywrightError
 
 from agent.browser import (
     Browser,
@@ -145,8 +146,6 @@ def test_exit_suppresses_detach_errors_and_clears_cache(playwright_chromium):
 
 
 def test_goto_retries_once_on_transient_error(playwright_chromium):
-    from playwright.sync_api import Error as PlaywrightError
-
     with Browser(playwright_browser=playwright_chromium) as b:
         call_count = {"n": 0}
 
@@ -161,8 +160,6 @@ def test_goto_retries_once_on_transient_error(playwright_chromium):
 
 
 def test_goto_does_not_retry_non_transient_error(playwright_chromium):
-    from playwright.sync_api import Error as PlaywrightError
-
     with Browser(playwright_browser=playwright_chromium) as b:
         call_count = {"n": 0}
 
@@ -177,8 +174,6 @@ def test_goto_does_not_retry_non_transient_error(playwright_chromium):
 
 
 def test_goto_raises_navigation_error_on_second_transient_failure(playwright_chromium):
-    from playwright.sync_api import Error as PlaywrightError
-
     with Browser(playwright_browser=playwright_chromium) as b:
         call_count = {"n": 0}
 
