@@ -188,10 +188,13 @@ def _compact_messages(messages: list[dict], budget_chars: int) -> list[dict]:
             last_state_idx = i
             break
 
-    keep_tail_start = last_state_idx if last_state_idx is not None else len(messages)
+    keep_tail_start = last_state_idx if last_state_idx is not None else 1
     drop_idx = 1
     while total > budget_chars and drop_idx < keep_tail_start:
         total -= sizes[drop_idx]
+        drop_idx += 1
+
+    while drop_idx < keep_tail_start and not _is_state_msg(messages[drop_idx]):
         drop_idx += 1
 
     if drop_idx == 1:

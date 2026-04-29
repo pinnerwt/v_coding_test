@@ -14,4 +14,4 @@
 
 - [x] 3.1 `uv run ruff check .` from `task2/` SHALL pass.
 - [x] 3.2 Run `/simplify` to remove any dead code introduced or revealed by the rewrite.
-- [x] 3.3 Live smoke: `uv run python -m scripts.bench --suite webvoyager --live` (or a single-case invocation) confirms `webvoyager-1` does NOT exhibit the >2× per-step latency cliff seen in PR #142's benchmark. (May be skipped if Qwen unreachable; document in PR description.)
+- [ ] 3.3 Live smoke: `uv run python -m scripts.bench --suite webvoyager --live` (or a single-case invocation) confirms `webvoyager-1` does NOT exhibit the >2× per-step latency cliff seen in PR #142's benchmark. Deferred to `/done_pr` step 1a's mandatory WebVoyager run, which will be the canonical evidence.
