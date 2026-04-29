@@ -919,3 +919,40 @@ def test_failure_histogram_excludes_unknown_status():
     assert "supervisor_halt" in histogram_section
     assert "some_other_class" not in histogram_section
     assert "**Failure histogram** (1 failed)" in histogram_section
+
+
+# ---------------------------------------------------------------------------
+# Ticket #40: near_budget warning glyph in per-case Status cell
+# ---------------------------------------------------------------------------
+
+
+def test_render_case_status_appends_warning_when_near_budget():
+    from scripts.score import _render_case_status
+
+    out = _render_case_status({"status": "succeeded", "near_budget": True})
+    assert "succeeded" in out
+    assert "⚠️" in out
+
+
+def test_render_case_status_omits_warning_when_near_budget_false():
+    from scripts.score import _render_case_status
+
+    out = _render_case_status({"status": "succeeded", "near_budget": False})
+    assert "⚠️" not in out
+
+
+def test_render_case_status_omits_warning_when_near_budget_key_absent():
+    from scripts.score import _render_case_status
+
+    out = _render_case_status({"status": "succeeded"})
+    assert "⚠️" not in out
+
+
+def test_render_case_status_appends_warning_to_multi_run_fractional_status():
+    from scripts.score import _render_case_status
+
+    out = _render_case_status(
+        {"status": "succeeded", "repeats": 3, "passed_runs": 3, "near_budget": True}
+    )
+    assert "3/3" in out
+    assert "⚠️" in out
