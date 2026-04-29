@@ -257,3 +257,28 @@ def test_dropped_case_row_present():
     out = generate_diff_markdown(master, branch)
     assert "y" in out
     assert "dropped" in out
+
+
+def test_latency_delta_uses_intersection_of_case_ids():
+    from scripts.baseline_diff import generate_diff_markdown
+
+    master = {
+        "run_at": "2026-04-20T00:00:00+00:00",
+        "cases": [
+            {"id": "a", "status": "succeeded", "usd": 0.01, "latency_ms_total": 100},
+            {"id": "b", "status": "succeeded", "usd": 0.01, "latency_ms_total": 200},
+            {"id": "c", "status": "succeeded", "usd": 0.01, "latency_ms_total": 300},
+        ],
+    }
+    branch = {
+        "run_at": "2026-04-28T00:00:00+00:00",
+        "cases": [
+            {"id": "a", "status": "succeeded", "usd": 0.01, "latency_ms_total": 100},
+            {"id": "b", "status": "succeeded", "usd": 0.01, "latency_ms_total": 200},
+            {"id": "c", "status": "succeeded", "usd": 0.01, "latency_ms_total": 300},
+            {"id": "d", "status": "succeeded", "usd": 0.01, "latency_ms_total": 50},
+        ],
+    }
+    out = generate_diff_markdown(master, branch)
+    assert "Δ p50 latency: +0ms" in out
+    assert "Δ p95 latency: +0ms" in out
