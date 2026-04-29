@@ -53,6 +53,12 @@ The stuck-exit path calls `_record_step(...)` so `step_breakdown` and `latency_m
 
 The existing trace schema has no `StuckEvent` kind. Emitting a `SupervisorEvent(classified_as="stuck_repeat")` would require extending the `classified_as` Literal in `trace.py`. Since the spec does not require it and the `reason` field on `RunResult` already surfaces the information to callers, no trace event is emitted for stuck detection in this ticket.
 
+**D7: Supervisor coexistence — clear `_stuck_buf` when supervisor fires**
+
+Stuck-detection must not pre-empt the supervisor's locator-escalation/halt/replan path. The supervisor is the legitimate handler for "agent keeps emitting the same `read(intent=X)` call" — it escalates L1→L2→L3, then halts on attempt > `max_attempts`, then triggers a one-shot replan. If the stuck-buffer were checked *before* dispatch (as originally implemented), 3 consecutive identical `read` calls would trigger `stuck_repeat` before the supervisor could fire its halt.
+
+Fix applied (Option A): the buffer append and stuck check are moved to *after* `_dispatch`. Before dispatch, the total call count `sum(supervisor._attempts.values())` is snapshotted; after dispatch, if that count increased (i.e., `supervisor.handle()` was called during the dispatch), `_stuck_buf` is cleared before appending. This resets the window whenever the supervisor takes ownership of an intent, ensuring stuck-detection only catches planner-level stuck cases that the supervisor does not already handle (e.g. repeated `goto(url=X)`, repeated `click`, repeated `type`).
+
 ## Risks / Trade-offs
 
 - **False positive on deliberate retry loops** → K=3 makes this unlikely for real tasks; a legitimate agent would not call the exact same tool with byte-identical args three times in a row without any intermediate state change.

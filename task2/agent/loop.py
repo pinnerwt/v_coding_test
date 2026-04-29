@@ -870,32 +870,6 @@ def loop(
                 )
                 continue
 
-            _stuck_buf.append(f"{tool_call.name}:{json.dumps(args, sort_keys=True)}")
-            _stuck_buf[:] = _stuck_buf[-_STUCK_REPEAT_K:]
-            if len(_stuck_buf) == _STUCK_REPEAT_K and len(set(_stuck_buf)) == 1:
-                _record_step(
-                    step_num,
-                    t0,
-                    response,
-                    dispatched_tool_names,
-                    latency_ms_per_step,
-                    step_breakdown,
-                )
-                return RunResult(
-                    status="failed",
-                    reason="stuck_repeat",
-                    result=None,
-                    evidence=None,
-                    verifier=None,
-                    steps=step_num,
-                    prompt_tokens=cum_prompt_tokens,
-                    completion_tokens=cum_completion_tokens,
-                    usd=cum_usd,
-                    latency_ms_total=sum(latency_ms_per_step),
-                    latency_ms_per_step=latency_ms_per_step,
-                    step_breakdown=step_breakdown,
-                )
-
             if tool_call.name == "done":
                 evidence = args.get("evidence")
                 verifier = _check_evidence(evidence)
@@ -972,6 +946,7 @@ def loop(
                     step_breakdown=step_breakdown,
                 )
 
+            _sup_calls_before = sum(supervisor._attempts.values())
             tool_result = _dispatch(
                 tool_call.name,
                 args,
@@ -982,6 +957,33 @@ def loop(
                 run_id=run_id,
                 step_id=_step_id,
             )
+            if sum(supervisor._attempts.values()) > _sup_calls_before:
+                _stuck_buf.clear()
+            _stuck_buf.append(f"{tool_call.name}:{json.dumps(args, sort_keys=True)}")
+            _stuck_buf[:] = _stuck_buf[-_STUCK_REPEAT_K:]
+            if len(_stuck_buf) == _STUCK_REPEAT_K and len(set(_stuck_buf)) == 1:
+                _record_step(
+                    step_num,
+                    t0,
+                    response,
+                    dispatched_tool_names,
+                    latency_ms_per_step,
+                    step_breakdown,
+                )
+                return RunResult(
+                    status="failed",
+                    reason="stuck_repeat",
+                    result=None,
+                    evidence=None,
+                    verifier=None,
+                    steps=step_num,
+                    prompt_tokens=cum_prompt_tokens,
+                    completion_tokens=cum_completion_tokens,
+                    usd=cum_usd,
+                    latency_ms_total=sum(latency_ms_per_step),
+                    latency_ms_per_step=latency_ms_per_step,
+                    step_breakdown=step_breakdown,
+                )
 
             is_error = tool_result.startswith("Error:")
             if tool_call.name in {"click", "type"} and not is_error:
