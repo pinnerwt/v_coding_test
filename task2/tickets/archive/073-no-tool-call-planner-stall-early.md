@@ -13,7 +13,6 @@ pre_flight_gates: []
 evidence:
 - task2/benchmark/task2-implement-loop-stuck-repeat/webvoyager/20260429_004208.json
 related:
-- 104
 - 70
 filed_pr: 106
 merged_pr: null

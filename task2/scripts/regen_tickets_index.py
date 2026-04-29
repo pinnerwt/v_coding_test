@@ -4,11 +4,7 @@ from pathlib import Path
 import yaml
 
 REPO_ROOT = Path(__file__).parent.parent.parent
-TASK2 = REPO_ROOT / "task2"
-TICKETS_DIR = TASK2 / "tickets"
-ACTIVE_DIR = TICKETS_DIR / "active"
-ARCHIVE_DIR = TICKETS_DIR / "archive"
-INDEX_MD = TICKETS_DIR / "INDEX.md"
+TICKETS_DIR = REPO_ROOT / "task2" / "tickets"
 
 
 def _parse_ticket(path: Path) -> dict:

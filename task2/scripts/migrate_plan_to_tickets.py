@@ -171,8 +171,6 @@ def _extract_merged_ticket_map(
 
 
 def _git_filed_pr(ticket_id: int, repo_root: Path) -> int | None:
-    # only commits with pattern (#ticket)(#pr) are ticket-to-PR mappings;
-    # a lone (#N) is just the PR number, not a ticket reference
     try:
         out = subprocess.check_output(
             ["git", "log", "--oneline", "--all"],
@@ -228,9 +226,11 @@ def _extract_evidence(body: str) -> list[str]:
     return list(dict.fromkeys(_EVIDENCE_RE.findall(body)))
 
 
-def _extract_related(body: str, ticket_id: int, deps: list[int]) -> list[int]:
+def _extract_related(
+    body: str, ticket_id: int, deps: list[int], known_ids: set[int]
+) -> list[int]:
     all_refs = [int(m) for m in _RELATED_RE.findall(body) if int(m) != ticket_id]
-    return list(dict.fromkeys(r for r in all_refs if r not in deps))
+    return list(dict.fromkeys(r for r in all_refs if r not in deps and r in known_ids))
 
 
 def _extract_trigger(body: str, title: str) -> str:
@@ -247,12 +247,13 @@ def _build_frontmatter(
     filed_pr: int | None,
     status: str,
     archived_at: str | None,
+    known_ids: set[int],
 ) -> str:
     body = ticket.get("body", "")
     deps = _extract_dependencies(body)
     gates = _extract_pre_flight_gates(body)
     evidence = _extract_evidence(body)
-    related = _extract_related(body, ticket["id"], deps)
+    related = _extract_related(body, ticket["id"], deps, known_ids)
     trigger = _extract_trigger(body, ticket["title"])
     tier = _assign_tier(ticket["title"], body)
     slug = _slug(ticket["title"])
@@ -284,6 +285,7 @@ def migrate(plan_path: Path, out_dir: Path, repo_root: Path) -> None:
     today_iso = date.today().isoformat()
     urgency_map = _extract_urgency_map(plan_text)
     merged_map, merged_archived_at = _extract_merged_ticket_map(repo_root, today_iso)
+    known_ids = {t["id"] for t in tickets}
 
     active_dir = out_dir / "active"
     archive_dir = out_dir / "archive"
@@ -300,7 +302,9 @@ def migrate(plan_path: Path, out_dir: Path, repo_root: Path) -> None:
         archived_at = None if is_undone else merged_archived_at.get(tid, today_iso)
         urgency = urgency_map.get(tid, "P3")
 
-        fm_text = _build_frontmatter(ticket, urgency, merged_pr, filed_pr, status, archived_at)
+        fm_text = _build_frontmatter(
+            ticket, urgency, merged_pr, filed_pr, status, archived_at, known_ids
+        )
         slug = _slug(ticket["title"])
         filename = f"{tid:03d}-{slug}.md"
         dest_dir = archive_dir if status == "archived" else active_dir

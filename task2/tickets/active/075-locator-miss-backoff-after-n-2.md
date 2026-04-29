@@ -13,7 +13,6 @@ pre_flight_gates: []
 evidence:
 - task2/benchmark/task2-implement-no-tool-call-repeat/webvoyager/20260429_013158.json
 related:
-- 106
 - 70
 - 72
 - 73

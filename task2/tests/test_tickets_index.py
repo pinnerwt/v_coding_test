@@ -162,6 +162,20 @@ def test_dependency_resolution():
             )
 
 
+def test_related_resolution():
+    all_ids: set[int] = set()
+    for path, _ in _all_ticket_files():
+        fm = _parse_frontmatter(path)
+        all_ids.add(fm["id"])
+    for path, _ in _all_ticket_files():
+        fm = _parse_frontmatter(path)
+        for rel_id in fm.get("related") or []:
+            assert rel_id in all_ids, (
+                f"{path.name}: related id={rel_id} not found in any active/archive ticket file"
+                " (likely a PR number leaked into related: during migration)"
+            )
+
+
 _UNESCAPED_PIPE_RE = re.compile(r"(?<!\\)\|")
 
 
