@@ -6,10 +6,10 @@
 
 ## 2. Green — Write and run migration script
 
-- [ ] 2.1 Create `task2/scripts/migrate_plan_to_tickets.py` (~150 LOC). Parse plan.md ticket entries with regex `^(\d+)\.\s+\*\*(.+?)\*\*`. For each ticket: extract body, cross-reference urgency from `## Undone` rubric, cross-reference merged status from `openspec/changes/archive/*/proposal.md` (grep `ticket #<N>`), cross-reference merge SHA from `git log --oneline --grep '#<N>\b'`. Emit `task2/tickets/active/<NNN>-<slug>.md` or `task2/tickets/archive/<NNN>-<slug>.md` with full frontmatter. Assert postcondition `pre_count == post_count`; exit non-zero on mismatch.
-- [ ] 2.2 Run `uv run pytest task2/tests/test_migrate_plan_to_tickets.py -x` — confirm both tests pass green.
-- [ ] 2.3 Run the migration script for real: `uv run python task2/scripts/migrate_plan_to_tickets.py` — inspect output under `task2/tickets/`. Verify count matches, spot-check 3–5 ticket files for correct frontmatter.
-- [ ] 2.4 Stage and commit all emitted ticket files: `git add task2/tickets/active/ task2/tickets/archive/`.
+- [x] 2.1 Create `task2/scripts/migrate_plan_to_tickets.py` (~150 LOC). Parse plan.md ticket entries with regex `^(\d+)\.\s+\*\*(.+?)\*\*`. For each ticket: extract body, cross-reference urgency from `## Undone` rubric, cross-reference merged status from `openspec/changes/archive/*/proposal.md` (grep `ticket #<N>`), cross-reference merge SHA from `git log --oneline --grep '#<N>\b'`. Emit `task2/tickets/active/<NNN>-<slug>.md` or `task2/tickets/archive/<NNN>-<slug>.md` with full frontmatter. Assert postcondition `pre_count == post_count`; exit non-zero on mismatch.
+- [x] 2.2 Run `uv run pytest task2/tests/test_migrate_plan_to_tickets.py -x` — confirm both tests pass green.
+- [x] 2.3 Run the migration script for real: `uv run python task2/scripts/migrate_plan_to_tickets.py` — inspect output under `task2/tickets/`. Verify count matches, spot-check 3–5 ticket files for correct frontmatter.
+- [x] 2.4 Stage and commit all emitted ticket files: `git add task2/tickets/active/ task2/tickets/archive/`.
 
 ## 3. Red — Write failing tests for index regen script
 
