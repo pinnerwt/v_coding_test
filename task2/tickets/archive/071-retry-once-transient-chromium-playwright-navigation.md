@@ -1,7 +1,7 @@
 ---
 id: 71
 slug: retry-once-transient-chromium-playwright-navigation
-status: active
+status: archived
 tier: 3
 urgency: P1
 axes:
@@ -13,9 +13,9 @@ pre_flight_gates: []
 evidence:
 - task2/benchmark/task2-fix-qwen-http-400/webvoyager/20260428_233500.json
 related: []
-filed_pr: null
-merged_pr: null
-archived_at: null
+filed_pr: 115
+merged_pr: 115
+archived_at: '2026-04-29'
 trigger: user-flagged 2026-04-28 ("are we performing worse than before?") in `/done_pr`
   for `fix-qwen-http-400` after WebVoyager pass-rate dropped from 2/3 to 1/3 vs baseline.
   Cross-run check shows this case has otherwise been stable.

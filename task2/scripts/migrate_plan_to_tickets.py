@@ -226,9 +226,7 @@ def _extract_evidence(body: str) -> list[str]:
     return list(dict.fromkeys(_EVIDENCE_RE.findall(body)))
 
 
-def _extract_related(
-    body: str, ticket_id: int, deps: list[int], known_ids: set[int]
-) -> list[int]:
+def _extract_related(body: str, ticket_id: int, deps: list[int], known_ids: set[int]) -> list[int]:
     all_refs = [int(m) for m in _RELATED_RE.findall(body) if int(m) != ticket_id]
     return list(dict.fromkeys(r for r in all_refs if r not in deps and r in known_ids))
 
