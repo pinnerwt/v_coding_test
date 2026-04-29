@@ -273,6 +273,7 @@ def _run_case(
                 trace_writer=writer,
                 run_id=run_id,
                 locator_cache=cache,
+                expect=case.get("expect"),
             )
         except Exception as exc:
             if isinstance(exc, LLMError):
