@@ -5,7 +5,7 @@ The run JSON at `task2/benchmark/task2-propagate-runresult-reason-to-caseresult/
 Lever analysis from the raw numbers:
 
 - **Step-1 observation cost**: 12,380ms — a one-time AX-tree build + playwright `waitForLoadState`. Cutting 6s here saves ~5% of total (6/127).
-- **LLM cost per step**: median ~5.6s (steps 2-12), peak 29.9s at step 13. Sum ≈ 94s across all 13 steps. A 30% prompt cut reduces this by ~28s → total ≈ 99s, comfortably under 120s.
+- **LLM cost per step**: median ~5.6s (steps 2-12), peak 29.9s at step 13. Sum ≈ 105s across all 13 steps (~102s on steps 2-13). A 30% prompt cut reduces this by ~31s → total wall-clock ≈ 96s, comfortably under 120s.
 - **Path-shortening**: 13 steps × ~6.5s avg = ~84s LLM cost. Saving 3 steps saves ~20s → total ≈ 107s, borderline under 120s.
 - **Prompt growth**: `prompt_tokens` grows from 1,084 (step 1) to 21,522 (step 13) — a 20× accumulation. Steps 6-13 average ~16,000 tokens each. The per-step LLM cost is highly correlated with prompt size.
 
@@ -39,6 +39,6 @@ ID 97 is the next sequential ID after 96 (the diagnostic). This is a `docs(task2
 
 ## Risks / Trade-offs
 
-- [Risk: artifact path hardcoded in test] The test must reference the specific benchmark run JSON by path. If the directory is renamed, the test breaks. Mitigation: use `pathlib.Path(__file__).parents[2] / "benchmark" / "task2-propagate-runresult-reason-to-caseresult" / "webvoyager" / "20260429_203237.json"` so the path is relative to the test file within the `task2/` tree.
+- [Risk: artifact path hardcoded in test] The test must reference the specific benchmark run JSON by path. If the directory is renamed, the test breaks. Mitigation: use `pathlib.Path(__file__).parents[1] / "benchmark" / "task2-propagate-runresult-reason-to-caseresult" / "webvoyager" / "20260429_203237.json"` so the path is relative to the test file within the `task2/` tree (`tests/test_benchmark_analysis.py` → `parents[1] == task2/`).
 - [Risk: run artifact deleted or overwritten] The benchmark JSON is checked into the repo as evidence. It is not regenerated on CI; the test is a static assertion against a committed artifact. No mitigation needed beyond the existing git history.
 - [Risk: lever ranking stale after future runs] The docstring captures the ranking for this single run at this point in time. The next tier-5 ticket should supersede the diagnostic. Acceptable for a tier-4 ticket.

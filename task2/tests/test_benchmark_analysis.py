@@ -13,7 +13,7 @@ def test_step_breakdown_per_step_llm_dominance_in_run_json():
       (a) prompt-trim  — prompt_tokens grow 1084 → 21522 over 13 steps (20x accumulation).
           Step 13 alone takes 29.9s of LLM time on 21522 prompt tokens.
           Trimming stale tool-result messages + AX-tree noise saves ~30% of prompt tokens,
-          cutting ~28s of LLM time (0.30 × 94s total LLM), bringing 127s → ~99s. WINNER.
+          cutting ~31s of LLM time (0.30 × 105s total LLM), bringing 127s → ~96s. WINNER.
       (b) path-shorten — saving 3 steps × 6.5s avg LLM/step saves ~20s → 127s → ~107s.
           Borderline under 120s with no margin.
       (c) observation-trim — step 1 observation_ms=12380ms; trimming AX-tree at load saves ~6s
