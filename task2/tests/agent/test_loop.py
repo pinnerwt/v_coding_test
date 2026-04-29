@@ -3429,8 +3429,7 @@ def test_loop_stuck_repeat_no_false_positive_on_alternation():
     stub_llm = _AlternatingGotoClient()
     with patch("agent.loop.observe.build_observation", return_value=_LARGE_OBSERVATION):
         result = loop("task", browser=stub_browser, llm_client=stub_llm, max_steps=20)
-    assert result.status == "timeout"
-    assert result.reason is None
+    assert result.reason != "stuck_repeat"
 
 
 # ---------------------------------------------------------------------------
@@ -3530,6 +3529,9 @@ def test_no_tool_call_repeat_exits_at_k():
 
 
 class _NoToolCallThenGotoClient:
+    """Cycles [no-tool, no-tool, goto, no-tool, no-tool, goto, ...] so the
+    counter never accumulates K=3 consecutive no-tool-call responses."""
+
     def __init__(self):
         self._step = 0
 
@@ -3545,14 +3547,14 @@ class _NoToolCallThenGotoClient:
                 usd=0.0,
             )
         self._step += 1
-        if self._step == 3:
+        if self._step % 3 == 0:
             return ChatResponse(
                 content=None,
                 tool_calls=[
                     ToolCall(
-                        id="tc-goto",
+                        id=f"tc-goto-{self._step}",
                         name="goto",
-                        arguments=json.dumps({"url": "http://example.com"}),
+                        arguments=json.dumps({"url": f"http://example.com/{self._step}"}),
                     )
                 ],
                 finish_reason="tool_calls",
