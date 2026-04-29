@@ -3430,6 +3430,9 @@ def test_loop_stuck_repeat_no_false_positive_on_alternation():
     with patch("agent.loop.observe.build_observation", return_value=_LARGE_OBSERVATION):
         result = loop("task", browser=stub_browser, llm_client=stub_llm, max_steps=20)
     assert result.reason != "stuck_repeat"
+    assert result.status == "failed"
+    assert result.reason == "no_tool_call_repeat"
+    assert result.steps == 6
 
 
 # ---------------------------------------------------------------------------
