@@ -1,7 +1,7 @@
 ---
 id: 76
 slug: migrate-task2-plan-md-ticket-prose
-status: active
+status: archived
 tier: 1
 urgency: P3
 axes:
@@ -14,9 +14,9 @@ pre_flight_gates:
 evidence: []
 related:
 - 55
-filed_pr: null
-merged_pr: null
-archived_at: null
+filed_pr: 110
+merged_pr: 110
+archived_at: '2026-04-29'
 trigger: 'user-flagged on 2026-04-29 during `/auto_task2` iteration 2 review of PR
   #106 — plan.md size and per-PR merge-conflict frequency had become a real-cost item;
   user explicitly approved INDEX.md-as-source-of-truth design constraint after a token-cost
