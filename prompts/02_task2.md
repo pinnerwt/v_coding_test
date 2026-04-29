@@ -88,3 +88,5 @@ Great. Let's archive the results in task2/RAEDME.md to a section called "basic_b
 ---
 
 For the rest, most of the developement is done automatically. Since claude allows adding prompt during run, I kept monitor the implementation and add follow up that I observed directly to task2/plan.md as a ticket. LLM is not reliable in the sense that it always try to solve the issues with special cases handler, while most of the time, a more general approach is preferred.
+
+Update task2/plan.md format to have a INDEX.md + a folder of tickets. This helps for better token usages.
