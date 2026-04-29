@@ -40,7 +40,7 @@ Each per-case entry SHALL include a `near_budget: bool` field. `near_budget` SHA
 - `usd / budget.usd`
 - `latency_ms_total / 1000 / budget.seconds`
 
-`near_budget` SHALL be `False` for any case whose `status` is not in `{succeeded, unverified}` (i.e. failed, blocked, timeout, skipped) regardless of how close its observed metrics came to the budget. When the case's `budget` dict omits a given axis, that axis SHALL be ignored in the ratio computation; only present axes are considered. The threshold constant `0.80` SHALL be defined as `_NEAR_BUDGET_THRESHOLD` in `scripts/eval.py` so the value is greppable.
+`near_budget` SHALL be `False` for any case whose `status` is not in `{succeeded, unverified}` (i.e. failed, blocked, timeout, skipped) regardless of how close its observed metrics came to the budget. When the case's `budget` dict omits a given axis, that axis SHALL be ignored in the ratio computation; only present axes are considered.
 
 #### Scenario: near_budget is True at 80% of step budget on a passing case
 

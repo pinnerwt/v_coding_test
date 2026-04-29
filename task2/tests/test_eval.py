@@ -193,6 +193,30 @@ def test_is_near_budget_empty_budget_returns_false():
     )
 
 
+def test_is_near_budget_skips_non_positive_caps_but_honors_present_axes():
+    assert (
+        _is_near_budget(
+            steps=999,
+            usd=0.04,
+            latency_ms_total=999_999,
+            budget={"steps": 0, "usd": 0.05, "seconds": -30},
+        )
+        is True
+    )
+
+
+def test_is_near_budget_all_non_positive_caps_returns_false():
+    assert (
+        _is_near_budget(
+            steps=999,
+            usd=999.0,
+            latency_ms_total=999_999,
+            budget={"steps": 0, "usd": 0, "seconds": 0},
+        )
+        is False
+    )
+
+
 def test_run_case_sets_near_budget_when_succeeded_at_80pct_steps():
     canned = RunResult(
         status="succeeded",
