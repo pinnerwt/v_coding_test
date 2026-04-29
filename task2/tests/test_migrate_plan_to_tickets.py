@@ -1,3 +1,4 @@
+import functools
 import re
 import subprocess
 import sys
@@ -10,6 +11,18 @@ TASK2 = REPO_ROOT / "task2"
 PLAN_MD = TASK2 / "plan.md"
 MIGRATE_SCRIPT = TASK2 / "scripts" / "migrate_plan_to_tickets.py"
 ARCHIVE_DIR = REPO_ROOT / "openspec" / "changes" / "archive"
+
+
+@functools.lru_cache(maxsize=1)
+def _pre_stub_plan_text() -> str:
+    stub_sha = subprocess.check_output(
+        ["git", "log", "-n", "1", "--diff-filter=M", "--format=%H", "--", "task2/plan.md"],
+        cwd=str(REPO_ROOT),
+        text=True,
+    ).strip()
+    return subprocess.check_output(
+        ["git", "show", f"{stub_sha}^:task2/plan.md"], cwd=str(REPO_ROOT), text=True
+    )
 
 
 def _count_tickets_in_plan_text(plan_text: str) -> int:
@@ -72,18 +85,6 @@ def _git_has_pr_for_ticket(ticket_id: int) -> int | None:
     except subprocess.CalledProcessError:
         pass
     return None
-
-
-def _pre_stub_plan_text() -> str:
-    out = subprocess.check_output(
-        ["git", "log", "--diff-filter=M", "--format=%H", "--", "task2/plan.md"],
-        cwd=str(REPO_ROOT),
-        text=True,
-    )
-    stub_sha = out.splitlines()[0]
-    return subprocess.check_output(
-        ["git", "show", f"{stub_sha}^:task2/plan.md"], cwd=str(REPO_ROOT), text=True
-    )
 
 
 def test_archived_changes_produce_archive_ticket_with_merged_pr(tmp_path):
