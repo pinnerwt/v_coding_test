@@ -30,4 +30,4 @@
 - [x] 5.1 Confirm `RunResultReason` Literal in code matches the MODIFIED spec (includes `"no_progress"`)
 - [x] 5.2 Confirm `_NO_PROGRESS_K = 4` in code matches spec constant
 - [x] 5.3 Confirm `_no_progress_buf` check placement is post-dispatch, not inside the tool-call loop
-- [ ] 5.4 Run `openspec validate implement-no-progress-stuck-detection --strict` — must pass
+- [x] 5.4 Run `openspec validate implement-no-progress-stuck-detection --strict` — must pass
