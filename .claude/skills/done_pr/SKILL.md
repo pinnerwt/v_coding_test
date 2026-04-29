@@ -154,6 +154,16 @@ Wraps up an OpenSpec-driven PR end-to-end: archive → commit → push → merge
 
 3. **Push the branch.** Confirm the current branch is *not* `master`/`main`. Then `git push` (use `-u origin <branch>` if upstream isn't set). This ensures the archive commit is on the PR before merging.
 
+3a. **Pre-merge local CI gate (mandatory when the diff touches `task2/`).** Before invoking `gh pr merge`, replicate the GitHub `task2 CI` workflow locally so a red CI does not silently land on master. `gh pr merge --squash --delete-branch` does NOT block on CI status by default (only `--auto` does, and only when branch protection requires checks); on this repo `master`'s protection does not require the `task2 CI` check, so a failing job will merge anyway and break the next iteration's pre-flight.
+
+   Detect: `git diff --name-only origin/master...HEAD -- task2/` — if empty, skip this gate.
+
+   Otherwise run, from the repo root:
+   ```bash
+   (cd task2 && uv run ruff check . && uv run pytest)
+   ```
+   Both must pass. If either fails, stop and surface the failure verbatim — do **not** merge, do **not** "patch the test to make it pass," do **not** `--no-verify` past it. Fix the underlying defect in a follow-up commit on the same branch, push, and re-run this gate. Why: confirmed in PR #135 / PR #136 follow-up on 2026-04-29 — PR #135 was squashed via `gh pr merge --squash` while CI was still in flight; CI later went red on `tests/test_migrate_plan_to_tickets.py::test_archived_changes_produce_archive_ticket_with_merged_pr` (a `merged_pr`-routing bug in `scripts/migrate_plan_to_tickets.py` introduced when ticket #57 was archived), and the failure landed on master silently. The next `/auto_task2` iteration's pre-flight on a clean master would still pass `git status` checks but the underlying CI was red. How to apply: this gate is the second line of defense after the per-iteration `uv run pytest` in `/new_task2` step 6 — it catches drift between branch HEAD and merge time (e.g. when `/review_task2` or follow-up commits modified test surface after step 6 ran). The cost is one local pytest run (~60s on `task2/`); the avoided cost is a red-master rollback.
+
 4. **Merge the PR.** Identify the PR for the current branch with `gh pr view --json number,state,mergeable,headRefName -q .` (no number arg → uses the branch's PR).
    - If state is not `OPEN`, report it and stop (don't try to merge a closed/already-merged PR).
    - If mergeable is `CONFLICTING`, stop and ask the user.
