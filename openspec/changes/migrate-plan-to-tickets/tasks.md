@@ -41,9 +41,9 @@
 
 ## 7. Collapse plan.md and extract PLAN.md
 
-- [ ] 7.1 Copy the prose preamble sections from `task2/plan.md` (`## Honest risks / tradeoffs`, architectural notes, component descriptions — everything that is NOT ticket prose) into a new file `task2/PLAN.md`.
-- [ ] 7.2 Replace `task2/plan.md` with a stub containing a redirect to `task2/tickets/INDEX.md` and `task2/PLAN.md`. The stub SHALL NOT contain `## TDD tickets`, `## Benchmark improvements (candidates)`, or `## Undone` sections.
-- [ ] 7.3 Run `uv run pytest task2/` — confirm no regressions.
+- [x] 7.1 Copy the prose preamble sections from `task2/plan.md` (`## Honest risks / tradeoffs`, architectural notes, component descriptions — everything that is NOT ticket prose) into a new file `task2/PLAN.md`.
+- [x] 7.2 Replace `task2/plan.md` with a stub containing a redirect to `task2/tickets/INDEX.md` and `task2/PLAN.md`. The stub SHALL NOT contain `## TDD tickets`, `## Benchmark improvements (candidates)`, or `## Undone` sections.
+- [x] 7.3 Run `uv run pytest task2/` — confirm no regressions.
 
 ## 8. Skill updates — update .claude/commands/ in lockstep
 

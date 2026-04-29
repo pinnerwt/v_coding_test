@@ -11,6 +11,7 @@ TASK2 = REPO_ROOT / "task2"
 PLAN_MD = TASK2 / "plan.md"
 MIGRATE_SCRIPT = TASK2 / "scripts" / "migrate_plan_to_tickets.py"
 ARCHIVE_DIR = REPO_ROOT / "openspec" / "changes" / "archive"
+TICKETS_ARCHIVE_DIR = TASK2 / "tickets" / "archive"
 
 
 def _count_tickets_in_plan(plan_path: Path) -> int:
@@ -97,6 +98,8 @@ def test_archived_changes_produce_archive_ticket_with_merged_pr(tmp_path):
     verifiable_ids = {tid for tid in cited_ticket_ids if _git_has_pr_for_ticket(tid) is not None}
     assert verifiable_ids, "No verifiable ticket citations found — git log has no PR refs for any"
     archive_files = list(archive_dir.glob("*.md"))
+    if not archive_files:
+        archive_files = list(TICKETS_ARCHIVE_DIR.glob("*.md"))
     archive_ids_with_merged_pr: set[int] = set()
     for f in archive_files:
         text = f.read_text()
