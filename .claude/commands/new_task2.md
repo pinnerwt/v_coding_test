@@ -398,7 +398,7 @@ Procedure for each follow-up:
    ---
    ```
    Body: the full ticket text (self-contained so a fresh `/new_task2` run can pick it up cold).
-4. Run `uv run python task2/scripts/regen_tickets_index.py` to update `task2/tickets/INDEX.md`.
+4. Run `(cd task2 && uv run python scripts/regen_tickets_index.py)` to update `task2/tickets/INDEX.md`.
 5. If a follow-up overlaps an existing ticket, edit that ticket file's body and update its `axes` / `urgency` if warranted instead of adding a duplicate.
 
 Commit the new ticket files and the updated INDEX.md on the same branch, then push:
