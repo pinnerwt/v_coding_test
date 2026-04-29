@@ -18,9 +18,9 @@
 
 ## 4. Refactor Under Green
 
-- [ ] 4.1 Run `uv run pytest task2/` to confirm the full test suite passes (no regressions in other test files).
-- [ ] 4.2 Run `uv run ruff check task2/agent/loop.py task2/tests/test_trim_history.py` and fix any lint issues.
-- [ ] 4.3 Run `uv run ruff format task2/agent/loop.py task2/tests/test_trim_history.py` and confirm no changes are needed (or apply and re-check).
+- [x] 4.1 Run `uv run pytest task2/` to confirm the full test suite passes (no regressions in other test files).
+- [x] 4.2 Run `uv run ruff check task2/agent/loop.py task2/tests/test_trim_history.py` and fix any lint issues.
+- [x] 4.3 Run `uv run ruff format task2/agent/loop.py task2/tests/test_trim_history.py` and confirm no changes are needed (or apply and re-check).
 
 ## 5. Post-Implementation Benchmark Verification (manual gate, post-merge in /done_pr)
 
