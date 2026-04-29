@@ -955,4 +955,5 @@ def test_render_case_status_appends_warning_to_multi_run_fractional_status():
         {"status": "succeeded", "repeats": 3, "passed_runs": 3, "near_budget": True}
     )
     assert "3/3" in out
+    assert "✓" in out
     assert "⚠️" in out

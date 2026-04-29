@@ -181,6 +181,18 @@ def test_is_near_budget_returns_false_when_no_axis_trips():
     )
 
 
+def test_is_near_budget_empty_budget_returns_false():
+    assert (
+        _is_near_budget(
+            steps=999,
+            usd=999.0,
+            latency_ms_total=999_999,
+            budget={},
+        )
+        is False
+    )
+
+
 def test_run_case_sets_near_budget_when_succeeded_at_80pct_steps():
     canned = RunResult(
         status="succeeded",
@@ -211,6 +223,22 @@ def test_run_case_clears_near_budget_when_succeeded_below_80pct():
         result = _run_case(_FIXTURE_CASE, llm_client=MagicMock(), browser=MagicMock())
     assert result.status == "succeeded"
     assert result.near_budget is False
+
+
+def test_run_case_sets_near_budget_on_unverified_status_at_80pct():
+    canned = RunResult(
+        status="unverified",
+        result={"title": "x"},
+        evidence={"url": "http://x", "text_snippet": "x"},
+        verifier={"ok": False, "reasons": ["evidence missing"]},
+        steps=4,
+        usd=0.0,
+        latency_ms_total=0,
+    )
+    with patch("scripts.eval.loop", return_value=canned):
+        result = _run_case(_FIXTURE_CASE, llm_client=MagicMock(), browser=MagicMock())
+    assert result.status == "unverified"
+    assert result.near_budget is True
 
 
 def test_run_case_failed_status_has_near_budget_false_even_at_cap():
