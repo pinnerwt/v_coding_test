@@ -22,9 +22,9 @@
 
 ## 4. Refactor under green
 
-- [ ] 4.1 If `_record_step` now has more than 7 positional parameters, consider converting `latency_breakdown` to a keyword-only arg to improve call-site readability — re-run full test suite after
-- [ ] 4.2 Confirm the step-1 plan-call latency attribution quirk (plan LLM call attributed to `observation_ms` on step 1) is acceptable by inspecting a sample benchmark JSON; no code change needed, but note it in a comment only if strictly necessary per CLAUDE.md conventions
+- [x] 4.1 If `_record_step` now has more than 7 positional parameters, consider converting `latency_breakdown` to a keyword-only arg to improve call-site readability — re-run full test suite after
+- [x] 4.2 Confirm the step-1 plan-call latency attribution quirk (plan LLM call attributed to `observation_ms` on step 1) is acceptable by inspecting a sample benchmark JSON; no code change needed, but note it in a comment only if strictly necessary per CLAUDE.md conventions
 
 ## 5. JSON-schema completeness (eval results)
 
-- [ ] 5.1 Run a smoke eval (`uv run python -m agent` or the eval harness against one WebVoyager case) and verify the output `eval/results/*.json` contains `latency_breakdown_ms` with all three keys on every `step_breakdown` entry — including 0-step exception paths if any
+- [x] 5.1 Run a smoke eval (`uv run python -m agent` or the eval harness against one WebVoyager case) and verify the output `eval/results/*.json` contains `latency_breakdown_ms` with all three keys on every `step_breakdown` entry — including 0-step exception paths if any
