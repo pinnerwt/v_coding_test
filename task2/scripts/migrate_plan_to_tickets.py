@@ -296,8 +296,9 @@ def migrate(plan_path: Path, out_dir: Path, repo_root: Path) -> None:
         merged_pr = merged_map.get(tid)
         filed_pr = _git_filed_pr(tid, repo_root)
         is_undone = tid in urgency_map
-        status = "active" if is_undone else "archived"
-        archived_at = None if is_undone else merged_archived_at.get(tid, today_iso)
+        has_merged_pr = merged_pr is not None
+        status = "active" if (is_undone and not has_merged_pr) else "archived"
+        archived_at = None if status == "active" else merged_archived_at.get(tid, today_iso)
         urgency = urgency_map.get(tid, "P3")
 
         fm_text = _build_frontmatter(
