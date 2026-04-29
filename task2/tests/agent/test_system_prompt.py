@@ -41,3 +41,11 @@ def test_build_system_prompt_schema_absent():
     assert "find the price" in prompt
     assert "ONLY for irrecoverable conditions" in prompt
     assert "MUST" not in prompt
+
+
+def test_build_system_prompt_empty_schema_leaves_no_must():
+    prompt = _build_system_prompt(
+        "find the price",
+        expect={"schema": {}, "validators": []},
+    )
+    assert "MUST" not in prompt

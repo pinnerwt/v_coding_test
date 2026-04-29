@@ -6,9 +6,9 @@
 
 3. - [x] **Red** — Add `test_build_system_prompt_schema_absent` asserting that `_build_system_prompt("find the price")` (no `expect` kwarg) returns a string byte-identical to the current production output (assert known substrings that are present today and confirm the `MUST` substring is absent). Run and confirm the test passes immediately — this is the "default-path safety" regression guard that locks in the current output.
 
-4. - [ ] **Red** — Add `test_build_system_prompt_empty_schema_leaves_no_must` asserting that `_build_system_prompt("find the price", expect={"schema": {}, "validators": []})` does NOT contain `"MUST"`. Run and confirm it fails (the implementation from task 2 would inject if `schema` is an empty dict — fix the guard to use `if expect and expect.get("schema")`).
+4. - [x] **Red** — Add `test_build_system_prompt_empty_schema_leaves_no_must` asserting that `_build_system_prompt("find the price", expect={"schema": {}, "validators": []})` does NOT contain `"MUST"`. Run and confirm it fails (the implementation from task 2 would inject if `schema` is an empty dict — fix the guard to use `if expect and expect.get("schema")`).
 
-5. - [ ] **Green** — Confirm the guard in `_build_system_prompt` uses `if expect and expect.get("schema")` (truthy check), so an empty schema dict does not trigger injection. Run all four tests from tasks 1-4 and confirm they all pass.
+5. - [x] **Green** — Confirm the guard in `_build_system_prompt` uses `if expect and expect.get("schema")` (truthy check), so an empty schema dict does not trigger injection. Run all four tests from tasks 1-4 and confirm they all pass.
 
 6. - [ ] **Red** — Add `test_loop_threads_expect_to_system_prompt` in `task2/tests/test_loop.py`. Stub `LLMClient` to capture the messages list from each `chat()` call and immediately return a terminal `done` tool call. Call `loop("find the price", browser, stub_llm, expect={"schema": {"answer": "str"}, "validators": ["answer.nonempty"]})`. Assert that the first captured message (role=`system`) contains both `"MUST"` and `"answer"`. Run and confirm it fails with `TypeError` (loop does not yet accept `expect`).
 
