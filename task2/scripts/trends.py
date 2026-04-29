@@ -507,8 +507,6 @@ def render_failure_classes_svg(runs: list[Run], class_counts: list[dict[str, int
     def y_at(v: float) -> float:
         return axis_y - (v / y_max) * plot_h
 
-    # For n == 1 a single x position collapses each polygon to a zero-area shape;
-    # widen to two columns around x_at(0) so polygons render as visible rectangles.
     if n == 1:
         bar_half = plot_w * 0.15
         col_xs = [x_at(0) - bar_half, x_at(0) + bar_half]
