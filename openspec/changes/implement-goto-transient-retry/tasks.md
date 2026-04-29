@@ -13,6 +13,6 @@
 
 ## 3. Quality
 
-- [ ] 3.1 Run `uv run ruff check task2/agent/browser.py task2/tests/agent/test_browser.py` and fix any lint issues
-- [ ] 3.2 Run `uv run ruff format task2/agent/browser.py task2/tests/agent/test_browser.py` and confirm no changes needed
-- [ ] 3.3 Run the full test suite `uv run pytest task2/tests/` and confirm no regressions
+- [x] 3.1 Run `uv run ruff check task2/agent/browser.py task2/tests/agent/test_browser.py` and fix any lint issues
+- [x] 3.2 Run `uv run ruff format task2/agent/browser.py task2/tests/agent/test_browser.py` and confirm no changes needed
+- [x] 3.3 Run the full test suite `uv run pytest task2/tests/` and confirm no regressions
