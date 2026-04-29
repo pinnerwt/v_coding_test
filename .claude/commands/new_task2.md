@@ -112,6 +112,29 @@ Derive a kebab-case change name from the ticket title. Convention: `implement-<s
 
 State the chosen ticket number, title, **urgency tag** (P0/P1/P2/P3), and derived change name in one line before continuing.
 
+### 1a. Workflow-only fast path
+
+If the picked ticket touches **only** files under `.claude/skills/**`, `.claude/commands/**`, or process docs (`task2/CLAUDE.md`, `openspec/AGENTS.md`, repo-root `CLAUDE.md` orchestration sections) — i.e. **no production code under `task2/`, no `openspec/specs/` deltas, no `task2/scripts/` changes** — switch to the fast path: skip Steps 3-7 entirely (no `/opsx:new`, no artifact subagent, no scaffold commit, no `/opsx:apply`, no `/opsx:verify`) and skip Phase 2 (`/review_task2`) of the wrapping `/full_task2`.
+
+Detection rule, in order of authority:
+1. The ticket body (or its `axes:` row) explicitly says `skill-doc-only`, `workflow-only`, `no production code changes`, or `touches only .claude/`.
+2. The implied touch list derived from the ticket's acceptance criteria is wholly under `.claude/skills/**`, `.claude/commands/**`, or other process-doc paths.
+3. Otherwise → **standard path** (run all 12 steps).
+
+When in doubt, default to the standard path. The cost of an unnecessary scaffold is one wasted iteration; the cost of skipping verification on a real code change is a regression that the smoke test may or may not catch.
+
+Fast-path execution after Step 1:
+- **Step 2** (branch): use a `chore/skills-<slug>` branch, NOT `task2/<slug>`. Skill-update PRs land as `chore(skills):` commits; the `task2/` prefix is reserved for production-code branches that the auto-loop counts toward its iteration budget.
+- **Skip Steps 3, 4, 5, 6, 7** entirely. There is no OpenSpec change, no `proposal.md`, no `tasks.md`, no `pytest` red-step, no `/opsx:apply`, no `/opsx:verify`. Why: workflow-only tickets have no executable test surface — the test surface IS "running each scenario through the skill produces the documented behavior." Forcing them through the OpenSpec/pytest pipeline produces empty scaffolds and review thrash. Confirmed in the iteration-3 course-correction on 2026-04-29 — ticket #77 (a five-lever skill-pipeline-speedup ticket) was awkwardly scaffolded into an `implement-*` change with no production code under `openspec/changes/<change>/specs/` until the user explicitly requested this fast path.
+- **Make the skill edits directly** on the branch with `Edit` / `Write` tools. Reference the ticket body for the exact behavioral changes; use the existing skill prose's voice.
+- **Step 8 (`/simplify`)**: still run it on the working tree. `/simplify` is markdown-aware and catches duplicated guidance / parameter sprawl in skill prose.
+- **Step 9 (smoke test)**: run `bash task2/smoke_test.sh` — it should pass trivially because no `task2/` code changed. If it fails, that is independent infra noise; surface it but do not block the PR on it.
+- **Step 10 (PR)**: title is `chore(skills): <ticket title>` (NOT `feat(task2):`). The PR template's "Task" field should still say `task2` if the skill being changed is in the task2 family, but the body's "Summary" should describe the workflow change rather than a behavioral one. Skip the "OpenSpec" section — leave it as `n/a (workflow-only ticket)`.
+- **Step 11 (follow-ups)**: still applies — record any new tickets surfaced by the work.
+- **Step 12 (final report)**: include a one-line note `Path: workflow-only fast path (skipped opsx scaffold + /opsx:apply + /opsx:verify + Phase-2 review per fast-path rule)`. Suggested next step is just `gh pr merge --squash --delete-branch` — there is no `/opsx:archive <change-name>` step because no change directory was created.
+
+`/full_task2` Phase 2 (`/review_task2`) is also skipped under the fast path. The reviewer subagent reviews diffs through the lens of correctness / TDD / test coverage — none of those criteria apply to skill prose. `/done_pr` (Phase 3) still runs but its OpenSpec archive step (`/opsx:archive`) is a no-op since there is no active change directory; `/done_pr` should detect this (no `openspec/changes/<change>/` exists) and skip the archive substep, falling through to the merge / master-sync substeps.
+
 ### 2. Create a development branch
 
 From the current branch, create and switch to a new branch:
