@@ -10,6 +10,7 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  issues: write
 
 concurrency:
   group: task2-benchmark-${{ github.head_ref }}
@@ -68,9 +69,12 @@ jobs:
             echo "No diff.md found for branch ${SAFE_BRANCH}; skipping PR comment"
             exit 0
           fi
-          gh pr comment "$PR_NUMBER" \
-            --edit-last --body-file "$DIFF_FILE" \
-            --repo "$REPO" 2>/dev/null \
-          || gh pr comment "$PR_NUMBER" \
-            --body-file "$DIFF_FILE" \
-            --repo "$REPO"
+          COMMENT_ID=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" \
+            --jq '.[] | select(.user.login == "github-actions[bot]") | .id' \
+            | tail -1)
+          if [ -n "$COMMENT_ID" ]; then
+            gh api --method PATCH "/repos/$REPO/issues/comments/$COMMENT_ID" \
+              -f "body=@$DIFF_FILE"
+          else
+            gh pr comment "$PR_NUMBER" --body-file "$DIFF_FILE" --repo "$REPO"
+          fi

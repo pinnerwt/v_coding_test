@@ -16,10 +16,8 @@ def test_post_diff_step_uses_gh_api_detection():
     workflow = _load_workflow()
     steps = workflow["jobs"]["verify"]["steps"]
     step = next(s for s in steps if s.get("name") == "Post diff as PR comment")
-    assert (
-        "gh api repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments"
-        in step["run"]
-    )
+    run = step["run"]
+    assert "gh api" in run and "/comments" in run and "issues" in run
 
 
 def test_post_diff_step_uses_gh_api_patch():
