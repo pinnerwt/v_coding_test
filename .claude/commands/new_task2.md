@@ -155,6 +155,25 @@ Invoke the `/opsx:new` skill with the change name (kebab-case derived above). Th
 
 ### 4. Generate all artifacts (subagent)
 
+#### 4.0. Look up a template (optional starting point)
+
+Before dispatching the subagent, derive the ticket's signature `(tier, primary_axis, first_touched_file_pattern)` and look it up in `.claude/skills/opsx/templates/INDEX.md`:
+
+- **`tier`** — the `tier:` integer from the ticket file's frontmatter.
+- **`primary_axis`** — the field with the largest absolute value among `axes.pass_rate`, `axes.tokens_pct`, `axes.latency_pct`. Use the literal string `n/a` when all three are 0 (typical for tier-1, tier-2, and tier-6 tickets).
+- **`first_touched_file_pattern`** — the first inline-backticked file path in the ticket body, reduced to its directory-glob shape (e.g. `task2/scripts/score.py` stays as-is; `agent/locate.py` → `task2/agent/locate.py`).
+
+Walk the rows of `.claude/skills/opsx/templates/INDEX.md` § "Active templates" top-to-bottom. The first row whose three signature fields all match (exact equality for `tier` and `primary_axis`; fnmatch glob for `first_touched_file_pattern`) wins. Tied matches at the same specificity → surface to the user, do not auto-pick. No match → fall through (the subagent generates from scratch as today).
+
+When a template matches, capture three values for the subagent prompt:
+- `template_dir` — the absolute path `.claude/skills/opsx/templates/<slug>/`.
+- `template_version` — the `version` integer from `template_dir/META.yaml`.
+- `template_when_not_to_use` — the `when_not_to_use` string from `META.yaml`. The subagent reads this before adopting the template; if the ticket's specifics fall under "when_not_to_use", the subagent reports the mismatch and falls back to from-scratch generation.
+
+The registry is opt-in and currently empty by default; see `.claude/skills/opsx/templates/README.md` for the format and how to add entries.
+
+#### 4.1. Dispatch the artifact subagent
+
 Spawn a `general-purpose` subagent via the **Agent** tool to run `/opsx:ff` and produce every artifact required for `apply` (typically `proposal.md`, `design.md`, `tasks.md`, `specs/...`). The subagent has no conversation context, so the prompt must be self-contained.
 
 Agent call:
@@ -165,6 +184,8 @@ Agent call:
   - The exact change name (kebab-case, derived in Step 1).
   - The ticket number, title, and full ticket text from the ticket file under `task2/tickets/`.
   - Instruction: "Invoke the `/opsx:ff` skill on `<change-name>`. Do not commit or push. Do not implement code — artifacts only."
+  - **Template starting point (only when step 4.0 matched a template):** the prompt MUST embed `template_dir`, `template_version`, and `template_when_not_to_use` as fields the subagent reads BEFORE drafting any artifact. Verbatim instruction to embed: "A matching template was found at `<template_dir>` (version `<template_version>`). Read its `META.yaml` first; confirm `version` equals `<template_version>` (mismatch → discard the template and generate from scratch, report the mismatch). Read `when_not_to_use`: `<template_when_not_to_use>`; if any clause applies to the current ticket, discard the template and generate from scratch. Otherwise read the skeleton files (`proposal.md`, `design.md`, `tasks.md`, `specs/<capability>/spec.md`), copy them into `openspec/changes/<change-name>/` with the same structure, and replace every `{{placeholder}}` with the ticket-specific value derived from the ticket text. Before reporting back, run `openspec validate --strict openspec/changes/<change-name>/` and grep the rendered files for stray `{{` / `}}` — both MUST be clean. Validation failure or leftover placeholder → discard the templated output, regenerate from scratch via `/opsx:ff`, and note the discard reason in the report-back."
+  - **No template match:** the prompt SHALL NOT mention templates at all (the subagent should not be primed to invent one). Just include the standard from-scratch instruction.
   - Grounding sources to read before drafting:
     - The selected ticket file under `task2/tickets/` (ticket acceptance criteria; read via the `file` column in INDEX.md).
     - `task2/CLAUDE.md` and the rest of `task2/` for code conventions and existing structure.
