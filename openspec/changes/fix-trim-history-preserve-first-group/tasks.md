@@ -5,8 +5,8 @@
 
 ## 2. Green — Minimal Fix
 
-- [ ] 2.1 In `task2/agent/loop.py`, in the `trim_history` function, change the drop-group slice from `groups[: len(groups) - keep_steps]` to `groups[1 : len(groups) - keep_steps]`. No other production code changes.
-- [ ] 2.2 Run `uv run pytest task2/tests/test_trim_history.py::test_trim_history_preserves_first_tool_group_when_window_smaller -x` and confirm it passes.
+- [x] 2.1 In `task2/agent/loop.py`, in the `trim_history` function, change the drop-group slice from `groups[: len(groups) - keep_steps]` to `groups[1 : len(groups) - keep_steps]`. No other production code changes.
+- [x] 2.2 Run `uv run pytest task2/tests/test_trim_history.py::test_trim_history_preserves_first_tool_group_when_window_smaller -x` and confirm it passes.
 
 ## 3. Update Existing Tests to New Contract
 
