@@ -25,5 +25,5 @@ None.
 - `task2/scripts/trends.py`: ~10-line change to the per-class polygon-building section of `render_failure_classes_svg`.
 - `task2/tests/test_trends.py`: one new test (geometry-based), one updated test (point-string assertions widened to the new corner coordinates).
 - No behavior change for `n >= 2`; existing trend-generation flows are unaffected on master.
-- `task2/benchmark/_trends/failure_classes.svg` re-renders as a visible stacked rectangle instead of a blank chart on the very first run of a fresh branch.
+- The first single-run trend output is now a visible stacked rectangle instead of a blank chart on the very first run of a fresh branch (runtime artifact, not a tracked file).
 - No breaking changes; no new dependencies.

@@ -707,8 +707,6 @@ def test_render_failure_classes_svg_polygons_are_cumulatively_stacked():
     alpha_pts = polygons[0]
     beta_pts = polygons[1]
 
-    # Cumulative-stacking math is unchanged: alpha y top = y_at(2), beta y top = y_at(5),
-    # beta baseline = y_at(2). What changed: each y appears at BOTH x_left and x_right.
     for x in (x_left, x_right):
         alpha_top = f"{x:.2f},{y_at(2):.2f}"
         beta_top = f"{x:.2f},{y_at(5):.2f}"
@@ -716,6 +714,33 @@ def test_render_failure_classes_svg_polygons_are_cumulatively_stacked():
         assert alpha_top in alpha_pts, f"alpha top {alpha_top!r} not in {alpha_pts!r}"
         assert beta_top in beta_pts, f"beta top {beta_top!r} not in {beta_pts!r}"
         assert beta_baseline in beta_pts, f"beta baseline {beta_baseline!r} not in {beta_pts!r}"
+
+
+def test_render_failure_classes_svg_two_runs_x_coords_unchanged():
+    import re
+
+    from scripts.trends import render_failure_classes_svg
+
+    runs = [
+        _make_run("b1", "2026-04-26T01:00:00+00:00", 0.0),
+        _make_run("b2", "2026-04-26T02:00:00+00:00", 0.0),
+    ]
+    class_counts = [{"alpha": 2}, {"alpha": 3}]
+    svg = render_failure_classes_svg(runs, class_counts)
+
+    _W = 720
+    _PAD_L = 60
+    _PAD_R = 20
+    plot_w = _W - _PAD_L - _PAD_R
+
+    x0 = _PAD_L + 0.0
+    x1 = _PAD_L + plot_w
+
+    polygons = re.findall(r'<polygon points="([^"]+)"', svg)
+    assert len(polygons) == 1, f"expected 1 polygon, got {len(polygons)}"
+    pts = polygons[0]
+    xs = sorted({float(p.split(",")[0]) for p in pts.split()})
+    assert xs == [x0, x1], f"n=2 polygon should use x_at(0)/x_at(1) without widening; got {xs!r}"
 
 
 def test_render_failure_classes_svg_single_run_polygons_have_nonzero_area():
