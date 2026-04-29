@@ -1,7 +1,7 @@
 ---
 id: 53
 slug: pin-asymmetric-population-semantics-p50-p95
-status: active
+status: archived
 tier: 2
 urgency: P2
 axes:
@@ -13,9 +13,9 @@ pre_flight_gates: []
 evidence: []
 related:
 - 76
-filed_pr: null
-merged_pr: null
-archived_at: null
+filed_pr: 118
+merged_pr: 118
+archived_at: '2026-04-29'
 trigger: 'surfaced by review subagent on PR #76 (iteration 1).'
 ---
 

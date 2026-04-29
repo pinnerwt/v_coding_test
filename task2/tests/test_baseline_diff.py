@@ -257,3 +257,111 @@ def test_dropped_case_row_present():
     out = generate_diff_markdown(master, branch)
     assert "y" in out
     assert "dropped" in out
+
+
+def test_latency_delta_uses_intersection_of_case_ids():
+    from scripts.baseline_diff import generate_diff_markdown
+
+    master = {
+        "run_at": "2026-04-20T00:00:00+00:00",
+        "cases": [
+            {"id": "a", "status": "succeeded", "usd": 0.01, "latency_ms_total": 100},
+            {"id": "b", "status": "succeeded", "usd": 0.01, "latency_ms_total": 200},
+            {"id": "c", "status": "succeeded", "usd": 0.01, "latency_ms_total": 300},
+        ],
+    }
+    branch = {
+        "run_at": "2026-04-28T00:00:00+00:00",
+        "cases": [
+            {"id": "a", "status": "succeeded", "usd": 0.01, "latency_ms_total": 100},
+            {"id": "b", "status": "succeeded", "usd": 0.01, "latency_ms_total": 200},
+            {"id": "c", "status": "succeeded", "usd": 0.01, "latency_ms_total": 300},
+            {"id": "d", "status": "succeeded", "usd": 0.01, "latency_ms_total": 50},
+        ],
+    }
+    out = generate_diff_markdown(master, branch)
+    assert "Δ p50 latency: +0ms" in out
+    assert "Δ p95 latency: +0ms" in out
+
+
+def test_cases_annotation_reflects_added_case():
+    from scripts.baseline_diff import generate_diff_markdown
+
+    master = {
+        "run_at": "2026-04-20T00:00:00+00:00",
+        "cases": [
+            {"id": "a", "status": "succeeded", "usd": 0.01, "latency_ms_total": 100},
+            {"id": "b", "status": "succeeded", "usd": 0.01, "latency_ms_total": 200},
+            {"id": "c", "status": "succeeded", "usd": 0.01, "latency_ms_total": 300},
+        ],
+    }
+    branch = {
+        "run_at": "2026-04-28T00:00:00+00:00",
+        "cases": [
+            {"id": "a", "status": "succeeded", "usd": 0.01, "latency_ms_total": 100},
+            {"id": "b", "status": "succeeded", "usd": 0.01, "latency_ms_total": 200},
+            {"id": "c", "status": "succeeded", "usd": 0.01, "latency_ms_total": 300},
+            {"id": "d", "status": "succeeded", "usd": 0.01, "latency_ms_total": 50},
+        ],
+    }
+    out = generate_diff_markdown(master, branch)
+    assert "Cases: 3 common, +1 added, -0 dropped" in out
+
+
+def test_cases_annotation_all_zeros_for_identical_runs():
+    from scripts.baseline_diff import generate_diff_markdown
+
+    master = {
+        "run_at": "2026-04-20T00:00:00+00:00",
+        "cases": [
+            {"id": "c1", "status": "succeeded", "usd": 0.01, "latency_ms_total": 1000},
+            {"id": "c2", "status": "succeeded", "usd": 0.01, "latency_ms_total": 2000},
+        ],
+    }
+    out = generate_diff_markdown(master, master)
+    assert "Cases: 2 common, +0 added, -0 dropped" in out
+
+
+def test_latency_delta_empty_intersection_renders_dash():
+    from scripts.baseline_diff import generate_diff_markdown
+
+    master = {
+        "run_at": "2026-04-20T00:00:00+00:00",
+        "cases": [
+            {"id": "a", "status": "succeeded", "usd": 0.01, "latency_ms_total": 100},
+            {"id": "b", "status": "succeeded", "usd": 0.01, "latency_ms_total": 200},
+        ],
+    }
+    branch = {
+        "run_at": "2026-04-28T00:00:00+00:00",
+        "cases": [
+            {"id": "c", "status": "succeeded", "usd": 0.01, "latency_ms_total": 300},
+            {"id": "d", "status": "succeeded", "usd": 0.01, "latency_ms_total": 400},
+        ],
+    }
+    out = generate_diff_markdown(master, branch)
+    assert "Δ p50 latency: —" in out
+    assert "Δ p95 latency: —" in out
+    assert "Cases: 0 common, +2 added, -2 dropped" in out
+
+
+def test_cases_annotation_reflects_dropped_case():
+    from scripts.baseline_diff import generate_diff_markdown
+
+    master = {
+        "run_at": "2026-04-20T00:00:00+00:00",
+        "cases": [
+            {"id": "a", "status": "succeeded", "usd": 0.01, "latency_ms_total": 100},
+            {"id": "b", "status": "succeeded", "usd": 0.01, "latency_ms_total": 200},
+            {"id": "c", "status": "succeeded", "usd": 0.01, "latency_ms_total": 300},
+        ],
+    }
+    branch = {
+        "run_at": "2026-04-28T00:00:00+00:00",
+        "cases": [
+            {"id": "a", "status": "succeeded", "usd": 0.01, "latency_ms_total": 100},
+            {"id": "b", "status": "succeeded", "usd": 0.01, "latency_ms_total": 200},
+        ],
+    }
+    out = generate_diff_markdown(master, branch)
+    assert "Cases: 2 common, +0 added, -1 dropped" in out

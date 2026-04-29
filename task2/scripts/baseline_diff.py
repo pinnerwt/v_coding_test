@@ -81,14 +81,30 @@ def generate_diff_markdown(master: dict, branch: dict) -> str:
     b_usd = sum(c.get("usd", 0.0) for c in b_list)
     delta_usd = b_usd - m_usd
 
-    m_lat = [c.get("latency_ms_total", 0) for c in m_list]
-    b_lat = [c.get("latency_ms_total", 0) for c in b_list]
+    master_ids = set(master_cases)
+    branch_ids = set(branch_cases)
+    common_ids = master_ids & branch_ids
+    m_lat = [master_cases[cid].get("latency_ms_total", 0) for cid in common_ids]
+    b_lat = [branch_cases[cid].get("latency_ms_total", 0) for cid in common_ids]
+
+    n_common = len(common_ids)
+    n_added = len(branch_ids - master_ids)
+    n_dropped = len(master_ids - branch_ids)
 
     sign_usd = "+" if delta_usd >= 0 else "-"
     lines.append(f"Δ pass-rate: {_fmt_signed(b_pct - m_pct)}%")
     lines.append(f"Δ total USD: {sign_usd}${abs(delta_usd):.4f}")
-    lines.append(f"Δ p50 latency: {_fmt_signed(_percentile(b_lat, 50) - _percentile(m_lat, 50))}ms")
-    lines.append(f"Δ p95 latency: {_fmt_signed(_percentile(b_lat, 95) - _percentile(m_lat, 95))}ms")
+    if common_ids:
+        lines.append(
+            f"Δ p50 latency: {_fmt_signed(_percentile(b_lat, 50) - _percentile(m_lat, 50))}ms"
+        )
+        lines.append(
+            f"Δ p95 latency: {_fmt_signed(_percentile(b_lat, 95) - _percentile(m_lat, 95))}ms"
+        )
+    else:
+        lines.append("Δ p50 latency: —")
+        lines.append("Δ p95 latency: —")
+    lines.append(f"Cases: {n_common} common, +{n_added} added, -{n_dropped} dropped")
     lines.append("")
 
     return "\n".join(lines)

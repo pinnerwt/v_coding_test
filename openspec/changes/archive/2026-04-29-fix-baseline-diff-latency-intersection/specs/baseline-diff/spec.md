@@ -1,9 +1,4 @@
-# baseline-diff Specification
-
-## Purpose
-TBD - created by archiving change implement-scoreboard-baseline-diff. Update Purpose after archive.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: generate_diff_markdown produces a Δ vs master table
 
@@ -91,6 +86,8 @@ The function SHALL be pure: no file I/O, no subprocess calls. All inputs and out
 - **AND** the output SHALL contain `Δ p95 latency: —`
 - **AND** the output SHALL contain `Cases: 0 common, +2 added, -2 dropped`
 
+## ADDED Requirements
+
 ### Requirement: Latency delta population annotation is emitted after latency rows
 
 After the `Δ p95 latency` line in the aggregate section, `generate_diff_markdown` SHALL emit exactly one line of the form:
@@ -121,68 +118,3 @@ This line SHALL always be emitted (even when A == 0 and D == 0) so that reviewer
 - **GIVEN** `master` and `branch` have identical case id sets
 - **WHEN** `generate_diff_markdown(master, branch)` is called
 - **THEN** the output SHALL contain `Cases: N common, +0 added, -0 dropped` where N equals the number of cases
-
-### Requirement: benchmark.py writes diff.md when branch ≠ master and baseline exists
-
-`task2/scripts/benchmark.py` SHALL, after calling `write_outputs`, call a `write_diff` helper that:
-
-1. Checks if the resolved branch name equals `"master"` (after sanitization). If so, skips writing `diff.md`.
-2. Checks if `task2/benchmark/master/results.json` exists. If not, skips writing `diff.md`.
-3. Otherwise, loads `task2/benchmark/master/results.json`, calls `generate_diff_markdown(master_data, branch_data)`, and writes the result to `task2/benchmark/<sanitized-branch>/diff.md`.
-
-No exception SHALL be raised when the baseline file is missing; the absence is logged to stderr at INFO level and the run continues.
-
-#### Scenario: Non-master branch with existing master baseline writes diff.md
-
-- **GIVEN** branch is `"my-feature"` (≠ master)
-- **AND** `task2/benchmark/master/results.json` exists with valid content
-- **AND** the benchmark run completes and writes `task2/benchmark/my-feature/results.json`
-- **WHEN** `write_diff` runs
-- **THEN** `task2/benchmark/my-feature/diff.md` SHALL be written
-- **AND** its content SHALL be the output of `generate_diff_markdown(master_data, branch_data)`
-
-#### Scenario: Master branch run does not write diff.md
-
-- **GIVEN** branch is `"master"`
-- **WHEN** `write_diff` runs
-- **THEN** `task2/benchmark/master/diff.md` SHALL NOT be written
-
-#### Scenario: Non-master branch with missing master baseline skips diff.md gracefully
-
-- **GIVEN** branch is `"my-feature"`
-- **AND** `task2/benchmark/master/results.json` does NOT exist
-- **WHEN** `write_diff` runs
-- **THEN** `task2/benchmark/my-feature/diff.md` SHALL NOT be written
-- **AND** no exception SHALL be raised
-- **AND** a message SHALL be written to stderr indicating the baseline is absent
-
-### Requirement: CI workflow posts diff.md as a PR comment
-
-`.github/workflows/task2-benchmark.yml` SHALL add a step after the existing `Verify benchmark recorded for branch` step with the following behaviour:
-
-1. The step is conditional on `github.event_name == 'pull_request'`.
-2. The step reads `task2/benchmark/${{ github.head_ref }}/diff.md` (using the sanitized branch name).
-3. If the file does not exist or is empty, the step exits 0 with a notice and skips posting.
-4. Otherwise, it posts the file content as a PR comment using `gh pr comment`.
-5. On re-runs, the step SHALL update the existing bot comment (`--edit-last`) rather than creating a new one. If no prior comment exists, it SHALL create a new one.
-6. The step requires `pull-requests: write` permission.
-
-#### Scenario: CI posts diff comment on PR run when diff.md exists
-
-- **GIVEN** a PR build where branch ≠ master
-- **AND** `task2/benchmark/<branch>/diff.md` exists in the checkout
-- **WHEN** the comment step runs
-- **THEN** `gh pr comment` is called with the diff file content
-- **AND** the step exits 0
-
-#### Scenario: CI skips comment when diff.md is absent
-
-- **GIVEN** a PR build where `task2/benchmark/<branch>/diff.md` does NOT exist
-- **WHEN** the comment step runs
-- **THEN** the step exits 0 without calling `gh pr comment`
-
-#### Scenario: CI skips comment on push to master (not a PR)
-
-- **GIVEN** `github.event_name != 'pull_request'`
-- **WHEN** the comment step is evaluated
-- **THEN** the step is skipped entirely (conditional is false)
