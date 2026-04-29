@@ -4,8 +4,6 @@ import json
 import time
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from agent.llm import ChatResponse, ToolCall, Usage
 from agent.loop import loop
 
@@ -152,13 +150,15 @@ def test_phase_ranges_match_stub_sleep_durations():
     bd = result.step_breakdown[0]
     lbm = bd["latency_breakdown_ms"]
     assert 350 <= lbm["llm_ms"] <= 600, f"llm_ms={lbm['llm_ms']} not in [350, 600]"
-    assert 80 <= lbm["observation_ms"] <= 200, f"observation_ms={lbm['observation_ms']} not in [80, 200]"
+    assert 80 <= lbm["observation_ms"] <= 200, (
+        f"observation_ms={lbm['observation_ms']} not in [80, 200]"
+    )
 
 
 def test_sum_invariant_holds_across_5_step_run():
     """abs((obs + llm + dispatch) - latency_ms) <= 5 for every step in a 5-step run."""
     responses = [
-        _response_with_tool_call(_tool_call("goto", {"url": "http://fake"}, call_id=f"tc-{i}"))
+        _response_with_tool_call(_tool_call("goto", {"url": f"http://fake/{i}"}, call_id=f"tc-{i}"))
         for i in range(4)
     ]
     responses.append(
@@ -188,7 +188,8 @@ def test_sum_invariant_holds_across_5_step_run():
         total = lbm["observation_ms"] + lbm["llm_ms"] + lbm["dispatch_ms"]
         diff = abs(total - s["latency_ms"])
         assert diff <= 5, (
-            f"step {s['step']}: obs+llm+dispatch={total} vs latency_ms={s['latency_ms']}, diff={diff}"
+            f"step {s['step']}: obs+llm+dispatch={total} "
+            f"vs latency_ms={s['latency_ms']}, diff={diff}"
         )
 
 
@@ -202,7 +203,9 @@ def test_latency_breakdown_present_on_all_entries_including_no_tool_call():
 
     assert len(result.step_breakdown) == 3
     for entry in result.step_breakdown:
-        assert "latency_breakdown_ms" in entry, f"missing latency_breakdown_ms in step {entry['step']}"
+        assert "latency_breakdown_ms" in entry, (
+            f"missing latency_breakdown_ms in step {entry['step']}"
+        )
         lbm = entry["latency_breakdown_ms"]
         for key in ("observation_ms", "llm_ms", "dispatch_ms"):
             assert key in lbm, f"missing key {key!r} in step {entry['step']}"
