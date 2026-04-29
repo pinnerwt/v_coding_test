@@ -17,7 +17,7 @@ related:
 filed_pr: 58
 merged_pr: null
 archived_at: null
-trigger: ''
+trigger: 'migrated from task2/plan.md on 2026-04-29 (ticket #76)'
 ---
 
 30. **Thread `step_id` through event emitters in `loop.py`** — `_emit_plan_event` and `_emit_locate_event` in `agent/loop.py` both hardcode `step_id=None` when constructing their respective `EventBase` subclasses, even though `EventBase.step_id: str | None` exists for exactly this attribution. As a result, plan / locate trace rows cannot be joined back to the step that produced them, which weakens any per-step diagnostic the eval runner builds (e.g. "which step did the cache invalidate fire on?", "which step triggered replan?"). Define a step identifier convention (e.g. `f"{run_id}:step-{i}"` derived from the loop's existing per-step counter) and thread it from `loop()` into `_dispatch` → `_locate_with_supervisor` → `_emit_locate_event`, and from `loop()` into `_emit_plan_event`. Tests: a real loop run with a `TraceWriter` produces `PlanEvent` rows whose `step_id` matches the step index that triggered them (initial plan after step 1 → `step_id` references step 1; replan after a halt on step N → `step_id` references step N); `LocateEvent` rows emitted from cache actions on step N carry `step_id` matching that step; the existing in-memory `events` test path continues to work; `step_id` formatting is consistent with whatever `ObservationEvent` / `DecisionEvent` emit once those are wired (ticket #20).

@@ -14,8 +14,8 @@ evidence: []
 related: []
 filed_pr: null
 merged_pr: 10
-archived_at: null
-trigger: ''
+archived_at: '2026-04-25'
+trigger: 'migrated from task2/plan.md on 2026-04-29 (ticket #76)'
 ---
 
 1. **`llm.py`** — mocked HTTP; assert OpenAI chat-completions request shape and `LLM_BASE_URL` honored.

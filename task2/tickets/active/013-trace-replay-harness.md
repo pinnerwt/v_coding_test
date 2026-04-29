@@ -15,7 +15,7 @@ related: []
 filed_pr: 23
 merged_pr: null
 archived_at: null
-trigger: ''
+trigger: 'migrated from task2/plan.md on 2026-04-29 (ticket #76)'
 ---
 
 13. **Trace replay harness** — feed a recorded `LLMCallEvent.prompt` sequence into `loop.py` with the live browser stubbed; assert produced `DecisionEvent`s match the recording. This is the regression test surface for prompt/policy changes.

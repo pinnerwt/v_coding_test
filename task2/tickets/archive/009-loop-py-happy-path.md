@@ -14,8 +14,8 @@ evidence: []
 related: []
 filed_pr: null
 merged_pr: 19
-archived_at: null
-trigger: ''
+archived_at: '2026-04-25'
+trigger: 'migrated from task2/plan.md on 2026-04-29 (ticket #76)'
 ---
 
 9. **`loop.py` happy path** — 2-step task on a local fixture finishes with `done` + valid evidence.

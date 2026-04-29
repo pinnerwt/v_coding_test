@@ -15,7 +15,7 @@ related: []
 filed_pr: null
 merged_pr: null
 archived_at: null
-trigger: ''
+trigger: 'migrated from task2/plan.md on 2026-04-29 (ticket #76)'
 ---
 
 16. **Drift suite** — fixture v1 and v2 (renamed selectors); same task passes both, no code change.

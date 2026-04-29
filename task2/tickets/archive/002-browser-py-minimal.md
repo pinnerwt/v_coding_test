@@ -14,8 +14,8 @@ evidence: []
 related: []
 filed_pr: null
 merged_pr: 3
-archived_at: null
-trigger: ''
+archived_at: '2026-04-25'
+trigger: 'migrated from task2/plan.md on 2026-04-29 (ticket #76)'
 ---
 
 2. **`browser.py` minimal** — `goto` + `read("h1")` against a local fixture served by `http.server`.

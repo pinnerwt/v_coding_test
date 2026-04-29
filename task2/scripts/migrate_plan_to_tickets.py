@@ -1,5 +1,3 @@
-"""One-shot migration: parse task2/plan.md and emit per-ticket Markdown files."""
-
 import argparse
 import re
 import subprocess
@@ -302,8 +300,11 @@ def migrate(plan_path: Path, out_dir: Path, repo_root: Path) -> None:
         dest_dir = archive_dir if status == "archived" else active_dir
         dest = dest_dir / filename
         content = f"---\n{fm_text}---\n\n{ticket.get('body', '')}\n"
-        dest.write_text(content)
-        emitted += 1
+        try:
+            dest.write_text(content)
+            emitted += 1
+        except OSError as exc:
+            print(f"WARNING: could not write {dest}: {exc}", file=sys.stderr)
 
     if emitted != pre_count:
         print(

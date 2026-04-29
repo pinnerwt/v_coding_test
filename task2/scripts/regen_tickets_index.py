@@ -1,5 +1,3 @@
-"""Regenerate task2/tickets/INDEX.md from ticket frontmatter on disk."""
-
 from pathlib import Path
 
 import yaml
