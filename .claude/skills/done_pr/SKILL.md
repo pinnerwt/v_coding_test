@@ -47,26 +47,27 @@ Wraps up an OpenSpec-driven PR end-to-end: archive → commit → push → merge
    - **Exit code 1 with `[FAIL]` cases is not a crash.** `scripts.bench` exits 1 whenever any case status is in `FAIL_STATUSES`, but the JSON results file is written before exit. WebVoyager runs against live websites and a non-trivial fail rate is expected. Verify the artifact exists (`ls task2/benchmark/<sanitized-branch>/webvoyager/*.json`) and inspect the tail of stdout for `[PASS]`/`[FAIL]`/`[SKIP]` lines; if the artifact is present, proceed to the trends step and commit.
    - **No-op case:** the only time `git status` is clean after this step is a re-run of `/done_pr` on an already-finalized branch (rare). A first run always produces a new `<timestamp>.json` under `task2/benchmark/<sanitized-branch>/webvoyager/`; a clean `git status` on a first run signals the bench script silently failed — investigate before continuing.
 
-1b. **Diagnose benchmark failures and file actionable tickets in `task2/plan.md`.**
+1b. **Diagnose benchmark failures and file actionable ticket files in `task2/tickets/active/`.**
 
    Skip entirely if step 1a was skipped (no task2 changes), or if the WebVoyager run wrote zero `[FAIL]` cases. Otherwise:
 
    - Read the just-written `task2/benchmark/<sanitized-branch>/webvoyager/<timestamp>.json`. Each `cases[]` entry has `status`, `failure_class`, `failure_detail`, `validators`, `step_breakdown`, `escalations`, `replans`, and `cache_events` — the same fields the basic suite produces, just sourced from live WebVoyager tasks.
-   - Read the `## Benchmark improvements (candidates)` section of `task2/plan.md` so you know what is already tracked. Note the highest existing ticket number for appending.
+   - Check `task2/tickets/active/` and `task2/tickets/archive/` for existing tickets so you know what is already tracked. Note the highest existing ticket number: `ls task2/tickets/active/ task2/tickets/archive/ | grep -oE '^[0-9]+' | sort -n | tail -1`.
    - **Cross-run recurrence check (mandatory before "flake" classification).** Before classifying any `failed` case as flake, list the most recent prior `task2/benchmark/<other-branch>/webvoyager/*.json` files and compare per-case `failure_class` + `failure_detail` (`failure_detail` is the stringified exception, including class name and message — a meaningful enough fingerprint without further normalization). Recommended one-liner: `for f in $(ls -t /home/pgi/vici/task2/benchmark/*/webvoyager/*.json | head -5); do python3 -c "import json,sys; d=json.load(open(sys.argv[1])); [print(sys.argv[1], c['id'], c['status'], c.get('failure_class'), c.get('failure_detail','')[:80]) for c in d['cases'] if c['status']=='failed']" "$f"; done`. If the SAME `case_id` appears with the SAME `failure_class` AND essentially the same `failure_detail` (e.g. both runs say `LLMError('http 400')`) across at least one prior run, treat that case as a *recurring* failure — file a ticket regardless of whether `failure_class == "tool_error"`. The "transient flake" classification only applies to first-occurrence-or-isolated failures. Why: confirmed in PR #99 on 2026-04-28 — `webvoyager-1` failed with `LLMError('http 400')` at step 0 in both `task2-benchmarks-readme-and-tier0` and `task2-implement-fail-prompt-tightening` runs; the orchestrator initially classified both as flake and skipped the new-tickets commit, and the user had to interject to file ticket #66 manually. How to apply: run the cross-run check FIRST (before the per-case classification block below), and tag each `failed` case as `recurring` or `first-occurrence`; only `first-occurrence + tool_error` qualifies for "do not file" under the existing flake rule.
    - For each failed case, classify the symptom against existing tickets:
      - **`failure_class == "tool_error"` from a transient network/LLM error** (e.g. `LLMError('http 400')`, playwright navigation timeout on a live page) — usually environmental flake **only when the cross-run check above tagged this case as `first-occurrence`**; if it tagged as `recurring`, file a ticket.
      - **`failure_class == "no_done_emitted"` with low step count** (1-3 steps out of 20) → likely a planner / loop convergence issue against unfamiliar live DOMs. Cross-check existing tickets before filing.
      - **`failure_class == "validator_fail"` with `answer.nonempty`** → the agent finished but produced an empty answer. May indicate prompt drift on real-world pages.
      - **Novel pattern not covered by any existing ticket** → file a new ticket per the rules below.
-   - For each novel pattern, append a new entry to the `## Benchmark improvements (candidates)` list (continuing the numbering from the highest existing ticket). Each entry MUST be self-contained so a fresh `/new_task2` run can pick it up cold:
+   - For each novel pattern, write a new ticket file `task2/tickets/active/<NNN>-<slug>.md` (continuing numbering from the highest existing ticket). Each file MUST be self-contained so a fresh `/new_task2` run can pick it up cold. Use all 14 required frontmatter fields (id, slug, status: active, tier, urgency, axes, dependencies, pre_flight_gates, evidence, related, filed_pr: null, merged_pr: null, archived_at: null, trigger). Body:
      - Bold lead naming the symptom, with the failing case id inline (e.g. `webvoyager-<id>` and the originating `web` domain).
      - One-sentence description of what the trace shows or doesn't show.
      - Concrete TDD-shaped acceptance criterion: a failing test that reproduces the symptom (deterministic fixture if possible), and a passing test that asserts the fix.
      - Reference any related existing ticket so the implementer knows whether to extend or add fresh.
-   - Stage `task2/plan.md` on its own and commit:
+   - Run `uv run python task2/scripts/regen_tickets_index.py` to update INDEX.md.
+   - Stage `task2/tickets/active/<NNN>-<slug>.md` and `task2/tickets/INDEX.md` on their own and commit:
      ```
-     docs(task2): record webvoyager benchmark failure tickets from <branch>
+     docs(task2): file ticket #<N> — <short title> (webvoyager benchmark failure from <branch>)
      ```
      with the standard `Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>` trailer. Do **not** bundle this into the step-1a benchmark commit.
    - **No new tickets case:** if every failure maps to an existing entry or is judged environmental flake, skip the commit and print one line: `done_pr: webvoyager failures all map to existing tickets / flake — no new follow-ups filed.`
@@ -101,32 +102,38 @@ Wraps up an OpenSpec-driven PR end-to-end: archive → commit → push → merge
      - **Transient nav error**: case status flipped from `succeeded` to `failed (tool_error)` with `failure_detail` matching `net::ERR_NETWORK_CHANGED|ERR_NETWORK_IO_SUSPENDED|ERR_INTERNET_DISCONNECTED|Page.goto.*Timeout`. Cause: Chromium / network flap. *Fix shape:* one-shot retry on the matching error class in `agent/browser.py:Browser.goto`.
      - **Per-case cost/token bloat without status change**: same case still passes but uses 2-3× more tokens/steps. Cause: a prompt or observation change made the agent take a longer path. *Fix shape:* needs a per-case trace investigation ticket — file a "diagnose `<case-id>` token regression at SHA `<merge_sha>`" ticket pointing at the new run JSON and the baseline JSON.
      - **Aggregate slowdown without per-case localization**: every case got marginally slower (typical of an LLM-side change or a prompt size increase). *Fix shape:* file an audit ticket pointing at `agent/loop.py` (prompt size growth?) and `agent/llm.py` (sampling change?), with the per-case diff included as evidence.
-   - For each distinct causal pattern, append a new entry to `## Benchmark improvements (candidates)` in `task2/plan.md` (continuing numbering from the highest existing ticket — be sure to grep both the long-form section AND the `### P0/P1/P2/P3` rubric tags so a duplicate doesn't get filed under a fresh number). Each entry MUST be self-contained per the same rules as step 1b: bold lead, one-sentence symptom, TDD-shaped acceptance criterion, *Why useful* tied to the specific axis regression observed (cite the exact `task2/benchmark/<branch>/webvoyager/<timestamp>.json` paths and the % deltas), and a *Trigger:* line naming `/done_pr`'s aggregate-regression check on `<date>`. Also append a one-line entry under the appropriate `### P0/P1/P2/P3` rubric subheader so `/new_task2`'s selection sees it.
-   - Stage `task2/plan.md` and commit:
+   - For each distinct causal pattern, write a new ticket file `task2/tickets/active/<NNN>-<slug>.md` (continuing numbering from the highest existing ticket — check both active and archive dirs: `ls task2/tickets/active/ task2/tickets/archive/ | grep -oE '^[0-9]+' | sort -n | tail -1`). Each file MUST be self-contained per the same rules as step 1b: bold lead, one-sentence symptom, TDD-shaped acceptance criterion, *Why useful* tied to the specific axis regression observed (cite the exact `task2/benchmark/<branch>/webvoyager/<timestamp>.json` paths and the % deltas), and a *Trigger:* line naming `/done_pr`'s aggregate-regression check on `<date>`.
+   - Run `uv run python task2/scripts/regen_tickets_index.py` to update INDEX.md.
+   - Stage new `task2/tickets/active/<NNN>-<slug>.md` files and `task2/tickets/INDEX.md` and commit:
      ```
-     docs(task2): record webvoyager aggregate regression tickets from <branch>
+     docs(task2): file ticket #<N> — <short title> (webvoyager aggregate regression from <branch>)
      ```
-     with the standard `Co-Authored-By` trailer. **Combining with the step-1b commit is allowed** when both surface in the same `/done_pr` run and target the same `task2/plan.md` edits — squash into one `docs(task2): record webvoyager benchmark failure tickets from <branch>` commit whose body lists both failure-class tickets AND aggregate-axis tickets, separated by a blank line. (One commit per `task2/plan.md` rewrite is the convention; two adjacent commits force a needless rebase if conflicts surface.) Confirmed pattern: PR #101's `/done_pr` run on 2026-04-28 filed #70 (stuck-state termination) and #71 (transient nav retry) in a single commit because they both fell out of the same regression analysis.
-   - **No-op duplicate guard:** before filing, grep `task2/plan.md` for an existing ticket whose lead matches the causal pattern (e.g. `grep -nE "stuck.state.*early.termination|stuck_repeat" task2/plan.md`). If found, do not duplicate; instead reference the existing ticket number in the iteration summary and skip the commit.
+     with the standard `Co-Authored-By` trailer. **Combining with the step-1b commit is allowed** when both surface in the same `/done_pr` run — combine into one `docs(task2): file tickets #<N>, #<M> — webvoyager benchmark failures and regressions from <branch>` commit whose body lists all new ticket ids.
+   - **No-op duplicate guard:** before filing, `grep -rn "<causal pattern keyword>" task2/tickets/active/ task2/tickets/archive/` to check for an existing ticket matching the causal pattern. If found, do not duplicate; instead reference the existing ticket number and skip the commit.
    - This step also does NOT block the merge in step 4. The new tickets are picked up by `/new_task2`'s three-axis selection on the next iteration, which is exactly the rubric needed for "performance regression" tickets.
 
-1c. **Scrub the just-archived ticket from `task2/plan.md`'s Undone rubric (if task2 was touched).**
+1c. **Archive the ticket file from `task2/tickets/active/` (if task2 was touched).**
 
    Skip entirely if step 1a was skipped (no task2 changes) or if the change does not map to a numbered ticket. Otherwise:
 
    - Identify the ticket number this change implements. Source of truth, in priority order:
      1. The orchestrator already knows it (e.g. `/full_task2` / `/auto_task2` announce the ticket number when picking it). Trust that.
      2. Failing that, `grep -nE "ticket #?[0-9]+|#[0-9]+" openspec/changes/archive/<dated-dir>/proposal.md` and pick the first ticket-style reference.
-   - Open `task2/plan.md` and find the `## Undone` section. Inside it, the entry shape is `- **#<N>** — <one-line summary>` under one of the `### P0/P1/P2/P3` urgency subheaders or `### In flight`.
-   - Delete the single line whose ticket number matches. Leave the urgency subheader in place even if the section becomes empty (a future `/new_task2` may file a new entry under it). Do **not** touch the long-form ticket text in `## TDD tickets` or `## Benchmark improvements (candidates)` — those are the canonical record and stay forever.
-   - Stage `task2/plan.md` on its own and commit:
+   - Find the active ticket file: `ls task2/tickets/active/<NNN>-*.md` (where `<NNN>` is the zero-padded ticket id, minimum 3 digits). If not found, check if it is already in `task2/tickets/archive/` — if so, skip to no-op.
+   - `git mv task2/tickets/active/<NNN>-<slug>.md task2/tickets/archive/<NNN>-<slug>.md`
+   - Edit the moved file's frontmatter in-place:
+     - `status: archived`
+     - `merged_pr: <PR number>` — use `gh pr view --json number -q .number` to get the current PR number.
+     - `archived_at: <YYYY-MM-DD>` — today's date in ISO-8601 format.
+   - Run `uv run python task2/scripts/regen_tickets_index.py` to update `task2/tickets/INDEX.md`.
+   - Stage the moved file and INDEX.md and commit in a single commit:
      ```
-     docs(task2): drop archived ticket #<N> from Undone rubric
+     docs(task2): archive ticket #<N> — <short title>
      ```
      with the standard `Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>` trailer.
-   - **No-op case:** if the entry was already missing (e.g. an earlier iteration scrubbed it, or the ticket was never in the Undone rubric to begin with — common for skill-only PRs that have no ticket), skip the commit and print one line: `done_pr: ticket #<N> already absent from Undone rubric` (or `done_pr: no ticket number to scrub` if step 1c found none).
+   - **No-op case:** if `task2/tickets/active/<NNN>-*.md` does not exist (already archived, or skill-only PR with no ticket), skip the commit and print one line: `done_pr: ticket #<N> already archived or not found in active/` (or `done_pr: no ticket number to archive` if step 1c found none).
 
-   Why: the Undone rubric was previously cleaned up only by `/new_task2` step 11 of the *next* iteration, leaving a one-iteration lag where the rubric showed already-archived tickets. The picking iteration would correctly skip them (per `/new_task2` step 1's archive cross-check) but each stale entry was a small re-derivation of state. Scrubbing on archive bounds the responsibility to the skill that *causes* the staleness — no cross-iteration coordination required. Confirmed pattern: in PR #69 on 2026-04-27 (`fix-escalation-decision-policy-literal`), the rubric still listed both #45 (archived in iter 2) and #47 (archived in this iter); iter 4's selection had to mentally skip both.
+   Why: moving the ticket file from active/ to archive/ is the canonical record of completion — INDEX.md reflects it immediately after regen, and future `/new_task2` step 1 won't consider archived tickets as candidates. One commit replaces the prior two-commit pattern (plan.md edit + archival note), keeping the PR's `git log` cleaner.
 
 2. **Commit the spec/archive updates.** After archive completes:
    - Run `git status` and `git diff --stat` to confirm only OpenSpec files moved/changed (typically `openspec/changes/<name>/` → `openspec/changes/archive/<name>/`, and possibly `openspec/specs/...`).
