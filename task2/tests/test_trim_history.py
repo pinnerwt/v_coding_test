@@ -230,6 +230,27 @@ def test_trim_history_preserves_first_tool_group_when_window_smaller():
         assert cid not in result_tool_result_ids, f"dropped group {cid} tool result still present"
 
 
+def test_trim_history_one_group_above_window_is_noop_due_to_anchor():
+    msgs: list[dict] = [_sys()]
+    msgs.append(_user_state(0))
+    for i in range(1, 6):
+        asst, tool = _group(i)
+        msgs.append(_user_state(i))
+        msgs.append(asst)
+        msgs.append(tool)
+
+    result = trim_history(msgs, keep_steps=4)
+
+    result_tool_call_ids, result_tool_result_ids = _collect_ids(result)
+
+    for cid in ("tc-1", "tc-2", "tc-3", "tc-4", "tc-5"):
+        assert cid in result_tool_call_ids, f"group {cid} assistant missing"
+        assert cid in result_tool_result_ids, f"group {cid} tool result missing"
+
+    assistant_groups = [m for m in result if m["role"] == "assistant" and m.get("tool_calls")]
+    assert len(assistant_groups) == 5
+
+
 def test_trim_history_unparseable_env_var_falls_back_to_default(
     monkeypatch: pytest.MonkeyPatch,
 ):
