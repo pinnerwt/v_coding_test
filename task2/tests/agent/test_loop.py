@@ -3529,9 +3529,6 @@ def test_no_tool_call_repeat_exits_at_k():
 
 
 class _NoToolCallThenGotoClient:
-    """Cycles [no-tool, no-tool, goto, no-tool, no-tool, goto, ...] so the
-    counter never accumulates K=3 consecutive no-tool-call responses."""
-
     def __init__(self):
         self._step = 0
 
