@@ -1,7 +1,7 @@
 ---
 id: 96
 slug: diagnose-webvoyager-1-llm-time-dominance
-status: active
+status: archived
 tier: 4
 urgency: P2
 axes:
@@ -16,9 +16,9 @@ evidence:
 related:
 - 91
 - 95
-filed_pr: null
-merged_pr: null
-archived_at: null
+filed_pr: 152
+merged_pr: 152
+archived_at: "2026-04-29"
 trigger: "2026-04-29 — /done_pr post-merge run on PR #149 confirmed webvoyager-1 reason=seconds_budget (127s wall-clock at step 13); per-step breakdown shows LLM dominates (~6.5s/step) and observation_ms is one-time 12.4s on step 1; need to localize whether prompt size, model latency, or step count is the most-tractable lever before filing a tier-5 fix"
 ---
 
