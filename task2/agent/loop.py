@@ -226,9 +226,9 @@ class _DecisionMarker:
     kind: str = "decision"
 
 
-def _phase_breakdown(t_obs_start: float, t_llm_start: float, t_dispatch_start: float) -> dict:
+def _phase_breakdown(t0: float, t_llm_start: float, t_dispatch_start: float) -> dict:
     return {
-        "observation_ms": int((t_llm_start - t_obs_start) * 1000),
+        "observation_ms": int((t_llm_start - t0) * 1000),
         "llm_ms": int((t_dispatch_start - t_llm_start) * 1000),
         "dispatch_ms": int((time.monotonic() - t_dispatch_start) * 1000),
     }
