@@ -38,13 +38,13 @@ The plan step at step 0 (where `plan_module.plan()` is called directly and the L
 - **AND** `RunResult.reason` SHALL equal `"no_tool_call_repeat"`
 - **AND** `RunResult.steps` SHALL equal `3` (exits at step 3, not step 20)
 
-#### Scenario: A tool call between two no-tool-call steps resets the counter and loop runs to timeout
+#### Scenario: A periodic tool call between no-tool-call steps resets the counter and loop runs to timeout
 
-- **GIVEN** a stub `LLMClient` that returns no-tool-call responses on steps 1 and 2, then returns `goto(url="http://example.com")` on step 3, then returns no-tool-call responses for all remaining steps
+- **GIVEN** a stub `LLMClient` that returns a `goto(url="http://example.com/<step>")` tool call on every 3rd step (steps 3, 6, 9, ...) and a no-tool-call response on the remaining steps
 - **AND** `loop()` is called with `max_steps=20`
 - **WHEN** the loop runs
-- **THEN** the counter resets to `0` on step 3 (the `goto` step)
-- **AND** `RunResult.status` SHALL equal `"timeout"` (runs to `max_steps` after counter reset rather than failing at step 2)
+- **THEN** the counter SHALL reset to `0` on each `goto` step (never accumulating 3 consecutive no-tool-call steps)
+- **AND** `RunResult.status` SHALL equal `"timeout"` (runs to `max_steps` rather than failing via `no_tool_call_repeat`)
 - **AND** `RunResult.steps` SHALL equal `20`
 
 #### Scenario: No-tool-call exit fires before max_steps is exhausted
