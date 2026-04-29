@@ -7,27 +7,27 @@
 
 ## 2. Extend RunResultReason Literal
 
-- [ ] 2.1 In `task2/agent/loop.py`, extend `RunResultReason` Literal to include `"no_progress"` alongside existing values (`"stuck_repeat"`, `"no_tool_call_repeat"`, `"seconds_budget"`)
-- [ ] 2.2 Run `uv run ruff check task2/agent/loop.py` — must be clean
+- [x] 2.1 In `task2/agent/loop.py`, extend `RunResultReason` Literal to include `"no_progress"` alongside existing values (`"stuck_repeat"`, `"no_tool_call_repeat"`, `"seconds_budget"`)
+- [x] 2.2 Run `uv run ruff check task2/agent/loop.py` — must be clean
 
 ## 3. Implement _no_progress_buf Logic
 
-- [ ] 3.1 Add `_NO_PROGRESS_K: int = 4` module-level constant in `task2/agent/loop.py`
-- [ ] 3.2 Initialize `_no_progress_buf: list[tuple[str, bool]] = []` at the start of `loop()` alongside the existing `_stuck_buf = []` and `_consecutive_no_tool_call_steps = 0`
-- [ ] 3.3 Track `any_action_succeeded_this_step: bool = False` at the top of each step iteration; set to `True` when a `click` or `type` tool call's result does not start with `"Error:"`
-- [ ] 3.4 After the tool-call dispatch loop completes (and only when there were tool calls — i.e. the no-tool-call branch was NOT taken), capture `post_fp = observe.build_observation(browser, []).get("ax_fingerprint")` and append `(post_fp, any_action_succeeded_this_step)` to `_no_progress_buf`
-- [ ] 3.5 Trim `_no_progress_buf` to the last `_NO_PROGRESS_K` entries
-- [ ] 3.6 Check bail condition: `len(_no_progress_buf) == _NO_PROGRESS_K` AND `len({fp for fp, _ in _no_progress_buf}) == 1` AND `all(not ok for _, ok in _no_progress_buf)`; if true, call `_record_step(...)` then return `RunResult(status="failed", reason="no_progress", result=None, evidence=None, verifier=None, steps=step_num, prompt_tokens=cum_prompt_tokens, completion_tokens=cum_completion_tokens, usd=cum_usd, latency_ms_total=sum(latency_ms_per_step), latency_ms_per_step=latency_ms_per_step, step_breakdown=step_breakdown)`
+- [x] 3.1 Add `_NO_PROGRESS_K: int = 4` module-level constant in `task2/agent/loop.py`
+- [x] 3.2 Initialize `_no_progress_buf: list[tuple[str, bool]] = []` at the start of `loop()` alongside the existing `_stuck_buf = []` and `_consecutive_no_tool_call_steps = 0`
+- [x] 3.3 Track `any_action_succeeded_this_step: bool = False` at the top of each step iteration; set to `True` when a `click` or `type` tool call's result does not start with `"Error:"`
+- [x] 3.4 After the tool-call dispatch loop completes (and only when there were tool calls — i.e. the no-tool-call branch was NOT taken), capture `post_fp = observe.build_observation(browser, []).get("ax_fingerprint")` and append `(post_fp, any_action_succeeded_this_step)` to `_no_progress_buf`
+- [x] 3.5 Trim `_no_progress_buf` to the last `_NO_PROGRESS_K` entries
+- [x] 3.6 Check bail condition: `len(_no_progress_buf) == _NO_PROGRESS_K` AND `len({fp for fp, _ in _no_progress_buf}) == 1` AND `all(not ok for _, ok in _no_progress_buf)`; if true, call `_record_step(...)` then return `RunResult(status="failed", reason="no_progress", result=None, evidence=None, verifier=None, steps=step_num, prompt_tokens=cum_prompt_tokens, completion_tokens=cum_completion_tokens, usd=cum_usd, latency_ms_total=sum(latency_ms_per_step), latency_ms_per_step=latency_ms_per_step, step_breakdown=step_breakdown)`
 
 ## 4. Green — Verify Tests Pass
 
-- [ ] 4.1 Run `uv run pytest task2/tests/ -k "no_progress"` — all three new tests must be green
-- [ ] 4.2 Run full test suite `uv run pytest task2/` — no regressions; `test_stuck_repeat_k_identical_tool_calls_terminates` must still pass
-- [ ] 4.3 Run `uv run ruff check task2/` and `uv run ruff format --check task2/` — both must be clean
+- [x] 4.1 Run `uv run pytest task2/tests/ -k "no_progress"` — all three new tests must be green
+- [x] 4.2 Run full test suite `uv run pytest task2/` — no regressions; `test_stuck_repeat_k_identical_tool_calls_terminates` must still pass
+- [x] 4.3 Run `uv run ruff check task2/` and `uv run ruff format --check task2/` — both must be clean
 
 ## 5. Validate Spec Delta Completeness
 
-- [ ] 5.1 Confirm `RunResultReason` Literal in code matches the MODIFIED spec (includes `"no_progress"`)
-- [ ] 5.2 Confirm `_NO_PROGRESS_K = 4` in code matches spec constant
-- [ ] 5.3 Confirm `_no_progress_buf` check placement is post-dispatch, not inside the tool-call loop
+- [x] 5.1 Confirm `RunResultReason` Literal in code matches the MODIFIED spec (includes `"no_progress"`)
+- [x] 5.2 Confirm `_NO_PROGRESS_K = 4` in code matches spec constant
+- [x] 5.3 Confirm `_no_progress_buf` check placement is post-dispatch, not inside the tool-call loop
 - [ ] 5.4 Run `openspec validate implement-no-progress-stuck-detection --strict` — must pass

@@ -71,7 +71,14 @@ def test_no_llm_error_after_25_steps():
     stub_llm = _RecordingStubLLM()
     stub_browser = _StubBrowser()
 
-    with patch("agent.loop.observe.build_observation", return_value=_LARGE_OBSERVATION):
+    _n: list[int] = [0]
+
+    def _varying_obs(browser, last_actions):
+        obs = {**_LARGE_OBSERVATION, "ax_fingerprint": format(_n[0], "064x")}
+        _n[0] += 1
+        return obs
+
+    with patch("agent.loop.observe.build_observation", side_effect=_varying_obs):
         result = loop("dummy task", browser=stub_browser, llm_client=stub_llm, max_steps=25)
 
     assert result.status == "timeout"

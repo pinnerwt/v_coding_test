@@ -67,7 +67,7 @@ class _ReadEachStepClient:
 
 
 class _AlternatingFpBrowser:
-    """Returns alternating ax_fingerprint values on successive build_observation calls."""
+    """Returns alternating ax_fingerprint values — alternates every 2 calls (pre+post per step)."""
 
     def __init__(self):
         self._page = None
@@ -78,7 +78,7 @@ class _AlternatingFpBrowser:
         pass
 
     def next_obs(self, last_actions: list[dict]) -> dict:
-        fp = "a" * 64 if self._call_count % 2 == 0 else "b" * 64
+        fp = "a" * 64 if (self._call_count // 2) % 2 == 0 else "b" * 64
         self._call_count += 1
         return {
             "url": "https://example.com",
