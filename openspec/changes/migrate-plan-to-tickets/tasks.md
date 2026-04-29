@@ -1,8 +1,8 @@
 ## 1. Red — Write failing tests for migration script
 
-- [ ] 1.1 In `task2/tests/`, create `test_migrate_plan_to_tickets.py`. Add test `test_migration_count_matches_plan_md`: run `task2/scripts/migrate_plan_to_tickets.py` in a tmp directory (copy plan.md in), count emitted files, assert equals `grep -c '^[0-9]\+\. \*\*' task2/plan.md`.
-- [ ] 1.2 Add test `test_archived_changes_produce_archive_ticket_with_merged_pr`: for each `openspec/changes/archive/*/proposal.md` that cites `ticket #N`, assert that after migration `task2/tickets/archive/` contains a file for ticket N with non-null `merged_pr` integer.
-- [ ] 1.3 Run `uv run pytest task2/tests/test_migrate_plan_to_tickets.py -x` — confirm tests fail red (script does not exist yet).
+- [x] 1.1 In `task2/tests/`, create `test_migrate_plan_to_tickets.py`. Add test `test_migration_count_matches_plan_md`: run `task2/scripts/migrate_plan_to_tickets.py` in a tmp directory (copy plan.md in), count emitted files, assert equals `grep -c '^[0-9]\+\. \*\*' task2/plan.md`.
+- [x] 1.2 Add test `test_archived_changes_produce_archive_ticket_with_merged_pr`: for each `openspec/changes/archive/*/proposal.md` that cites `ticket #N`, assert that after migration `task2/tickets/archive/` contains a file for ticket N with non-null `merged_pr` integer.
+- [x] 1.3 Run `uv run pytest task2/tests/test_migrate_plan_to_tickets.py -x` — confirm tests fail red (script does not exist yet).
 
 ## 2. Green — Write and run migration script
 
