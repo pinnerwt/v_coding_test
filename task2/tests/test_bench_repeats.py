@@ -747,3 +747,172 @@ def test_aggregate_repeats_mixed_pass_and_skip_classifies_as_partial():
     assert result.repeat_status == "partial"
     assert result.status == "failed"
     assert result.passed_runs == 1
+
+
+def test_aggregate_repeats_usd_is_sum_across_runs():
+    from scripts.benchmark import aggregate_repeats
+
+    side_effects = [
+        _make_case_result("succeeded", usd=0.01),
+        _make_case_result("succeeded", usd=0.02),
+        _make_case_result("succeeded", usd=0.04),
+    ]
+    with patch("scripts.benchmark._run_case", side_effect=side_effects):
+        result = aggregate_repeats(_SAMPLE_CASE, repeats=3, llm_client=None, browser=None)
+
+    assert result.usd == pytest.approx(0.07)
+
+
+def test_scoreboard_latency_percentiles_with_repeats():
+    from scripts.score import generate_scoreboard
+
+    data = {
+        "run_at": "2026-01-01T00:00:00",
+        "cases": [
+            {
+                "id": "fixture-a",
+                "status": "succeeded",
+                "repeats": 3,
+                "passed_runs": 3,
+                "steps": 1,
+                "usd": 0.01,
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "latency_ms_total": 300,
+                "median_latency_ms": 100,
+                "escalations": [],
+                "replans": 0,
+                "cache_events": {"invalidations": 0},
+            },
+            {
+                "id": "fixture-b",
+                "status": "succeeded",
+                "repeats": 3,
+                "passed_runs": 3,
+                "steps": 1,
+                "usd": 0.01,
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "latency_ms_total": 600,
+                "median_latency_ms": 200,
+                "escalations": [],
+                "replans": 0,
+                "cache_events": {"invalidations": 0},
+            },
+            {
+                "id": "fixture-c",
+                "status": "succeeded",
+                "repeats": 3,
+                "passed_runs": 3,
+                "steps": 1,
+                "usd": 0.01,
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "latency_ms_total": 2400,
+                "median_latency_ms": 800,
+                "escalations": [],
+                "replans": 0,
+                "cache_events": {"invalidations": 0},
+            },
+        ],
+    }
+    out = generate_scoreboard(data)
+    assert "p50: 200ms" in out
+    assert "p95: 800ms" in out
+
+
+def test_generate_scoreboard_total_usd_under_repeats():
+    from scripts.score import generate_scoreboard
+
+    data = {
+        "run_at": "2026-01-01T00:00:00",
+        "cases": [
+            {
+                "id": "fixture-a",
+                "status": "succeeded",
+                "repeats": 3,
+                "passed_runs": 3,
+                "steps": 1,
+                "usd": 0.03,
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "latency_ms_total": 300,
+                "median_latency_ms": 100,
+                "escalations": [],
+                "replans": 0,
+                "cache_events": {"invalidations": 0},
+            },
+            {
+                "id": "fixture-b",
+                "status": "succeeded",
+                "repeats": 3,
+                "passed_runs": 3,
+                "steps": 1,
+                "usd": 0.03,
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "latency_ms_total": 300,
+                "median_latency_ms": 100,
+                "escalations": [],
+                "replans": 0,
+                "cache_events": {"invalidations": 0},
+            },
+        ],
+    }
+    out = generate_scoreboard(data)
+    assert "Total USD: $0.0600" in out
+
+
+def test_generate_scoreboard_latency_percentiles_fallback():
+    from scripts.score import generate_scoreboard
+
+    data = {
+        "run_at": "2026-01-01T00:00:00",
+        "cases": [
+            {
+                "id": "fixture-a",
+                "status": "succeeded",
+                "repeats": 3,
+                "passed_runs": 3,
+                "steps": 1,
+                "usd": 0.01,
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "latency_ms_total": 100,
+                "escalations": [],
+                "replans": 0,
+                "cache_events": {"invalidations": 0},
+            },
+            {
+                "id": "fixture-b",
+                "status": "succeeded",
+                "repeats": 3,
+                "passed_runs": 3,
+                "steps": 1,
+                "usd": 0.01,
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "latency_ms_total": 200,
+                "escalations": [],
+                "replans": 0,
+                "cache_events": {"invalidations": 0},
+            },
+            {
+                "id": "fixture-c",
+                "status": "succeeded",
+                "repeats": 3,
+                "passed_runs": 3,
+                "steps": 1,
+                "usd": 0.01,
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "latency_ms_total": 800,
+                "escalations": [],
+                "replans": 0,
+                "cache_events": {"invalidations": 0},
+            },
+        ],
+    }
+    out = generate_scoreboard(data)
+    assert "p50: 200ms" in out
+    assert "p95: 800ms" in out

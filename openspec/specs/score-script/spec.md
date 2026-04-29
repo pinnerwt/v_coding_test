@@ -19,7 +19,7 @@ The scoreboard SHALL contain all of the following sections, in order:
 - **Failure histogram**: a `**Failure histogram**` block listing `failure_class → count` for all failed cases with a non-None `failure_class`, sorted descending by count (ties alphabetical). Suppressed entirely when there are no failed cases with a classifiable `failure_class`. Rendered AFTER the category summary and BEFORE the per-case status table.
 - **Per-case status table**: columns `Case`, `Status`, `Steps`, `Latency (ms)`, `USD`, `Tokens (P+C)`, `Escalations`, `Replans`, `Cache Hits`, `Cache Misses`, `Cache Inv.`, `Failure class`
 - **Summary line**: `N/M succeeded (X%)` where N = passed (succeeded + unverified), M = total non-skipped.
-- **Latency percentiles**: `p50: Xms  p95: Xms` computed over `latency_ms_total` values of non-skipped cases.
+- **Latency percentiles**: `p50: Xms  p95: Xms` computed over per-case latency, preferring `median_latency_ms` when present and falling back to `latency_ms_total` for backward compatibility with old results files and `--repeats 1` runs (where both fields are absent/identical in meaning). Concretely, `generate_scoreboard` SHALL use `c.get("median_latency_ms", c.get("latency_ms_total", 0))` for each non-skipped case as the input to `_percentile`. The fallback ensures that results JSON files without a `median_latency_ms` key continue to produce a valid scoreboard without raising exceptions.
 - **Totals**: `Total USD: $X.XXXX   Total tokens: P prompt + C completion`.
 - **Locator-tier mix**: table of tier name → count across all cases, rendered as `| Tier | Count |`.
 - **Mechanism firing rates**: table rendered as `| Mechanism | Cases with ≥1 firing |` with rows for `L1→L2 escalation`, `Replan`, and `Cache invalidation`, each showing `N/M` (non-skipped cases with at least one firing / total non-skipped).
@@ -66,6 +66,21 @@ The helper SHALL be backward-compatible: results JSON files that do not contain 
 - **GIVEN** a results file with three non-skipped cases with `latency_ms_total` values `[100, 200, 800]`
 - **WHEN** `score.py` computes percentiles
 - **THEN** p50 SHALL equal `200` and p95 SHALL equal `800` (nearest-rank method, ceiling index)
+
+#### Scenario: Latency percentiles use median_latency_ms when present
+
+- **GIVEN** a results file with three non-skipped cases having `median_latency_ms` values `[100, 200, 800]` and `latency_ms_total` values `[300, 600, 2400]`
+- **WHEN** `generate_scoreboard(data)` is called
+- **THEN** the output SHALL contain `p50: 200ms`
+- **AND** the output SHALL contain `p95: 800ms`
+
+#### Scenario: Latency percentiles fall back to latency_ms_total when median_latency_ms is absent
+
+- **GIVEN** a results file with three non-skipped cases having `latency_ms_total` values `[100, 200, 800]` and no `median_latency_ms` key
+- **WHEN** `generate_scoreboard(data)` is called
+- **THEN** the output SHALL contain `p50: 200ms`
+- **AND** the output SHALL contain `p95: 800ms`
+- **AND** no exception SHALL be raised
 
 #### Scenario: Skipped cases are excluded from success rate and percentiles
 
