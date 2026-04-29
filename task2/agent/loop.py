@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from agent.locator_cache import LocatorCache
 
 RunStatus = Literal["succeeded", "unverified", "failed", "timeout"]
-RunResultReason = Literal["stuck_repeat"]
+RunResultReason = Literal["stuck_repeat", "no_tool_call_repeat"]
 ToolName = Literal["goto", "read", "click", "type", "done", "fail"]
 _CLICK_SUCCESS_OUTCOMES: frozenset[str] = frozenset({"ok", "nav"})
 _IRRECOVERABLE_REASONS: frozenset[str] = frozenset({"login wall", "captcha", "blocked"})
@@ -168,6 +168,7 @@ _DEFAULT_CONTEXT_CHAR_BUDGET: int = 80_000
 _ELIDED_STATE_CONTENT = "Current state: <elided>"
 _ELIDED_TOOL_CONTENT = "<read tool result elided>"
 _STUCK_REPEAT_K: int = 3
+_NO_TOOL_CALL_K: int = 3
 
 
 def _compact_messages(messages: list[dict], budget_chars: int) -> list[dict]:
@@ -782,6 +783,7 @@ def loop(
     active_plan: plan_module.Plan | None = None
     _prior_act_outcomes: list[str] = []
     _stuck_buf: list[str] = []
+    _consecutive_no_tool_call_steps: int = 0
     _budget = int(os.environ.get("LLM_CONTEXT_CHAR_BUDGET", _DEFAULT_CONTEXT_CHAR_BUDGET))
 
     for _ in range(max_steps):
@@ -841,9 +843,26 @@ def loop(
         dispatched_tool_names: list[str] = []
 
         if not response.tool_calls:
+            _consecutive_no_tool_call_steps += 1
             _record_step(step_num, t0, response, [], latency_ms_per_step, step_breakdown)
+            if _consecutive_no_tool_call_steps >= _NO_TOOL_CALL_K:
+                return RunResult(
+                    status="failed",
+                    reason="no_tool_call_repeat",
+                    result=None,
+                    evidence=None,
+                    verifier=None,
+                    steps=step_num,
+                    prompt_tokens=cum_prompt_tokens,
+                    completion_tokens=cum_completion_tokens,
+                    usd=cum_usd,
+                    latency_ms_total=sum(latency_ms_per_step),
+                    latency_ms_per_step=latency_ms_per_step,
+                    step_breakdown=step_breakdown,
+                )
             continue
 
+        _consecutive_no_tool_call_steps = 0
         for tool_call in response.tool_calls:
             dispatched_tool_names.append(tool_call.name)
             try:
