@@ -107,6 +107,7 @@ A new function `render_failure_classes_svg(runs: list[Run], class_counts: list[d
 4. Render a stacked-area chart where each class is one filled polygon. For each run `i`, the stacked y-values are the cumulative sums of counts in sorted-class order.
 5. Include a legend mapping class name to color, positioned consistently with existing charts.
 6. When `runs` is empty or all `class_counts` dicts are empty, return the result of `_empty_svg("Failure classes")`.
+7. **Single-run rendering**: when `len(runs) == 1` AND at least one class has a non-zero count, each per-class polygon SHALL have non-zero geometric area (i.e. it MUST render as a visible filled shape, not collapse to a zero-area degenerate polygon). The per-class cumulative y-coordinates SHALL match the `n >= 2` cumulative-stacking math. The exact horizontal layout (bar position, bar width) is a non-normative implementation detail.
 
 **Integration with `write_trends`:**
 
@@ -162,3 +163,10 @@ This line SHALL appear after the `![Cost by status](benchmark/_trends/cost.svg)`
 - **WHEN** `write_trends(runs, out_dir=out_dir, readme_path=readme, benchmark_root=benchmark_root)` is called
 - **THEN** the README content between the TRENDS markers SHALL contain `benchmark/_trends/failure_classes.svg`
 - **AND** that image reference SHALL appear after the `benchmark/_trends/cost.svg` reference
+
+#### Scenario: Single-run failure_classes SVG renders visible non-zero-area polygons
+
+- **GIVEN** a single run (`len(runs) == 1`) and a single non-empty class_counts dict (e.g. `[{"alpha": 2, "beta": 3}]`)
+- **WHEN** `render_failure_classes_svg(runs, class_counts)` is called
+- **THEN** every `<polygon>` element in the returned SVG SHALL have non-zero geometric area (computed via the shoelace formula over its `points` list)
+- **AND** each polygon's y-coordinates SHALL match the cumulative-stacking math used for `n >= 2` (the per-class top y is `cum + count`, the bottom y is `cum`)
