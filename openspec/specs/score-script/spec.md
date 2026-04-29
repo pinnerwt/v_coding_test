@@ -36,14 +36,18 @@ The per-case table SHALL include three cache columns in the following left-to-ri
 
 All three columns SHALL default to `0` when `cache_events` is absent or the key is missing (backward-compatible with old result files).
 
-**Per-case Status column rendering (added by implement-bench-repeats):**
+**Per-case Status column rendering (added by implement-bench-repeats; extended by implement-near-budget-soft-warning):**
 
-`generate_scoreboard` SHALL include a helper `_render_case_status(case: dict) -> str` that determines what to display in the `Status` column of the per-case table:
+`generate_scoreboard` SHALL include a helper `_render_case_status(case: dict) -> str` that determines what to display in the `Status` column of the per-case table. The helper SHALL render the per-case Status cell as follows:
 
-- If `case.get("repeats", 1) > 1`: render `{passed_runs}/{repeats} ✓` when `passed_runs == repeats`, else `{passed_runs}/{repeats} ✗`.
-- Otherwise (repeats absent or `1`): render `case["status"]` as a plain string (preserving existing behavior).
+1. If `case["repeat_status"] == "skipped"`: return `case.get("status", "skipped")`.
+2. Otherwise, compute the base label: when `case.get("repeats", 1) > 1`, the base is `f"{passed_runs}/{repeats} {glyph}"` where `glyph = "✓"` if `passed_runs == repeats` else `"✗"`; when `repeats == 1` (or absent), the base is `case.get("status", "unknown")`.
+3. When `case.get("near_budget", False)` is `True`, append `" ⚠️"` to the base label and return that string.
+4. Otherwise, return the base label unchanged.
 
-The helper SHALL be backward-compatible: results JSON files that do not contain `repeats` or `passed_runs` keys SHALL render using the existing plain-`status` path without raising exceptions.
+The "⚠️" suffix SHALL be additive: it composes with both the single-run plain status (e.g. `"succeeded ⚠️"`) and the multi-run fractional status (e.g. `"3/3 ✓ ⚠️"`).
+
+The helper SHALL be backward-compatible: results JSON files that do not contain `repeats`, `passed_runs`, or `near_budget` keys SHALL render using the existing plain-`status` path without raising exceptions.
 
 #### Scenario: score.py reads the fixture results file and produces non-empty markdown
 
@@ -153,6 +157,31 @@ The helper SHALL be backward-compatible: results JSON files that do not contain 
 - **WHEN** `_render_case_status(case)` is called
 - **THEN** it SHALL NOT raise a `KeyError`
 - **AND** SHALL return a string (defaulting to plain status or `0/3 ✗`)
+
+#### Scenario: _render_case_status appends warning when near_budget is True (single run)
+
+- **GIVEN** a per-case dict `{"status": "succeeded", "near_budget": True}`
+- **WHEN** `_render_case_status(case)` is called
+- **THEN** the returned string SHALL contain `"⚠️"`
+- **AND** the returned string SHALL also contain `"succeeded"`
+
+#### Scenario: _render_case_status omits warning when near_budget is False
+
+- **GIVEN** a per-case dict `{"status": "succeeded", "near_budget": False}`
+- **WHEN** `_render_case_status(case)` is called
+- **THEN** the returned string SHALL NOT contain `"⚠️"`
+
+#### Scenario: _render_case_status omits warning when near_budget key is absent
+
+- **GIVEN** a per-case dict `{"status": "succeeded"}` (no `near_budget` key, simulating an old results JSON)
+- **WHEN** `_render_case_status(case)` is called
+- **THEN** the returned string SHALL NOT contain `"⚠️"`
+
+#### Scenario: _render_case_status appends warning to multi-run fractional status
+
+- **GIVEN** a per-case dict `{"status": "succeeded", "repeats": 3, "passed_runs": 3, "near_budget": True}`
+- **WHEN** `_render_case_status(case)` is called
+- **THEN** the returned string SHALL contain `"3/3"` AND `"⚠️"`
 
 #### Scenario: Cache Hits and Cache Misses columns appear in per-case table header
 
