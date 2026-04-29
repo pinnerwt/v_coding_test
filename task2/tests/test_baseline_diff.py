@@ -427,3 +427,24 @@ def test_both_empty_emits_na_both_sides():
     assert "Δ total USD: n/a (both sides had 0 ran cases)" in out
     assert "Δ p50 latency: n/a (both sides had 0 ran cases)" in out
     assert "Δ p95 latency: n/a (both sides had 0 ran cases)" in out
+
+
+def test_empty_master_still_emits_cases_annotation():
+    from scripts.baseline_diff import generate_diff_markdown
+
+    out = generate_diff_markdown(_EMPTY, _NON_EMPTY)
+    assert "Cases: 0 common, +1 added, -0 dropped" in out
+
+
+def test_empty_branch_still_emits_cases_annotation():
+    from scripts.baseline_diff import generate_diff_markdown
+
+    out = generate_diff_markdown(_NON_EMPTY, _EMPTY)
+    assert "Cases: 0 common, +0 added, -1 dropped" in out
+
+
+def test_both_empty_still_emits_cases_annotation():
+    from scripts.baseline_diff import generate_diff_markdown
+
+    out = generate_diff_markdown(_EMPTY, _EMPTY)
+    assert "Cases: 0 common, +0 added, -0 dropped" in out
