@@ -201,3 +201,69 @@ def test_no_progress_constant_fingerprint_with_successful_click_does_not_bail():
     with patch("agent.loop.observe.build_observation", return_value=_CONSTANT_OBS):
         result = loop("task", browser=stub_browser, llm_client=stub_llm, max_steps=20)
     assert result.reason != "no_progress"
+
+
+class _GotoThenBodyReadsClient:
+    """Step 1: goto. Steps 2+: read without intent (returns body text)."""
+
+    def __init__(self):
+        self._step = 0
+
+    def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
+        if tools is None:
+            return _plan_stub()
+        self._step += 1
+        if self._step == 1:
+            tc = ToolCall(
+                id="tc-goto",
+                name="goto",
+                arguments=json.dumps({"url": "https://example.com"}),
+            )
+        else:
+            tc = ToolCall(
+                id=f"tc-{self._step}",
+                name="read",
+                arguments=json.dumps({}),
+            )
+        return ChatResponse(
+            content=None,
+            tool_calls=[tc],
+            finish_reason="tool_calls",
+            model="fake",
+            usage=_DUMMY_USAGE,
+            raw={},
+        )
+
+
+class _BodyTextPage:
+    url = "https://example.com"
+
+    def title(self) -> str:
+        return "Example"
+
+    def evaluate(self, *_args, **_kwargs) -> str:
+        return "Example Domain\n\nbody text"
+
+
+class _StubBrowserWithBody:
+    def __init__(self):
+        self._page = _BodyTextPage()
+        self._cdp_sessions: dict = {}
+
+    def goto(self, url: str) -> None:
+        pass
+
+
+def test_goto_followed_by_body_reads_does_not_bail_no_progress():
+    """Regression for live smoke (2026-04-29): goto step 1 + body-read steps 2-4
+    + body-read step 5 → fingerprint constant, but read returned body text (success).
+    Detector must not bail with no_progress before LLM has a chance to call done.
+    """
+    stub_browser = _StubBrowserWithBody()
+    stub_llm = _GotoThenBodyReadsClient()
+    with patch("agent.loop.observe.build_observation", return_value=_CONSTANT_OBS):
+        result = loop("task", browser=stub_browser, llm_client=stub_llm, max_steps=6)
+    assert result.reason != "no_progress", (
+        f"goto+body-reads incorrectly classified as no_progress; "
+        f"status={result.status} steps={result.steps}"
+    )

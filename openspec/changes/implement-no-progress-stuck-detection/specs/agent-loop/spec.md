@@ -33,7 +33,7 @@
 At the end of each step's tool-call dispatch loop (after all tool calls in the LLM response have been dispatched and before `_record_step` is called for the normal step completion path), the loop SHALL:
 
 - Capture the post-dispatch AX fingerprint by calling `observe.build_observation(browser, []).get("ax_fingerprint")`.
-- Determine `any_action_succeeded: bool` — `True` iff at least one `click` or `type` tool call dispatched in this step returned a result string that does **not** start with `"Error:"`.
+- Determine `any_action_succeeded: bool` — `True` iff at least one `click`, `type`, `goto`, or `read` tool call dispatched in this step returned a result string that does **not** start with `"Error:"`. `goto` and `read` are included alongside `click`/`type` because they represent observable progress: `goto` mutates URL/page state, and `read` retrieves information the LLM uses to make subsequent decisions. Excluding them produces false positives when the agent legitimately navigates and then explores via reads (the live smoke pattern: `goto example.com` step 1 → `read` body steps 2-N → `done` — fingerprint stays constant from step 1 onward).
 - Append `(post_ax_fingerprint, any_action_succeeded)` to `_no_progress_buf`.
 - Trim `_no_progress_buf` to the last `_NO_PROGRESS_K` entries (remove from the front if over length).
 - Check: if `len(_no_progress_buf) == _NO_PROGRESS_K` AND all entries share the same fingerprint AND all entries have `any_action_succeeded == False`, then call `_record_step(...)` and return `RunResult(status="failed", reason="no_progress", result=None, evidence=None, verifier=None, steps=step_num, prompt_tokens=cum_prompt_tokens, completion_tokens=cum_completion_tokens, usd=cum_usd, latency_ms_total=sum(latency_ms_per_step), latency_ms_per_step=latency_ms_per_step, step_breakdown=step_breakdown)`.
@@ -44,11 +44,11 @@ The `_no_progress_buf` check SHALL run only on steps where the tool-call loop co
 
 The `latency_breakdown_ms` dict MUST be present on the bailing step's record (the existing `_record_step` call handles this via `_phase_breakdown`).
 
-#### Scenario: Constant fingerprint with no successful click or type exits at step 4 with reason no_progress
+#### Scenario: Constant fingerprint with no successful click, type, goto, or read exits at step 4 with reason no_progress
 
 - **GIVEN** a stub `LLMClient` that emits `read({"intent": f"x{i}"})` on each step (different args each step, so `_stuck_buf` never fills)
 - **AND** a stub `Browser` whose `build_observation()` always returns the same `ax_fingerprint` (constant hash)
-- **AND** the `read` tool dispatch always returns a non-error string
+- **AND** the `read` tool dispatch returns an error string each step (locator missed, intent unmatched)
 - **AND** `loop()` is called with `max_steps=20`
 - **WHEN** the loop runs
 - **THEN** `RunResult.status` SHALL equal `"failed"`

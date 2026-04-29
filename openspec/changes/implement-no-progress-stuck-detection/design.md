@@ -40,7 +40,9 @@ When #91 lands, this can be replaced by reading the cached fingerprint without a
 
 **Decision 3 — `any_action_succeeded` is per-step, not per-tool-call**
 
-`any_action_succeeded = True` iff at least one `click` or `type` tool call in the step returned a result that does **not** start with `"Error:"` (which is consistent with how `_prior_act_outcomes` already tracks this). A single successful `click` in a step with 3 other failing reads is enough to count the step as progress. This matches the ticket spec and the existing semantics.
+`any_action_succeeded = True` iff at least one `click`, `type`, `goto`, or `read` tool call in the step returned a result that does **not** start with `"Error:"`. A single successful tool in a step is enough to count the step as progress.
+
+The set was widened beyond `click`/`type` (the ticket's original spec) after the live smoke regression on 2026-04-29: a task like "Open https://example.com and return the H1 text" runs `goto` at step 1, then `read` body-text at steps 2-N to discover content, then `done`. The post-dispatch AX fingerprint stays constant from step 1 (page already loaded), and the original detector bailed at step 4 with `no_progress` before the LLM could call `done`. Including `goto` (state-mutating) and successful `read` (information-gathering, gives the LLM new context to make progress) eliminates this false positive while preserving the design intent: bail when N consecutive steps had NO useful tool outcome at all. `_prior_act_outcomes` retains its narrower `click`/`type`-only semantics for the premature-fail check, since "tried to interact" is a different concept from "produced any useful tool output".
 
 **Decision 4 — Buffer check placement**
 
@@ -59,7 +61,7 @@ Initialized to `[]` at the start of `loop()`. Not reset between steps (rolling w
 
 ## Risks / Trade-offs
 
-- **False positive: page unchanged but task is legitimately read-only.** If the task requires reading 4+ consecutive pages that are all identical (same AX-tree digest), the guard could fire incorrectly. Mitigation: `any_action_succeeded` only counts `click`/`type`; `goto` to a new URL would change the fingerprint. The `_EMPTY_FINGERPRINT` case (no page loaded) always has the same fingerprint — but that would also mean zero `click`/`type` success, so a bail there is correct.
+- **False positive: page unchanged but task is legitimately exploratory.** If the agent does a `goto` then 4 consecutive successful `read` calls on the same page, the fingerprint is constant. Decision 3 mitigates this by counting successful `read` as progress, since `read` provides new information to the LLM. A run that bails with `no_progress` therefore has no successful tool of any kind for K consecutive steps, which is a genuine stall.
 - **Extra `build_observation()` cost per step.** On a step-20 run this is 20 extra AX-tree reads. Each is ~5-20 ms. Acceptable overhead vs. the ~30 s per LLM call. When #91 lands the cost disappears entirely.
 - **`_no_progress_buf` scope is per-step, checked after the inner tool-call loop.** Steps with multiple tool calls in one LLM response share a single buffer append. This is intentional — "a step" is the unit of observation.
 

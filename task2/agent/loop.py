@@ -1053,6 +1053,8 @@ def loop(
             if tool_call.name in {"click", "type"} and not is_error:
                 _prior_act_outcomes.append("ok")
                 any_action_succeeded_this_step = True
+            elif tool_call.name in {"goto", "read"} and not is_error:
+                any_action_succeeded_this_step = True
             action: dict = {
                 "tool": tool_call.name,
                 "intent": str(args),
