@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 _WORKFLOW = Path(__file__).parent.parent.parent / ".github" / "workflows" / "task2-benchmark.yml"
 
 
