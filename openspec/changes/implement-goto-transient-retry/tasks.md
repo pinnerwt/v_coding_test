@@ -6,10 +6,10 @@
 
 ## 2. Implementation (Green)
 
-- [ ] 2.1 In `task2/agent/browser.py`, add `import re` and `import time` at the top (if not already present)
-- [ ] 2.2 Define the transient-error pattern constant `_TRANSIENT_NAV_RE = re.compile(r"net::ERR_NETWORK_CHANGED|net::ERR_NETWORK_IO_SUSPENDED|net::ERR_INTERNET_DISCONNECTED|Page.goto.*Timeout")` at module level
-- [ ] 2.3 Modify `Browser.goto` to catch `PlaywrightError`, check the message against `_TRANSIENT_NAV_RE`; if matched, sleep 250 ms and retry the `Page.goto` call once; on second failure (or non-matching error), raise `NavigationError` as today
-- [ ] 2.4 Run `uv run pytest task2/tests/agent/test_browser.py` and confirm all tests pass (green bar)
+- [x] 2.1 In `task2/agent/browser.py`, add `import re` and `import time` at the top (if not already present)
+- [x] 2.2 Define the transient-error pattern constant `_TRANSIENT_NAV_RE = re.compile(r"net::ERR_NETWORK_CHANGED|net::ERR_NETWORK_IO_SUSPENDED|net::ERR_INTERNET_DISCONNECTED|Page.goto.*Timeout")` at module level
+- [x] 2.3 Modify `Browser.goto` to catch `PlaywrightError`, check the message against `_TRANSIENT_NAV_RE`; if matched, sleep 250 ms and retry the `Page.goto` call once; on second failure (or non-matching error), raise `NavigationError` as today
+- [x] 2.4 Run `uv run pytest task2/tests/agent/test_browser.py` and confirm all tests pass (green bar)
 
 ## 3. Quality
 

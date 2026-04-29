@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+import time
 from typing import TYPE_CHECKING
 
 from playwright.sync_api import Error as PlaywrightError
@@ -7,6 +9,10 @@ from playwright.sync_api import sync_playwright
 
 if TYPE_CHECKING:
     from playwright.sync_api import Browser as PlaywrightBrowser
+
+_TRANSIENT_NAV_RE = re.compile(
+    r"net::ERR_NETWORK_CHANGED|net::ERR_NETWORK_IO_SUSPENDED|net::ERR_INTERNET_DISCONNECTED|Page.goto.*Timeout"
+)
 
 
 class BrowserError(Exception):
@@ -76,7 +82,13 @@ class Browser:
         try:
             self._page.goto(url, wait_until="load")
         except PlaywrightError as e:
-            raise NavigationError(f"failed to navigate to {url}: {e}") from e
+            if not _TRANSIENT_NAV_RE.search(str(e)):
+                raise NavigationError(f"failed to navigate to {url}: {e}") from e
+            time.sleep(0.25)
+            try:
+                self._page.goto(url, wait_until="load")
+            except PlaywrightError as e2:
+                raise NavigationError(f"failed to navigate to {url}: {e2}") from e2
 
     def read(self, selector: str) -> str:
         if self._page is None:
