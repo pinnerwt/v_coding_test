@@ -493,18 +493,30 @@ def test_loop_self_correction_l2_also_fails(fixture_server, playwright_chromium)
 
 
 def test_loop_self_correction_supervisor_halt(fixture_server, playwright_chromium):
-    """Scenario: supervisor max_attempts exhausted — loop returns error string gracefully."""
-    fixture_url = f"{fixture_server}/index.html"
+    """Scenario: supervisor max_attempts exhausted — loop returns error string gracefully.
 
-    # 4 read calls exhaust the default max_attempts=3 and trigger the halt branch.
+    A successful click before the reads keeps any_action_succeeded=True in the
+    no-progress buffer long enough for 4 locator-miss steps to exhaust max_attempts=3
+    and trigger the halt+replan path before no-progress fires.
+    """
+    fixture_url = f"{fixture_server}/loop_self_correction.html"
+
+    # 4 read calls for a nonexistent element exhaust max_attempts=3 and trigger halt.
+    # The preceding click(Submit) succeeds and prevents the no-progress buffer from
+    # filling with all-False entries before the supervisor halt fires.
     read_tc = [
         _response_with_tool_call(
-            _tool_call("read", {"intent": "Submit button"}, call_id=f"tc-r{i}")
+            _tool_call("read", {"intent": "NonExistent heading"}, call_id=f"tc-r{i}")
         )
         for i in range(1, 5)
     ]
     responses = (
         [_response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-0"))]
+        + [
+            _response_with_tool_call(
+                _tool_call("click", {"intent": "action button"}, call_id="tc-click")
+            )
+        ]
         + read_tc
         + [
             _response_with_tool_call(
@@ -514,7 +526,7 @@ def test_loop_self_correction_supervisor_halt(fixture_server, playwright_chromiu
                         "result": {"note": "supervisor halted"},
                         "evidence": {
                             "url": fixture_url,
-                            "text_snippet": "Hello",
+                            "text_snippet": "Self-correction",
                         },
                     },
                     call_id="tc-done",
@@ -525,7 +537,7 @@ def test_loop_self_correction_supervisor_halt(fixture_server, playwright_chromiu
     fake_llm = _FakeLLMClient(responses)
 
     with Browser(playwright_browser=playwright_chromium) as browser:
-        result = loop("click the Submit button", browser, fake_llm, max_steps=10)
+        result = loop("click the Submit button", browser, fake_llm, max_steps=15)
 
     assert result.status == "succeeded"
 
@@ -3256,6 +3268,22 @@ _URLS = [
 ]
 
 
+def _make_varying_obs_fn() -> object:
+    """Returns a side_effect callable that produces LARGE_OBSERVATION with a per-call fingerprint.
+
+    Using a per-call fingerprint prevents the no-progress buffer from filling
+    while still exercising message compaction over many steps.
+    """
+    _count: list[int] = [0]
+
+    def _obs(browser, last_actions):
+        fp = format(_count[0], "064x")
+        _count[0] += 1
+        return {**_LARGE_OBSERVATION, "ax_fingerprint": fp}
+
+    return _obs
+
+
 class _StubBrowserForCompaction:
     def __init__(self):
         self._page = None
@@ -3303,7 +3331,7 @@ class _RecordingLLMClient:
 def test_loop_compacts_message_history_under_token_budget():
     stub_llm = _RecordingLLMClient()
     stub_browser = _StubBrowserForCompaction()
-    with patch("agent.loop.observe.build_observation", return_value=_LARGE_OBSERVATION):
+    with patch("agent.loop.observe.build_observation", side_effect=_make_varying_obs_fn()):
         result = loop("dummy task", browser=stub_browser, llm_client=stub_llm, max_steps=25)
 
     assert result.status == "timeout"
@@ -3334,7 +3362,7 @@ def test_compact_messages_no_op_when_under_budget():
 def test_loop_preserves_most_recent_observation_after_compaction():
     stub_llm = _RecordingLLMClient()
     stub_browser = _StubBrowserForCompaction()
-    with patch("agent.loop.observe.build_observation", return_value=_LARGE_OBSERVATION):
+    with patch("agent.loop.observe.build_observation", side_effect=_make_varying_obs_fn()):
         result = loop("dummy task", browser=stub_browser, llm_client=stub_llm, max_steps=25)
 
     assert result.status == "timeout"

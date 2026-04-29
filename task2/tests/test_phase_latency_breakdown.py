@@ -152,8 +152,15 @@ def test_sum_invariant_holds_across_5_step_run():
     llm = _SimpleLLMClient(responses)
     browser = _make_stub_browser()
 
+    _call_n: list[int] = [0]
+
+    def _varying_obs(br, last_actions):
+        obs = {**_fake_observation(), "ax_fingerprint": format(_call_n[0], "064x")}
+        _call_n[0] += 1
+        return obs
+
     with (
-        patch("agent.loop.observe.build_observation", return_value=_fake_observation()),
+        patch("agent.loop.observe.build_observation", side_effect=_varying_obs),
         patch("agent.loop._dispatch", return_value="ok"),
     ):
         result = loop("fake task", browser, llm)

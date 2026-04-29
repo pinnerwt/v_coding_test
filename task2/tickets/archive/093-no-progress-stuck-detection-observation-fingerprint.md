@@ -1,7 +1,7 @@
 ---
 id: 93
 slug: no-progress-stuck-detection-observation-fingerprint
-status: active
+status: archived
 tier: 5
 urgency: P2
 axes:
@@ -18,8 +18,8 @@ evidence:
 related:
 - 88
 filed_pr: null
-merged_pr: null
-archived_at: null
+merged_pr: 148
+archived_at: '2026-04-29'
 trigger: 2026-04-29 — user-driven webvoyager timeout investigation; ticket queue restart
 ---
 

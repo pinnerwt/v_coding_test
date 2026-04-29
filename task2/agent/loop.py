@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from agent.locator_cache import LocatorCache
 
 RunStatus = Literal["succeeded", "unverified", "failed", "timeout"]
-RunResultReason = Literal["stuck_repeat", "no_tool_call_repeat", "seconds_budget"]
+RunResultReason = Literal["stuck_repeat", "no_tool_call_repeat", "seconds_budget", "no_progress"]
 ToolName = Literal["goto", "read", "click", "type", "done", "fail"]
 _CLICK_SUCCESS_OUTCOMES: frozenset[str] = frozenset({"ok", "nav"})
 _IRRECOVERABLE_REASONS: frozenset[str] = frozenset({"login wall", "captcha", "blocked"})
@@ -167,6 +167,7 @@ TOOLS: list[dict] = [
 _DEFAULT_CONTEXT_CHAR_BUDGET: int = 80_000
 _STUCK_REPEAT_K: int = 3
 _NO_TOOL_CALL_K: int = 3
+_NO_PROGRESS_K: int = 4
 
 
 def _compact_messages(messages: list[dict], budget_chars: int) -> list[dict]:
@@ -793,6 +794,7 @@ def loop(
     active_plan: plan_module.Plan | None = None
     _prior_act_outcomes: list[str] = []
     _stuck_buf: list[str] = []
+    _no_progress_buf: list[tuple[str | None, bool]] = []
     _consecutive_no_tool_call_steps: int = 0
     _budget = int(os.environ.get("LLM_CONTEXT_CHAR_BUDGET", _DEFAULT_CONTEXT_CHAR_BUDGET))
     t_loop = time.monotonic()
@@ -816,6 +818,8 @@ def loop(
         step_num += 1
         t0 = time.monotonic()
         _step_id = f"{run_id}:step-{step_num}" if run_id is not None else None
+        any_action_succeeded_this_step: bool = False
+        replanned_this_step: bool = False
 
         observation = observe.build_observation(browser, last_actions)
         last_actions = []
@@ -1049,6 +1053,9 @@ def loop(
             is_error = tool_result.startswith("Error:")
             if tool_call.name in {"click", "type"} and not is_error:
                 _prior_act_outcomes.append("ok")
+                any_action_succeeded_this_step = True
+            elif tool_call.name in {"goto", "read"} and not is_error:
+                any_action_succeeded_this_step = True
             action: dict = {
                 "tool": tool_call.name,
                 "intent": str(args),
@@ -1076,6 +1083,8 @@ def loop(
                     cum_usd += replan_resp.usd
                     supervisor.replan_used = True
                     active_plan = new_plan
+                    _no_progress_buf.clear()
+                    replanned_this_step = True
                     _emit_plan_event(
                         events,
                         "replan",
@@ -1109,6 +1118,43 @@ def loop(
                         latency_ms_per_step=latency_ms_per_step,
                         step_breakdown=step_breakdown,
                     )
+
+        if not replanned_this_step:
+            _post_obs = observe.build_observation(browser, [])
+            post_fp = _post_obs.get("ax_fingerprint") if isinstance(_post_obs, dict) else None
+            _no_progress_buf.append((post_fp, any_action_succeeded_this_step))
+            if len(_no_progress_buf) > _NO_PROGRESS_K:
+                _no_progress_buf.pop(0)
+            fps = {fp for fp, _ in _no_progress_buf}
+            if (
+                len(_no_progress_buf) == _NO_PROGRESS_K
+                and len(fps) == 1
+                and None not in fps
+                and all(not ok for _, ok in _no_progress_buf)
+            ):
+                _record_step(
+                    step_num,
+                    t0,
+                    response,
+                    dispatched_tool_names,
+                    latency_ms_per_step,
+                    step_breakdown,
+                    latency_breakdown=_phase_breakdown(t0, t_llm_start, t_dispatch_start),
+                )
+                return RunResult(
+                    status="failed",
+                    reason="no_progress",
+                    result=None,
+                    evidence=None,
+                    verifier=None,
+                    steps=step_num,
+                    prompt_tokens=cum_prompt_tokens,
+                    completion_tokens=cum_completion_tokens,
+                    usd=cum_usd,
+                    latency_ms_total=sum(latency_ms_per_step),
+                    latency_ms_per_step=latency_ms_per_step,
+                    step_breakdown=step_breakdown,
+                )
 
         _record_step(
             step_num,
