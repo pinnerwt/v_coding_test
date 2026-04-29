@@ -1,9 +1,9 @@
 ## 1. Red — Write Failing Tests
 
-- [ ] 1.1 Write test `test_no_progress_constant_fingerprint_bails_at_step_4`: stub LLM emitting `read(intent=f"x{i}")` each step, stub browser returning constant `ax_fingerprint`; assert `RunResult.reason == "no_progress"` and `steps == 4`
-- [ ] 1.2 Write test `test_no_progress_alternating_fingerprint_runs_to_completion`: same stub LLM but browser alternates between two fingerprints; assert loop does NOT exit with `reason="no_progress"`
-- [ ] 1.3 Write test `test_no_progress_click_ok_prevents_bail`: stub LLM emitting `click(intent="button")` each step, constant fingerprint, click always returns `"Clicked 'button' (ok)"`; assert loop does NOT exit with `reason="no_progress"`
-- [ ] 1.4 Run `uv run pytest` from `task2/` and confirm all three new tests fail (red) for the expected reason (missing `_no_progress_buf` logic)
+- [x] 1.1 Write test `test_no_progress_constant_fingerprint_bails_at_step_4`: stub LLM emitting `read(intent=f"x{i}")` each step, stub browser returning constant `ax_fingerprint`; assert `RunResult.reason == "no_progress"` and `steps == 4`
+- [x] 1.2 Write test `test_no_progress_alternating_fingerprint_runs_to_completion`: same stub LLM but browser alternates between two fingerprints; assert loop does NOT exit with `reason="no_progress"`
+- [x] 1.3 Write test `test_no_progress_click_ok_prevents_bail`: stub LLM emitting `click(intent="button")` each step, constant fingerprint, click always returns `"Clicked 'button' (ok)"`; assert loop does NOT exit with `reason="no_progress"`
+- [x] 1.4 Run `uv run pytest` from `task2/` and confirm all three new tests fail (red) for the expected reason (missing `_no_progress_buf` logic)
 
 ## 2. Extend RunResultReason Literal
 
