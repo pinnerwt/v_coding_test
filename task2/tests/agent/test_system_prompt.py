@@ -24,3 +24,12 @@ def test_system_prompt_names_irrecoverable_conditions():
     assert "captchas" in prompt
     assert "pages that don't exist" in prompt
     assert "required information genuinely absent from the page" in prompt
+
+
+def test_build_system_prompt_schema_present():
+    prompt = _build_system_prompt(
+        "find the price",
+        expect={"schema": {"answer": "str"}, "validators": ["answer.nonempty"]},
+    )
+    assert "MUST" in prompt
+    assert "answer" in prompt
