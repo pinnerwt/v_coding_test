@@ -1,7 +1,7 @@
 ---
 id: 82
 slug: fast-path-ticket-archival-hygiene
-status: active
+status: archived
 tier: 1
 urgency: P2
 axes:
@@ -16,8 +16,8 @@ related:
 - 76
 - 79
 filed_pr: null
-merged_pr: null
-archived_at: null
+merged_pr: 126
+archived_at: '2026-04-29'
 trigger: '`/full_task2` iteration 6 on 2026-04-29 — discovered ticket #79''s file is still in `task2/tickets/active/` with `merged_pr: null` and `archived_at: null` even though PR #122 merged on 2026-04-29 via the workflow-only fast path. The fast path skips `/done_pr`''s OpenSpec archive substep (no `openspec/changes/<change>/` exists) and never updates the ticket frontmatter or moves the file to `task2/tickets/archive/`. Every workflow-only PR going forward inherits this rot.'
 ---
 
