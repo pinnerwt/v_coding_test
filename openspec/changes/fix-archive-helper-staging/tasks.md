@@ -1,8 +1,8 @@
 ## 1. Regression Tests (Red Phase)
 
-- [ ] 1.1 In `task2/tests/test_archive_workflow_only_ticket.py`, extend `test_archives_ticket_successfully` to call `subprocess.run(["git", "diff", "--staged", "--stat"], cwd=str(repo_root), capture_output=True, check=True)` after the helper runs and assert the output contains both the archive filename (rename) and a `+` line indicating content changes (frontmatter diff). The test must use the real `subprocess.run` for this assertion — do not wrap it in the mock patch.
-- [ ] 1.2 Add `test_archives_ticket_stages_content_change` in the same file: set up a real tmp-path git repo, commit the active ticket, run the helper (with `regen_tickets_index` mocked out), then assert that `subprocess.run(["git", "diff", "--name-only"], cwd=str(repo_root), capture_output=True, check=True).stdout.strip()` is empty (working tree matches index for all files).
-- [ ] 1.3 Run `uv run pytest task2/tests/test_archive_workflow_only_ticket.py -x` from repo root and confirm the two new assertions fail (red bar for the right reason).
+- [x] 1.1 In `task2/tests/test_archive_workflow_only_ticket.py`, extend `test_archives_ticket_successfully` to call `subprocess.run(["git", "diff", "--staged", "--stat"], cwd=str(repo_root), capture_output=True, check=True)` after the helper runs and assert the output contains both the archive filename (rename) and a `+` line indicating content changes (frontmatter diff). The test must use the real `subprocess.run` for this assertion — do not wrap it in the mock patch.
+- [x] 1.2 Add `test_archives_ticket_stages_content_change` in the same file: set up a real tmp-path git repo, commit the active ticket, run the helper (with `regen_tickets_index` mocked out), then assert that `subprocess.run(["git", "diff", "--name-only"], cwd=str(repo_root), capture_output=True, check=True).stdout.strip()` is empty (working tree matches index for all files).
+- [x] 1.3 Run `uv run pytest task2/tests/test_archive_workflow_only_ticket.py -x` from repo root and confirm the two new assertions fail (red bar for the right reason).
 
 ## 2. Production Fix
 

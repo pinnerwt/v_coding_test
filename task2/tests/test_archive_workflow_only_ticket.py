@@ -119,6 +119,53 @@ def test_archives_ticket_successfully(tmp_path):
     regen_cwd = regen_calls[0].get("cwd")
     assert regen_cwd is not None and "task2" in str(regen_cwd)
 
+    diff_result = subprocess.run(
+        ["git", "diff", "--staged", "--stat"],
+        cwd=str(repo_root),
+        capture_output=True,
+        check=True,
+        text=True,
+    )
+    diff_output = diff_result.stdout
+    assert "082-fast-path-ticket-archival-hygiene.md" in diff_output
+    assert "+++" in diff_output
+
+
+def test_archives_ticket_stages_content_change(tmp_path):
+    from scripts.archive_workflow_only_ticket import archive_workflow_only_ticket
+
+    repo_root = tmp_path
+    active_dir = repo_root / "task2" / "tickets" / "active"
+    archive_dir = repo_root / "task2" / "tickets" / "archive"
+    archive_dir.mkdir(parents=True, exist_ok=True)
+
+    ticket_path = _write_ticket(
+        active_dir, 82, "fast-path-ticket-archival-hygiene", MINIMAL_FRONTMATTER
+    )
+    _setup_git_repo(repo_root)
+    _git_add_and_commit(repo_root, [ticket_path])
+
+    with patch(
+        "scripts.archive_workflow_only_ticket.subprocess.run",
+        side_effect=_make_fake_run(),
+    ):
+        archive_workflow_only_ticket(
+            slug="fast-path-ticket-archival-hygiene",
+            ticket_number=82,
+            pr_number=125,
+            iso_date="2026-04-29",
+            repo_root=repo_root,
+        )
+
+    unstaged = subprocess.run(
+        ["git", "diff", "--name-only"],
+        cwd=str(repo_root),
+        capture_output=True,
+        check=True,
+        text=True,
+    ).stdout.strip()
+    assert unstaged == ""
+
 
 def test_archives_ticket_idempotently(tmp_path):
     from scripts.archive_workflow_only_ticket import archive_workflow_only_ticket
