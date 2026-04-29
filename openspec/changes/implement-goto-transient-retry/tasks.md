@@ -1,8 +1,8 @@
 ## 1. Tests (Red)
 
-- [ ] 1.1 Add `test_goto_retries_once_on_transient_error` to `task2/tests/agent/test_browser.py`: stub `Page.goto` so the first call raises `PlaywrightError("net::ERR_NETWORK_CHANGED")` and the second returns normally; assert `Browser.goto` returns without raising and that `Page.goto` was called exactly twice
-- [ ] 1.2 Add `test_goto_does_not_retry_non_transient_error` to `task2/tests/agent/test_browser.py`: stub `Page.goto` to raise `PlaywrightError("net::ERR_NAME_NOT_RESOLVED")`; assert `Browser.goto` raises `NavigationError` and that `Page.goto` was called exactly once
-- [ ] 1.3 Run `uv run pytest task2/tests/agent/test_browser.py::test_goto_retries_once_on_transient_error task2/tests/agent/test_browser.py::test_goto_does_not_retry_non_transient_error` and confirm both fail (red bar)
+- [x] 1.1 Add `test_goto_retries_once_on_transient_error` to `task2/tests/agent/test_browser.py`: stub `Page.goto` so the first call raises `PlaywrightError("net::ERR_NETWORK_CHANGED")` and the second returns normally; assert `Browser.goto` returns without raising and that `Page.goto` was called exactly twice
+- [x] 1.2 Add `test_goto_does_not_retry_non_transient_error` to `task2/tests/agent/test_browser.py`: stub `Page.goto` to raise `PlaywrightError("net::ERR_NAME_NOT_RESOLVED")`; assert `Browser.goto` raises `NavigationError` and that `Page.goto` was called exactly once
+- [x] 1.3 Run `uv run pytest task2/tests/agent/test_browser.py::test_goto_retries_once_on_transient_error task2/tests/agent/test_browser.py::test_goto_does_not_retry_non_transient_error` and confirm both fail (red bar)
 
 ## 2. Implementation (Green)
 

@@ -142,3 +142,35 @@ def test_exit_suppresses_detach_errors_and_clears_cache(playwright_chromium):
 
     assert b._cdp_sessions == {}
     failing_session.detach.assert_called_once()
+
+
+def test_goto_retries_once_on_transient_error(playwright_chromium):
+    from playwright.sync_api import Error as PlaywrightError
+
+    with Browser(playwright_browser=playwright_chromium) as b:
+        call_count = {"n": 0}
+
+        def fake_goto(url, wait_until):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                raise PlaywrightError("net::ERR_NETWORK_CHANGED")
+
+        b._page.goto = fake_goto
+        b.goto("https://example.com")
+        assert call_count["n"] == 2
+
+
+def test_goto_does_not_retry_non_transient_error(playwright_chromium):
+    from playwright.sync_api import Error as PlaywrightError
+
+    with Browser(playwright_browser=playwright_chromium) as b:
+        call_count = {"n": 0}
+
+        def fake_goto(url, wait_until):
+            call_count["n"] += 1
+            raise PlaywrightError("net::ERR_NAME_NOT_RESOLVED")
+
+        b._page.goto = fake_goto
+        with pytest.raises(NavigationError):
+            b.goto("https://example.com")
+        assert call_count["n"] == 1
