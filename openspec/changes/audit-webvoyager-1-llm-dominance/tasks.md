@@ -1,14 +1,14 @@
 ## 1. Red — write the failing test
 
-- [ ] 1.1 Confirm the run JSON artifact exists at `task2/benchmark/task2-propagate-runresult-reason-to-caseresult/webvoyager/20260429_203237.json` and inspect `cases[0].step_breakdown` to verify field names (`latency_breakdown_ms`, `llm_ms`, `dispatch_ms`, `prompt_tokens`).
-- [ ] 1.2 Create `task2/tests/test_benchmark_analysis.py` with function `test_step_breakdown_per_step_llm_dominance_in_run_json`. The docstring SHALL encode: lever (a) prompt-trim saves ~28s (30% × 94s LLM total, winner), lever (b) path-shorten saves ~20s (3 steps × 6.5s), lever (c) observation-trim saves ~6s (step-1 only). The function body asserts: `cases[0]["reason"] == "seconds_budget"`, `len(step_breakdown) == 13`, `llm_ms / dispatch_ms > 5` for all steps with index >= 1, and `step_breakdown[-1]["prompt_tokens"] >= 10 * step_breakdown[0]["prompt_tokens"]`.
-- [ ] 1.3 Run `uv run pytest task2/tests/test_benchmark_analysis.py -v` from `task2/` and confirm the test is discovered. If the artifact path is wrong, correct the `pathlib.Path` construction before proceeding.
+- [x] 1.1 Confirm the run JSON artifact exists at `task2/benchmark/task2-propagate-runresult-reason-to-caseresult/webvoyager/20260429_203237.json` and inspect `cases[0].step_breakdown` to verify field names (`latency_breakdown_ms`, `llm_ms`, `dispatch_ms`, `prompt_tokens`).
+- [x] 1.2 Create `task2/tests/test_benchmark_analysis.py` with function `test_step_breakdown_per_step_llm_dominance_in_run_json`. The docstring SHALL encode: lever (a) prompt-trim saves ~28s (30% × 94s LLM total, winner), lever (b) path-shorten saves ~20s (3 steps × 6.5s), lever (c) observation-trim saves ~6s (step-1 only). The function body asserts: `cases[0]["reason"] == "seconds_budget"`, `len(step_breakdown) == 13`, `llm_ms / dispatch_ms > 5` for all steps with index >= 1, and `step_breakdown[-1]["prompt_tokens"] >= 10 * step_breakdown[0]["prompt_tokens"]`.
+- [x] 1.3 Run `uv run pytest task2/tests/test_benchmark_analysis.py -v` from `task2/` and confirm the test is discovered. If the artifact path is wrong, correct the `pathlib.Path` construction before proceeding.
 
 ## 2. Green — confirm test passes
 
-- [ ] 2.1 Run `uv run pytest task2/tests/test_benchmark_analysis.py -v` and confirm all assertions pass (the artifact is committed and the data satisfies every invariant).
-- [ ] 2.2 Run `uv run ruff check task2/tests/test_benchmark_analysis.py` and fix any lint issues.
-- [ ] 2.3 Run `uv run ruff format task2/tests/test_benchmark_analysis.py` and confirm no diff.
+- [x] 2.1 Run `uv run pytest task2/tests/test_benchmark_analysis.py -v` and confirm all assertions pass (the artifact is committed and the data satisfies every invariant).
+- [x] 2.2 Run `uv run ruff check task2/tests/test_benchmark_analysis.py` and fix any lint issues.
+- [x] 2.3 Run `uv run ruff format task2/tests/test_benchmark_analysis.py` and confirm no diff.
 
 ## 3. Follow-up ticket — file the winning lever
 
