@@ -6,10 +6,10 @@
 
 ## 2. Production Fix
 
-- [ ] 2.1 In `task2/scripts/archive_workflow_only_ticket.py`, reorder the sequence after frontmatter computation: first call `subprocess.run(["git", "mv", str(active_path), str(archive_path)], cwd=str(repo_root), check=True)`, then call `archive_path.write_text(new_text)`, then call `subprocess.run(["git", "add", str(archive_path)], cwd=str(repo_root), check=True)`. Remove the existing `active_path.write_text(new_text)` call that preceded `git mv`.
-- [ ] 2.2 Run `uv run pytest task2/tests/test_archive_workflow_only_ticket.py -x` and confirm all tests pass (green bar).
+- [x] 2.1 In `task2/scripts/archive_workflow_only_ticket.py`, reorder the sequence after frontmatter computation: first call `subprocess.run(["git", "mv", str(active_path), str(archive_path)], cwd=str(repo_root), check=True)`, then call `archive_path.write_text(new_text)`, then call `subprocess.run(["git", "add", str(archive_path)], cwd=str(repo_root), check=True)`. Remove the existing `active_path.write_text(new_text)` call that preceded `git mv`.
+- [x] 2.2 Run `uv run pytest task2/tests/test_archive_workflow_only_ticket.py -x` and confirm all tests pass (green bar).
 
 ## 3. Linting
 
-- [ ] 3.1 Run `uv run ruff check task2/scripts/archive_workflow_only_ticket.py task2/tests/test_archive_workflow_only_ticket.py` and fix any issues.
-- [ ] 3.2 Run `uv run ruff format task2/scripts/archive_workflow_only_ticket.py task2/tests/test_archive_workflow_only_ticket.py` and confirm no diffs.
+- [x] 3.1 Run `uv run ruff check task2/scripts/archive_workflow_only_ticket.py task2/tests/test_archive_workflow_only_ticket.py` and fix any issues.
+- [x] 3.2 Run `uv run ruff format task2/scripts/archive_workflow_only_ticket.py task2/tests/test_archive_workflow_only_ticket.py` and confirm no diffs.
