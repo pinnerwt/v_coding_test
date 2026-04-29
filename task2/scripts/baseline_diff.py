@@ -81,13 +81,15 @@ def generate_diff_markdown(master: dict, branch: dict) -> str:
     b_usd = sum(c.get("usd", 0.0) for c in b_list)
     delta_usd = b_usd - m_usd
 
-    common_ids = set(master_cases) & set(branch_cases)
+    master_ids = set(master_cases)
+    branch_ids = set(branch_cases)
+    common_ids = master_ids & branch_ids
     m_lat = [master_cases[cid].get("latency_ms_total", 0) for cid in common_ids]
     b_lat = [branch_cases[cid].get("latency_ms_total", 0) for cid in common_ids]
 
     n_common = len(common_ids)
-    n_added = len(set(branch_cases) - set(master_cases))
-    n_dropped = len(set(master_cases) - set(branch_cases))
+    n_added = len(branch_ids - master_ids)
+    n_dropped = len(master_ids - branch_ids)
 
     sign_usd = "+" if delta_usd >= 0 else "-"
     lines.append(f"Δ pass-rate: {_fmt_signed(b_pct - m_pct)}%")
