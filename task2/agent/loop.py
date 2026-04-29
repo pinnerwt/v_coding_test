@@ -226,6 +226,14 @@ class _DecisionMarker:
     kind: str = "decision"
 
 
+def _phase_breakdown(t_obs_start: float, t_llm_start: float, t_dispatch_start: float) -> dict:
+    return {
+        "observation_ms": int((t_llm_start - t_obs_start) * 1000),
+        "llm_ms": int((t_dispatch_start - t_llm_start) * 1000),
+        "dispatch_ms": int((time.monotonic() - t_dispatch_start) * 1000),
+    }
+
+
 def _record_step(
     step_num: int,
     t0: float,
@@ -873,11 +881,7 @@ def loop(
                 [],
                 latency_ms_per_step,
                 step_breakdown,
-                latency_breakdown={
-                    "observation_ms": int((t_llm_start - t_obs_start) * 1000),
-                    "llm_ms": int((t_dispatch_start - t_llm_start) * 1000),
-                    "dispatch_ms": int((time.monotonic() - t_dispatch_start) * 1000),
-                },
+                latency_breakdown=_phase_breakdown(t_obs_start, t_llm_start, t_dispatch_start),
             )
             if _consecutive_no_tool_call_steps >= _NO_TOOL_CALL_K:
                 return RunResult(
@@ -935,11 +939,7 @@ def loop(
                     dispatched_tool_names,
                     latency_ms_per_step,
                     step_breakdown,
-                    latency_breakdown={
-                        "observation_ms": int((t_llm_start - t_obs_start) * 1000),
-                        "llm_ms": int((t_dispatch_start - t_llm_start) * 1000),
-                        "dispatch_ms": int((time.monotonic() - t_dispatch_start) * 1000),
-                    },
+                    latency_breakdown=_phase_breakdown(t_obs_start, t_llm_start, t_dispatch_start),
                 )
                 return RunResult(
                     status=status,
@@ -990,11 +990,7 @@ def loop(
                     dispatched_tool_names,
                     latency_ms_per_step,
                     step_breakdown,
-                    latency_breakdown={
-                        "observation_ms": int((t_llm_start - t_obs_start) * 1000),
-                        "llm_ms": int((t_dispatch_start - t_llm_start) * 1000),
-                        "dispatch_ms": int((time.monotonic() - t_dispatch_start) * 1000),
-                    },
+                    latency_breakdown=_phase_breakdown(t_obs_start, t_llm_start, t_dispatch_start),
                 )
                 return RunResult(
                     status="failed",
@@ -1034,11 +1030,7 @@ def loop(
                     dispatched_tool_names,
                     latency_ms_per_step,
                     step_breakdown,
-                    latency_breakdown={
-                        "observation_ms": int((t_llm_start - t_obs_start) * 1000),
-                        "llm_ms": int((t_dispatch_start - t_llm_start) * 1000),
-                        "dispatch_ms": int((time.monotonic() - t_dispatch_start) * 1000),
-                    },
+                    latency_breakdown=_phase_breakdown(t_obs_start, t_llm_start, t_dispatch_start),
                 )
                 return RunResult(
                     status="failed",
@@ -1103,11 +1095,9 @@ def loop(
                         dispatched_tool_names,
                         latency_ms_per_step,
                         step_breakdown,
-                        latency_breakdown={
-                            "observation_ms": int((t_llm_start - t_obs_start) * 1000),
-                            "llm_ms": int((t_dispatch_start - t_llm_start) * 1000),
-                            "dispatch_ms": int((time.monotonic() - t_dispatch_start) * 1000),
-                        },
+                        latency_breakdown=_phase_breakdown(
+                            t_obs_start, t_llm_start, t_dispatch_start
+                        ),
                     )
                     return RunResult(
                         status="failed",
@@ -1130,11 +1120,7 @@ def loop(
             dispatched_tool_names,
             latency_ms_per_step,
             step_breakdown,
-            latency_breakdown={
-                "observation_ms": int((t_llm_start - t_obs_start) * 1000),
-                "llm_ms": int((t_dispatch_start - t_llm_start) * 1000),
-                "dispatch_ms": int((time.monotonic() - t_dispatch_start) * 1000),
-            },
+            latency_breakdown=_phase_breakdown(t_obs_start, t_llm_start, t_dispatch_start),
         )
 
     return RunResult(
