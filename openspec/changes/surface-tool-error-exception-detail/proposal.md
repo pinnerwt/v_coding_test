@@ -22,6 +22,6 @@ WebVoyager-2 fails at step 4 with `failure_class=tool_error` and `failure_detail
 ## Impact
 
 - `task2/agent/loop.py`: ~10 lines of change across the click branch, type branch, and `_emit_act_event` signature.
-- `task2/tests/test_loop.py` (or wherever click/type dispatch is tested): one new red test asserting `diff["error"]` carries the exception class+message on a forced playwright failure.
+- `task2/tests/agent/test_loop.py` (or wherever click/type dispatch is tested): one new red test asserting `diff["error"]` carries the exception class+message on a forced playwright failure.
 - Downstream WebVoyager benchmark: webvoyager-2 (and any other live case that hits a click/type error) will now surface a real `failure_detail` in `results.json`. Pass-rate is unchanged by this fix alone — it converts an opaque failure into a classified one so the *next* iteration can target the underlying error.
 - No API change visible to the LLM; no schema change to `ActEvent` (the `diff: dict[str, Any]` field already exists and is JSON-serialised via `TraceWriter`).

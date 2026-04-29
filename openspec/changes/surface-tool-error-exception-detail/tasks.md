@@ -2,7 +2,7 @@
 
 ## 1. Failing test (red)
 
-- [x] 1.1 In `task2/tests/test_loop.py`, add a test that forces the click branch into the `playwright.sync_api.TimeoutError` path (e.g. via a stub Page+Locator whose `click(timeout=...)` raises `PlaywrightTimeoutError("Locator.click: Timeout 5000ms exceeded.")`) and asserts that the emitted `ActEvent.diff` equals `{"error": "TimeoutError: Locator.click: Timeout 5000ms exceeded."}`. Confirm with `uv run pytest task2/tests/test_loop.py::<new-test> -x` that it fails on the current `diff={}` producer.
+- [x] 1.1 In `task2/tests/agent/test_loop.py`, add a test that forces the click branch into the `playwright.sync_api.TimeoutError` path (e.g. via a stub Page+Locator whose `click(timeout=...)` raises `PlaywrightTimeoutError("Locator.click: Timeout 5000ms exceeded.")`) and asserts that the emitted `ActEvent.diff` equals `{"error": "TimeoutError: Locator.click: Timeout 5000ms exceeded."}`. Confirm with `uv run pytest task2/tests/agent/test_loop.py::<new-test> -x` that it fails on the current `diff={}` producer.
 - [x] 1.2 Add a sibling test for the type branch using `PlaywrightTimeoutError("Locator.fill: Timeout 5000ms exceeded.")` against the type dispatch.
 - [x] 1.3 Optionally add a generic `PlaywrightError("Element is not attached to the DOM")` test for the click branch, asserting `ActEvent.diff["error"]` starts with the playwright base class name and contains the message text.
 
@@ -12,7 +12,7 @@
 - [x] 2.2 In the click branch of `_dispatch`, change `except PlaywrightTimeoutError:` to `except PlaywrightTimeoutError as exc:` and `except PlaywrightError:` to `except PlaywrightError as exc:`. Build `act_diff = {}` for `ok`/`nav` outcomes and `act_diff = {"error": f"{exc.__class__.__name__}: {exc}"}` for `timeout`/`error` outcomes.
 - [x] 2.3 Pass `diff=act_diff` to the `_emit_act_event(...)` call in the click branch.
 - [x] 2.4 Repeat 2.2 and 2.3 for the type branch.
-- [x] 2.5 Run `uv run pytest task2/tests/test_loop.py -x` and confirm the new tests now pass.
+- [x] 2.5 Run `uv run pytest task2/tests/agent/test_loop.py -x` and confirm the new tests now pass.
 
 ## 3. Quality gates
 
