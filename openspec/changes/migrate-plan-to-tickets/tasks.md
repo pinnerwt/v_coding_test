@@ -56,13 +56,13 @@
 
 ## 9. Documentation
 
-- [ ] 9.1 Write `task2/tickets/README.md` documenting: the full frontmatter schema with field types and allowed values; the skill consumer contract (what each skill reads/writes and when); how to run `regen_tickets_index.py` manually; the pre-flight gate vocabulary.
+- [x] 9.1 Write `task2/tickets/README.md` documenting: the full frontmatter schema with field types and allowed values; the skill consumer contract (what each skill reads/writes and when); how to run `regen_tickets_index.py` manually; the pre-flight gate vocabulary.
 
 ## 10. Lint, format, final sweep
 
-- [ ] 10.1 Run `uv run ruff check task2/scripts/migrate_plan_to_tickets.py task2/scripts/regen_tickets_index.py task2/tests/test_migrate_plan_to_tickets.py task2/tests/test_tickets_index.py` — fix any issues.
-- [ ] 10.2 Run `uv run ruff format task2/scripts/ task2/tests/` — apply formatting.
-- [ ] 10.3 Run `uv run ruff check task2/` — confirm exits clean.
-- [ ] 10.4 Final sweep: run `grep -rn 'task2/plan.md\|## Undone\|## TDD tickets\|## Benchmark improvements' .claude/` — ensure every hit is either the updated skill file or an intentional retention (document any intentional retentions in a comment).
-- [ ] 10.5 Run `uv run pytest task2/` one final time — all green.
-- [ ] 10.6 Confirm `git diff task2/plan.md` shows a stub (not the full monolith), `task2/PLAN.md` exists, and `task2/tickets/` has the expected directory structure.
+- [x] 10.1 Run `uv run ruff check task2/scripts/migrate_plan_to_tickets.py task2/scripts/regen_tickets_index.py task2/tests/test_migrate_plan_to_tickets.py task2/tests/test_tickets_index.py` — fix any issues.
+- [x] 10.2 Run `uv run ruff format task2/scripts/ task2/tests/` — apply formatting.
+- [x] 10.3 Run `uv run ruff check task2/` — confirm exits clean.
+- [x] 10.4 Final sweep: run `grep -rn 'task2/plan.md\|## Undone\|## TDD tickets\|## Benchmark improvements' .claude/` — intentional retentions are lines 180–201 of done_pr/SKILL.md inside the frozen `## Archived: basic benchmark (do not run)` section.
+- [x] 10.5 Run `uv run pytest task2/` one final time — 759 passed, 1 deselected, all green.
+- [x] 10.6 Confirm `git diff task2/plan.md` shows a stub (not the full monolith), `task2/PLAN.md` exists, and `task2/tickets/` has the expected directory structure.
