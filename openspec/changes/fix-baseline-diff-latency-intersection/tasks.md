@@ -12,14 +12,14 @@
 
 ## 3. Cases annotation — write and verify test
 
-- [ ] 3.1 Add `test_cases_annotation_reflects_added_case` in `task2/tests/test_baseline_diff.py`: master `{a, b, c}` + branch `{a, b, c, d}` — assert `Cases: 3 common, +1 added, -0 dropped` in output.
-- [ ] 3.2 Add `test_cases_annotation_all_zeros_for_identical_runs`: master and branch identical — assert `Cases: 2 common, +0 added, -0 dropped` (use a two-case fixture).
-- [ ] 3.3 Run both new tests and confirm they pass.
+- [x] 3.1 Add `test_cases_annotation_reflects_added_case` in `task2/tests/test_baseline_diff.py`: master `{a, b, c}` + branch `{a, b, c, d}` — assert `Cases: 3 common, +1 added, -0 dropped` in output.
+- [x] 3.2 Add `test_cases_annotation_all_zeros_for_identical_runs`: master and branch identical — assert `Cases: 2 common, +0 added, -0 dropped` (use a two-case fixture).
+- [x] 3.3 Run both new tests and confirm they pass.
 
 ## 4. Red + Green — empty intersection sentinel
 
-- [ ] 4.1 Add `test_latency_delta_empty_intersection_renders_dash` in `task2/tests/test_baseline_diff.py`: master `{a: 100ms, b: 200ms}` + branch `{c: 300ms, d: 400ms}` (no common ids). Assert output contains `Δ p50 latency: —` and `Δ p95 latency: —` and `Cases: 0 common, +2 added, -2 dropped`.
-- [ ] 4.2 Run the test and confirm it passes (step 2.2 already implements this).
+- [x] 4.1 Add `test_latency_delta_empty_intersection_renders_dash` in `task2/tests/test_baseline_diff.py`: master `{a: 100ms, b: 200ms}` + branch `{c: 300ms, d: 400ms}` (no common ids). Assert output contains `Δ p50 latency: —` and `Δ p95 latency: —` and `Cases: 0 common, +2 added, -2 dropped`.
+- [x] 4.2 Run the test and confirm it passes (step 2.2 already implements this).
 
 ## 5. Existing test hygiene — review and align
 
