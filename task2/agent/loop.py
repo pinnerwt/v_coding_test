@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from agent.locator_cache import LocatorCache
 
 RunStatus = Literal["succeeded", "unverified", "failed", "timeout"]
-RunResultReason = Literal["stuck_repeat", "no_tool_call_repeat"]
+RunResultReason = Literal["stuck_repeat", "no_tool_call_repeat", "seconds_budget"]
 ToolName = Literal["goto", "read", "click", "type", "done", "fail"]
 _CLICK_SUCCESS_OUTCOMES: frozenset[str] = frozenset({"ok", "nav"})
 _IRRECOVERABLE_REASONS: frozenset[str] = frozenset({"login wall", "captcha", "blocked"})
@@ -763,6 +763,7 @@ def loop(
     trace_writer: TraceWriter | None = None,
     locator_cache: LocatorCache | None = None,
     expect: dict | None = None,
+    budget_seconds: float | None = None,
 ) -> RunResult:
     if trace_writer is not None and run_id is None:
         raise ValueError("run_id is required when trace_writer is provided")
@@ -783,8 +784,24 @@ def loop(
     _stuck_buf: list[str] = []
     _consecutive_no_tool_call_steps: int = 0
     _budget = int(os.environ.get("LLM_CONTEXT_CHAR_BUDGET", _DEFAULT_CONTEXT_CHAR_BUDGET))
+    t_loop = time.monotonic()
 
     for _ in range(max_steps):
+        if budget_seconds is not None and (time.monotonic() - t_loop) >= budget_seconds:
+            return RunResult(
+                status="timeout",
+                reason="seconds_budget",
+                result=None,
+                evidence=None,
+                verifier=None,
+                steps=step_num,
+                prompt_tokens=cum_prompt_tokens,
+                completion_tokens=cum_completion_tokens,
+                usd=cum_usd,
+                latency_ms_total=sum(latency_ms_per_step),
+                latency_ms_per_step=latency_ms_per_step,
+                step_breakdown=step_breakdown,
+            )
         step_num += 1
         t0 = time.monotonic()
         _step_id = f"{run_id}:step-{step_num}" if run_id is not None else None

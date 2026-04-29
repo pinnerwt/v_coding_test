@@ -164,11 +164,33 @@ Wraps up an OpenSpec-driven PR end-to-end: archive → commit → push → merge
    ```
    Both must pass. If either fails, stop and surface the failure verbatim — do **not** merge, do **not** "patch the test to make it pass," do **not** `--no-verify` past it. Fix the underlying defect in a follow-up commit on the same branch, push, and re-run this gate. Why: confirmed in PR #135 / PR #136 follow-up on 2026-04-29 — PR #135 was squashed via `gh pr merge --squash` while CI was still in flight; CI later went red on `tests/test_migrate_plan_to_tickets.py::test_archived_changes_produce_archive_ticket_with_merged_pr` (a `merged_pr`-routing bug in `scripts/migrate_plan_to_tickets.py` introduced when ticket #57 was archived), and the failure landed on master silently. The next `/auto_task2` iteration's pre-flight on a clean master would still pass `git status` checks but the underlying CI was red. How to apply: this gate is the second line of defense after the per-iteration `uv run pytest` in `/new_task2` step 6 — it catches drift between branch HEAD and merge time (e.g. when `/review_task2` or follow-up commits modified test surface after step 6 ran). The cost is one local pytest run (~60s on `task2/`); the avoided cost is a red-master rollback.
 
-   **Pre-existing-master-red carve-out.** If pytest produces failures, before stopping check whether the SAME failing test ids fail on a clean master baseline:
+   **Pre-existing-master-red carve-out (NARROW; check step 3b before relying on it).** If pytest produces failures, before stopping check whether the SAME failing test ids fail on a clean master baseline:
    ```bash
    (git stash -u && git checkout master && cd task2 && uv run pytest <failing_test_ids> ; cd .. && git checkout - && git stash pop)
    ```
-   If every failing id ALSO fails on master, the failures are pre-existing red, NOT regressions introduced by this branch. In that case: log one line `done_pr step 3a: <N> failures verified pre-existing on master (<ids>); not regressions, proceeding with merge`, and continue with the merge. The gate's purpose is to catch *new* regressions introduced by the branch (per PR #135's failure mode); blocking on pre-existing master failures forces unrelated cleanup into every subsequent PR and stalls auto-loop iterations indefinitely. Why: confirmed in PR #142 on 2026-04-29 — `tests/test_tickets_index.py::{test_schema_all_required_fields,test_related_resolution}` were red on master at session start (the first because ticket #94 used `tier: 0` but the index test only allows tiers 1-6; the second because `049-...md` referenced id=75 which doesn't exist), and the gate's "do not merge" rule would have stalled an unrelated correctness PR for failures it did not cause. How to apply: the carve-out fires ONLY when every failing id matches; if even one id is new, the gate still blocks and you fix that id. Also file a separate cleanup ticket for the pre-existing red so it gets addressed instead of festering.
+   If every failing id ALSO fails on master, the failures are pre-existing red, NOT regressions introduced by this branch. The carve-out lets step 3a continue, but **step 3b's remote CI gate is non-negotiable** — if those same pre-existing failures are blocking GitHub CI on the PR, you MUST fix them on this branch before merge (the workaround "merge anyway because master is already red" is what put master in this state in the first place). Why: confirmed in PR #145 on 2026-04-29 — `tests/test_tickets_index.py::{test_schema_all_required_fields,test_related_resolution}` were carved out as "pre-existing master red" across multiple PRs and the GitHub CI test job stayed red on every merge, until the user explicitly directed "fix it before merge". How to apply: when the carve-out fires, IMMEDIATELY also fix the pre-existing failures on this branch (a one-line `_VALID_TIERS` widening, a dropped stray PR-number from a `related:` list — both are <5-line edits) and commit them as a separate `chore(task2): unblock CI — <X>` commit. File a follow-up ticket only if the fix is non-trivial (>30 LoC or requires design).
+
+3b. **Pre-merge remote CI gate (mandatory).** After pushing the branch and after step 3a passes, poll GitHub CI on the PR until every required check has a terminal status, and refuse to merge if any is `failure`/`cancelled`/`timed_out`. `gh pr merge --squash --delete-branch` does NOT block on CI status (only `--auto` does, and only with branch protection requiring checks); without this gate a red CI lands on master.
+
+   ```bash
+   pr_num=$(gh pr view --json number -q .number)
+   # Wait for in-flight checks. --watch exits 1 on failure, 0 on success.
+   # Do NOT pass --required: this repo's branch protection does not mark any check
+   # as required, so --required filters EVERYTHING out and the command silently
+   # returns "no required checks reported" without polling at all — the very class
+   # of silent no-op that caused PR #145 to merge red. Confirmed 2026-04-29: the
+   # actual `task2 CI` `test` and `verify` jobs are reported only by the unfiltered
+   # form. Use the unfiltered command.
+   gh pr checks "$pr_num" --watch 2>&1 | tail -20
+   ```
+
+   If `gh pr checks --watch` exits non-zero (or the tail shows any non-`pass` row), list the failing jobs:
+   ```bash
+   gh pr checks "$pr_num" | awk '$2 != "pass" && $2 != "skipping" {print}'
+   ```
+   Inspect logs of each failing job (`gh run view <run_id> --log-failed | tail -80`), fix the underlying defect on this branch, push, and re-run this gate. Do not merge with red checks; do not skip checks via `--admin`; do not patch tests to make them pass.
+
+   **Carve-out interaction:** if step 3a's pre-existing-master-red carve-out fired, those failures will *also* be red on the remote CI for this PR — the carve-out does NOT make CI pass. Fix them here, on this branch, in a `chore(task2): unblock CI — <X>` commit (per the carve-out note above). Why: confirmed in PR #145 on 2026-04-29 — every PR in the auto-loop merged with the same two `test_tickets_index.py` failures red on CI, breaking the GitHub status badge and obscuring real regressions; the user halted the loop with "Fix it before merge". How to apply: the cost of fixing two pre-existing red ticket-validation failures is ~5 lines of code per PR; the cost of a red master is every subsequent CI run being noise.
 
 4. **Merge the PR.** Identify the PR for the current branch with `gh pr view --json number,state,mergeable,headRefName -q .` (no number arg → uses the branch's PR).
    - If state is not `OPEN`, report it and stop (don't try to merge a closed/already-merged PR).

@@ -15,7 +15,6 @@ evidence:
 - task2/tests/test_archive_workflow_only_ticket.py
 related:
 - 82
-- 83
 filed_pr: null
 merged_pr: 130
 archived_at: '2026-04-29'

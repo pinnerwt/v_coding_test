@@ -274,6 +274,7 @@ def _run_case(
                 run_id=run_id,
                 locator_cache=cache,
                 expect=case.get("expect"),
+                budget_seconds=case["budget"].get("seconds"),
             )
         except Exception as exc:
             if isinstance(exc, LLMError):
