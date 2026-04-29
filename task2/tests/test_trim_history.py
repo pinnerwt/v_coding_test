@@ -89,6 +89,48 @@ def test_trim_history_keep_window_larger_than_history_is_noop():
     assert result == messages
 
 
+def test_trim_history_drops_multi_tool_call_group_atomically():
+    call_id_a = "tc-multi-a"
+    call_id_b = "tc-multi-b"
+    messages = [
+        {"role": "system", "content": "sys"},
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {"id": call_id_a, "type": "function", "function": {"name": "f", "arguments": "{}"}},
+                {"id": call_id_b, "type": "function", "function": {"name": "f", "arguments": "{}"}},
+            ],
+        },
+        {"role": "tool", "tool_call_id": call_id_a, "content": "ra"},
+        {"role": "tool", "tool_call_id": call_id_b, "content": "rb"},
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {"id": "tc-keep", "type": "function", "function": {"name": "f", "arguments": "{}"}},
+            ],
+        },
+        {"role": "tool", "tool_call_id": "tc-keep", "content": "rk"},
+    ]
+    result = trim_history(messages, keep_steps=1)
+
+    result_tool_ids = {m["tool_call_id"] for m in result if m["role"] == "tool"}
+    result_asst_call_ids = {
+        tc["id"]
+        for m in result
+        if m["role"] == "assistant" and m.get("tool_calls")
+        for tc in m["tool_calls"]
+    }
+
+    assert call_id_a not in result_tool_ids
+    assert call_id_b not in result_tool_ids
+    assert call_id_a not in result_asst_call_ids
+    assert call_id_b not in result_asst_call_ids
+    assert "tc-keep" in result_tool_ids
+    assert "tc-keep" in result_asst_call_ids
+
+
 def test_trim_history_respects_env_var(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("HISTORY_TRIM_KEEP_STEPS", "2")
     messages = _build_messages()
