@@ -16,11 +16,11 @@
 
 ## 3. Full suite
 
-- [ ] 3.1 Run `uv run pytest task2/tests/` from `task2/` and confirm no regressions in the broader test suite.
+- [x] 3.1 Run `uv run pytest task2/tests/` from `task2/` and confirm no regressions in the broader test suite.
 
 ## 4. Clean — lint and format
 
-- [ ] 4.1 `uv run ruff check --fix .` from `task2/`.
-- [ ] 4.2 `uv run ruff format .` from `task2/`.
-- [ ] 4.3 `uv run ruff check .` from `task2/` — confirm zero errors, zero warnings.
-- [ ] 4.4 `uv run pytest` from `task2/` — confirm green bar after formatting.
+- [x] 4.1 `uv run ruff check --fix .` from `task2/`.
+- [x] 4.2 `uv run ruff format .` from `task2/`.
+- [x] 4.3 `uv run ruff check .` from `task2/` — confirm zero errors, zero warnings.
+- [x] 4.4 `uv run pytest` from `task2/` — confirm green bar after formatting.
