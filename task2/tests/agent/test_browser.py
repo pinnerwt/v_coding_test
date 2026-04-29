@@ -149,7 +149,7 @@ def test_goto_retries_once_on_transient_error(playwright_chromium):
     with Browser(playwright_browser=playwright_chromium) as b:
         call_count = {"n": 0}
 
-        def fake_goto(url, wait_until):
+        def fake_goto(url, **kwargs):
             call_count["n"] += 1
             if call_count["n"] == 1:
                 raise PlaywrightError("net::ERR_NETWORK_CHANGED")
@@ -163,7 +163,7 @@ def test_goto_does_not_retry_non_transient_error(playwright_chromium):
     with Browser(playwright_browser=playwright_chromium) as b:
         call_count = {"n": 0}
 
-        def fake_goto(url, wait_until):
+        def fake_goto(url, **kwargs):
             call_count["n"] += 1
             raise PlaywrightError("net::ERR_NAME_NOT_RESOLVED")
 
@@ -177,7 +177,7 @@ def test_goto_raises_navigation_error_on_second_transient_failure(playwright_chr
     with Browser(playwright_browser=playwright_chromium) as b:
         call_count = {"n": 0}
 
-        def fake_goto(url, wait_until):
+        def fake_goto(url, **kwargs):
             call_count["n"] += 1
             raise PlaywrightError("net::ERR_NETWORK_CHANGED")
 

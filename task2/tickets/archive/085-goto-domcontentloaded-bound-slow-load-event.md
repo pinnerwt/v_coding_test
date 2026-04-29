@@ -1,7 +1,7 @@
 ---
 id: 85
 slug: goto-domcontentloaded-bound-slow-load-event
-status: active
+status: archived
 tier: 5
 urgency: P1
 axes:
@@ -15,9 +15,9 @@ evidence:
 - task2/agent/loop.py
 - task2/benchmark/task2-implement-fast-path-ticket-archival/webvoyager/20260429_104152.json
 related: []
-filed_pr: null
-merged_pr: null
-archived_at: null
+filed_pr: 133
+merged_pr: 133
+archived_at: '2026-04-29'
 trigger: 'WebVoyager benchmark inspection on 2026-04-29 — webvoyager-1 (Wikipedia Turing-Award-2018 task) has timed out at 20 steps in every one of the last 8 benchmark runs (task2-implement-loop-stuck-repeat through task2-implement-fast-path-ticket-archival), costing ~$0.30 / ~310K prompt tokens / ~6 minutes wallclock per benchmark run. Cross-run latency profile is bimodal and consistent: steps 0-9 average ~7s/step, steps 10-19 average ~28s/step (4× slower) with the same prompt-token range (~22K). Tool calls are non-repeating (mix of `goto`/`read`/`click`), prompt tokens stay flat after step 10 (history truncation in play), no replans, only 1 escalation — the agent is making semantic progress on Wikipedia article pages but never converges to `done`. Root cause: `task2/agent/browser.py:83` `self._page.goto(url, wait_until="load")` blocks until ALL subresources (images, fonts, lazy scripts) finish; on Wikipedia article views this routinely takes 15-30s. Step 13''s `goto` measured 31964ms in the latest run; the surrounding read/click steps inherit the same load-state contention because Playwright''s implicit waits stall on the same `load` lifecycle that the goto initiated. No explicit timeout is passed either, so the only ceiling is Playwright''s 30s default — which is exactly what we see in the second-half latency distribution.'
 ---
 

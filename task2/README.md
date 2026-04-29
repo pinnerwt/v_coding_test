@@ -33,14 +33,14 @@ Artifacts land at `task2/benchmark/<sanitized-branch>/webvoyager/<timestamp>.jso
 
 Each branch contributes its most recent WebVoyager run (`benchmark/<branch>/webvoyager/<timestamp>.json`). Pass-rate, latency, and cost are split into passed vs. failed cases; failure-class counts come from the `failure_class` field on each non-passed case.
 
-#### Latest run — `task2-implement-fast-path-ticket-archival` (2026-04-29 10:41 UTC)
+#### Latest run — `task2-fix-goto-domcontentloaded` (2026-04-29 12:25 UTC)
 
 | Case | Status | Steps | Latency | Tokens | USD |
 |---|---|---:|---:|---:|---:|
-| `webvoyager-1` | timeout | 20 | 372.6 s | 342,786 | $0.3452 |
-| `webvoyager-2` | succeeded | 8 | 100.7 s | 93,941 | $0.0957 |
-| `webvoyager-3` | succeeded | 6 | 50.9 s | 39,910 | $0.0408 |
-| **Total (3 cases, 2 passed)** | | 34 | 524.2 s | 476,637 | $0.4818 |
+| `webvoyager-1` | timeout | 20 | 321.6 s | 318,867 | $0.3211 |
+| `webvoyager-2` | succeeded | 8 | 109.5 s | 93,978 | $0.0958 |
+| `webvoyager-3` | succeeded | 5 | 57.5 s | 28,858 | $0.0298 |
+| **Total (3 cases, 2 passed)** | | 33 | 488.6 s | 441,703 | $0.4468 |
 <!-- WEBVOYAGER_TRENDS:END -->
 
 #### Tier-0 baseline (3 tasks, 2026-04-28)
