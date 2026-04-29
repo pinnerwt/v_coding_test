@@ -21,7 +21,7 @@ The system SHALL provide a helper function `archive_workflow_only_ticket(slug, t
 
 ### Requirement: Reject invalid archival inputs
 
-The helper SHALL reject calls whose target file does not exist or whose filename's leading ticket number does not match the supplied `ticket_number` argument.
+The helper SHALL reject calls whose target file does not exist, whose filename's leading ticket number does not match the supplied `ticket_number` argument, or whose already-archived metadata conflicts with the supplied `pr_number` / `iso_date`.
 
 #### Scenario: Missing ticket file
 
@@ -33,4 +33,10 @@ The helper SHALL reject calls whose target file does not exist or whose filename
 
 - **GIVEN** a file `task2/tickets/active/082-fast-path-ticket-archival-hygiene.md` exists
 - **WHEN** `archive_workflow_only_ticket(slug="fast-path-ticket-archival-hygiene", ticket_number=99, pr_number=125, iso_date="2026-04-29", repo_root=<path>)` is called
+- **THEN** `ValueError` is raised before any filesystem mutation occurs
+
+#### Scenario: Already archived with conflicting metadata
+
+- **GIVEN** a ticket file at `task2/tickets/archive/<NNN>-<slug>.md` with `merged_pr: <PR-A>` and `archived_at: <DATE-A>`
+- **WHEN** `archive_workflow_only_ticket(slug=<slug>, ticket_number=<NNN>, pr_number=<PR-B>, iso_date=<DATE-B>, ...)` is called with `<PR-B> != <PR-A>` or `<DATE-B> != <DATE-A>`
 - **THEN** `ValueError` is raised before any filesystem mutation occurs

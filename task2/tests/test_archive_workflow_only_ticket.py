@@ -61,17 +61,9 @@ def _git_add_and_commit(repo_root: Path, paths: list[Path]) -> None:
 
 
 def _make_fake_run(regen_calls_collector=None):
+    real_run = subprocess.run
+
     def fake_run(args, **kwargs):
-        if args[:2] == ["git", "mv"]:
-            src = Path(args[2])
-            dst = Path(args[3])
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            src.rename(dst)
-
-            class R:
-                returncode = 0
-
-            return R()
         if "regen_tickets_index" in str(args):
             if regen_calls_collector is not None:
                 regen_calls_collector.append(kwargs)
@@ -80,13 +72,12 @@ def _make_fake_run(regen_calls_collector=None):
                 returncode = 0
 
             return R()
-        raise AssertionError(f"Unexpected subprocess.run call: {args}")
+        return real_run(args, **kwargs)
 
     return fake_run
 
 
 def test_archives_ticket_successfully(tmp_path):
-    """Happy path: file moves active→archive, frontmatter updated, INDEX regen invoked."""
     from scripts.archive_workflow_only_ticket import archive_workflow_only_ticket
 
     repo_root = tmp_path
@@ -130,7 +121,6 @@ def test_archives_ticket_successfully(tmp_path):
 
 
 def test_archives_ticket_idempotently(tmp_path):
-    """Archive a ticket once (success), then a second call is a no-op."""
     from scripts.archive_workflow_only_ticket import archive_workflow_only_ticket
 
     repo_root = tmp_path
@@ -184,7 +174,6 @@ def test_archives_ticket_idempotently(tmp_path):
 
 
 def test_rejects_missing_ticket_file(tmp_path):
-    """FileNotFoundError if file exists in neither active/ nor archive/."""
     from scripts.archive_workflow_only_ticket import archive_workflow_only_ticket
 
     repo_root = tmp_path
@@ -202,7 +191,6 @@ def test_rejects_missing_ticket_file(tmp_path):
 
 
 def test_rejects_mismatched_ticket_number(tmp_path):
-    """ValueError if filename's leading integer != ticket_number argument."""
     from scripts.archive_workflow_only_ticket import archive_workflow_only_ticket
 
     repo_root = tmp_path
@@ -222,3 +210,34 @@ def test_rejects_mismatched_ticket_number(tmp_path):
 
     archive_dir = repo_root / "task2" / "tickets" / "archive"
     assert not list(archive_dir.glob("*.md")), "No files should exist in archive/ after ValueError"
+
+
+def test_rejects_archived_ticket_with_mismatched_metadata(tmp_path):
+    from scripts.archive_workflow_only_ticket import archive_workflow_only_ticket
+
+    repo_root = tmp_path
+    archive_dir = repo_root / "task2" / "tickets" / "archive"
+    (repo_root / "task2" / "tickets" / "active").mkdir(parents=True, exist_ok=True)
+
+    archived_fm = dict(MINIMAL_FRONTMATTER)
+    archived_fm["status"] = "archived"
+    archived_fm["merged_pr"] = 125
+    archived_fm["archived_at"] = "2026-04-29"
+    archived_path = _write_ticket(archive_dir, 82, "fast-path-ticket-archival-hygiene", archived_fm)
+
+    _setup_git_repo(repo_root)
+    _git_add_and_commit(repo_root, [archived_path])
+
+    with pytest.raises(ValueError):
+        archive_workflow_only_ticket(
+            slug="fast-path-ticket-archival-hygiene",
+            ticket_number=82,
+            pr_number=999,
+            iso_date="2026-04-29",
+            repo_root=repo_root,
+        )
+
+    text = archived_path.read_text()
+    end = text.index("---", 3)
+    fm = yaml.safe_load(text[3:end])
+    assert fm["merged_pr"] == 125, "Archive file must not be modified after ValueError"

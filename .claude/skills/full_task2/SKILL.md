@@ -143,7 +143,7 @@ Then jump to Phase 4 without failing.
 
 ```bash
 ticket_slug="<slug-from-phase-1>"   # e.g. fast-path-ticket-archival-hygiene
-ticket_num=<NNN>                     # e.g. 082
+ticket_num=<NN>                      # e.g. 82 (no leading zero; helper and padding handle it)
 pr_num=$(gh pr view "$pr_url" --json number -q .number)
 iso_date=$(date -I)
 
@@ -158,12 +158,13 @@ This edits `task2/tickets/active/<NNN>-<slug>.md` frontmatter (`status: archived
 
 **Step 4 — Commit on a chore branch (master is branch-protected; direct push is rejected):**
 
-This is the same shape as the `chore/skills-lessons-<change>` PRs in `/auto_task2` step 5 — small commit on a `chore/*` branch, `gh pr create`, auto-merge. Prior art: PRs #112, #113, #114.
+This is the same shape as the `chore/skills-lessons-<change>` PRs in `/auto_task2` step 5 — small commit on a `chore/*` branch, `gh pr create`, auto-merge.
 
 ```bash
 git checkout -b "chore/archive-ticket-${pr_num}"
-git add "task2/tickets/active/${ticket_num:0:3}-${ticket_slug}.md" 2>/dev/null || true  # deletion
-git add "task2/tickets/archive/${ticket_num:0:3}-${ticket_slug}.md"
+ticket_num_padded=$(printf '%03d' "$ticket_num")
+git add "task2/tickets/active/${ticket_num_padded}-${ticket_slug}.md" 2>/dev/null || true  # deletion
+git add "task2/tickets/archive/${ticket_num_padded}-${ticket_slug}.md"
 git add "task2/tickets/INDEX.md"
 git commit -m "docs(task2): archive ticket #${ticket_num} — ${ticket_slug}
 

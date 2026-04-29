@@ -47,10 +47,10 @@ def archive_workflow_only_ticket(
     if not active_path.exists():
         raise FileNotFoundError(f"Ticket file not found in active/: {filename}")
 
-    text = active_path.read_text()
-    end = text.index("---", 3)
-    fm = yaml.safe_load(text[3:end])
-    body = text[end + 4 :] if text[end + 3 : end + 4] == "\n" else text[end + 3 :]
+    _, fm_text, body = active_path.read_text().split("---", 2)
+    fm = yaml.safe_load(fm_text)
+    if body.startswith("\n"):
+        body = body[1:]
 
     fm["status"] = "archived"
     fm["merged_pr"] = pr_number
