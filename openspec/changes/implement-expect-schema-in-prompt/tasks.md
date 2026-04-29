@@ -4,7 +4,7 @@
 
 2. - [x] **Green** — In `task2/agent/loop.py`, add `expect: dict | None = None` as a keyword-only parameter to `_build_system_prompt(task, *, expect=None)`. When `expect is not None` and `expect.get("schema")`, compute `schema = expect["schema"]`, `keys = ", ".join(sorted(schema))`, and append `f" Your \`done.result\` MUST be a JSON object matching this schema: {json.dumps(schema)}. Required fields: {keys}."` to the returned string. Run the test from task 1 and confirm it passes.
 
-3. - [ ] **Red** — Add `test_build_system_prompt_schema_absent` asserting that `_build_system_prompt("find the price")` (no `expect` kwarg) returns a string byte-identical to the current production output (assert known substrings that are present today and confirm the `MUST` substring is absent). Run and confirm the test passes immediately — this is the "default-path safety" regression guard that locks in the current output.
+3. - [x] **Red** — Add `test_build_system_prompt_schema_absent` asserting that `_build_system_prompt("find the price")` (no `expect` kwarg) returns a string byte-identical to the current production output (assert known substrings that are present today and confirm the `MUST` substring is absent). Run and confirm the test passes immediately — this is the "default-path safety" regression guard that locks in the current output.
 
 4. - [ ] **Red** — Add `test_build_system_prompt_empty_schema_leaves_no_must` asserting that `_build_system_prompt("find the price", expect={"schema": {}, "validators": []})` does NOT contain `"MUST"`. Run and confirm it fails (the implementation from task 2 would inject if `schema` is an empty dict — fix the guard to use `if expect and expect.get("schema")`).
 

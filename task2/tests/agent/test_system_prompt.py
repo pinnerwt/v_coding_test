@@ -33,3 +33,11 @@ def test_build_system_prompt_schema_present():
     )
     assert "MUST" in prompt
     assert "answer" in prompt
+
+
+def test_build_system_prompt_schema_absent():
+    prompt = _build_system_prompt("find the price")
+    assert "browser automation agent" in prompt
+    assert "find the price" in prompt
+    assert "ONLY for irrecoverable conditions" in prompt
+    assert "MUST" not in prompt
