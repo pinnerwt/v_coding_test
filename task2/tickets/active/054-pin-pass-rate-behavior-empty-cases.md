@@ -2,7 +2,7 @@
 id: 54
 slug: pin-pass-rate-behavior-empty-cases
 status: active
-tier: 5
+tier: 2
 urgency: P2
 axes:
   pass_rate: 0

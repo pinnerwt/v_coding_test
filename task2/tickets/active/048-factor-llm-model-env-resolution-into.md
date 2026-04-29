@@ -2,7 +2,7 @@
 id: 48
 slug: factor-llm-model-env-resolution-into
 status: active
-tier: 5
+tier: 6
 urgency: P3
 axes:
   pass_rate: 0

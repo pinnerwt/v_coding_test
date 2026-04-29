@@ -2,7 +2,7 @@
 id: 46
 slug: promote-browser-page-public-read-only
 status: active
-tier: 5
+tier: 6
 urgency: P3
 axes:
   pass_rate: 0

@@ -56,25 +56,45 @@ def _all_ticket_files() -> list[tuple[Path, str]]:
 
 
 def test_regen_tickets_index_idempotent():
-    result1 = subprocess.run(
-        [sys.executable, str(REGEN_SCRIPT)],
-        capture_output=True,
-        text=True,
-        cwd=str(REPO_ROOT),
-    )
-    assert result1.returncode == 0, f"First regen failed:\n{result1.stderr}"
-    content1 = INDEX_MD.read_text()
-    result2 = subprocess.run(
-        [sys.executable, str(REGEN_SCRIPT)],
-        capture_output=True,
-        text=True,
-        cwd=str(REPO_ROOT),
-    )
-    assert result2.returncode == 0, f"Second regen failed:\n{result2.stderr}"
-    content2 = INDEX_MD.read_text()
-    assert content1 == content2, (
-        "regen_tickets_index.py is not idempotent: two consecutive runs differ"
-    )
+    import shutil
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp = Path(tmpdir)
+        tickets_copy = tmp / "tickets"
+        shutil.copytree(TICKETS_DIR, tickets_copy)
+        result1 = subprocess.run(
+            [
+                sys.executable,
+                str(REGEN_SCRIPT),
+                "--tickets-dir",
+                str(tickets_copy),
+                "--repo-root",
+                str(tmp),
+            ],
+            capture_output=True,
+            text=True,
+            cwd=str(REPO_ROOT),
+        )
+        assert result1.returncode == 0, f"First regen failed:\n{result1.stderr}"
+        content1 = (tickets_copy / "INDEX.md").read_text()
+        result2 = subprocess.run(
+            [
+                sys.executable,
+                str(REGEN_SCRIPT),
+                "--tickets-dir",
+                str(tickets_copy),
+                "--repo-root",
+                str(tmp),
+            ],
+            capture_output=True,
+            text=True,
+            cwd=str(REPO_ROOT),
+        )
+        assert result2.returncode == 0, f"Second regen failed:\n{result2.stderr}"
+        content2 = (tickets_copy / "INDEX.md").read_text()
+        assert content1 == content2, (
+            "regen_tickets_index.py is not idempotent: two consecutive runs differ"
+        )
 
 
 def test_schema_all_required_fields():
@@ -113,6 +133,22 @@ def test_directory_status_consistency():
             )
 
 
+_FILENAME_RE = re.compile(r"^\d{3,}-[a-z0-9-]+\.md$")
+
+
+def test_ticket_filename_format():
+    for path, _ in _all_ticket_files():
+        assert _FILENAME_RE.match(path.name), (
+            f"{path.name}: filename does not match <NNN>-<slug>.md pattern"
+        )
+        fm = _parse_frontmatter(path)
+        expected_prefix = f"{fm['id']:03d}-"
+        assert path.name.startswith(expected_prefix), (
+            f"{path.name}: filename prefix does not match zero-padded id from frontmatter"
+            f" ({expected_prefix})"
+        )
+
+
 def test_dependency_resolution():
     all_ids: set[int] = set()
     for path, _ in _all_ticket_files():
@@ -146,6 +182,10 @@ def _parse_index_rows() -> dict[int, dict]:
                 tid = int(parts[0])
             except ValueError:
                 continue
+            raw_deps = parts[6].strip()
+            raw_gates = parts[7].strip()
+            deps = [int(t) for t in raw_deps.split() if t] if raw_deps else []
+            gates = [t for t in raw_gates.split() if t] if raw_gates else []
             rows[tid] = {
                 "id": tid,
                 "urgency": parts[1],
@@ -153,8 +193,8 @@ def _parse_index_rows() -> dict[int, dict]:
                 "pass_rate": int(parts[3]) if parts[3].lstrip("-").isdigit() else None,
                 "tokens_pct": int(parts[4]) if parts[4].lstrip("-").isdigit() else None,
                 "latency_pct": int(parts[5]) if parts[5].lstrip("-").isdigit() else None,
-                "dependencies": parts[6],
-                "pre_flight_gates": parts[7],
+                "dependencies": deps,
+                "pre_flight_gates": gates,
                 "summary": parts[8],
                 "file": parts[9] if len(parts) > 9 else "",
             }
@@ -187,6 +227,13 @@ def test_index_mirrors_frontmatter():
         assert row["latency_pct"] == fm["axes"]["latency_pct"], (
             f"Ticket #{tid}: INDEX latency_pct={row['latency_pct']}"
             f" != fm={fm['axes']['latency_pct']}"
+        )
+        assert row["dependencies"] == fm["dependencies"], (
+            f"Ticket #{tid}: INDEX dependencies={row['dependencies']} != fm={fm['dependencies']}"
+        )
+        assert row["pre_flight_gates"] == fm["pre_flight_gates"], (
+            f"Ticket #{tid}: INDEX pre_flight_gates={row['pre_flight_gates']}"
+            f" != fm={fm['pre_flight_gates']}"
         )
 
 

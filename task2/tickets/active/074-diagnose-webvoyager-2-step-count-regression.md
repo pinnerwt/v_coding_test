@@ -2,7 +2,7 @@
 id: 74
 slug: diagnose-webvoyager-2-step-count-regression
 status: active
-tier: 1
+tier: 4
 urgency: P2
 axes:
   pass_rate: 0

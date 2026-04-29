@@ -2,7 +2,7 @@
 id: 71
 slug: retry-once-transient-chromium-playwright-navigation
 status: active
-tier: 1
+tier: 3
 urgency: P1
 axes:
   pass_rate: 0

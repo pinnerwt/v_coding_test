@@ -9,7 +9,7 @@ Every file under `task2/tickets/active/` and `task2/tickets/archive/` SHALL begi
 
 #### Scenario: Archive ticket file has all required frontmatter fields
 - **WHEN** `task2/tests/test_tickets_index.py` parses every file under `task2/tickets/archive/`
-- **THEN** each file SHALL have all 14 required frontmatter fields present, `merged_pr` SHALL be an int (not null), and `archived_at` SHALL be a non-null ISO-8601 date string
+- **THEN** each file SHALL have all 14 required frontmatter fields present, `merged_pr` SHALL be an int or null, and `archived_at` SHALL be a non-null ISO-8601 date string
 
 #### Scenario: axes block always has all three numeric sub-fields
 - **WHEN** `test_tickets_index.py` reads the `axes` frontmatter of any ticket file
@@ -79,9 +79,9 @@ Ticket files under `task2/tickets/active/` SHALL have `status` ∈ `{active, in-
 - **WHEN** the parsed count differs from the emitted file count
 - **THEN** the script SHALL exit with a non-zero return code and a diagnostic message naming the mismatch
 
-#### Scenario: Archived OpenSpec changes produce archive ticket files with merged_pr populated
+#### Scenario: Archived OpenSpec changes produce archive ticket files with archived_at populated
 - **WHEN** `migrate_plan_to_tickets.py` runs and finds `openspec/changes/archive/*/proposal.md` files whose body cites `ticket #N`
-- **THEN** `task2/tickets/archive/<NNN>-*.md` for that ticket SHALL have `merged_pr` set to a non-null integer and `status: archived`
+- **THEN** `task2/tickets/archive/<NNN>-*.md` for that ticket SHALL have `status: archived` and a non-null ISO-8601 `archived_at` string. `merged_pr` MAY be null when no PR can be cross-referenced from `openspec/changes/archive/` or `git log`
 
 ### Requirement: Skill consumer contract — what each skill reads and writes
 `/new_task2` step 1 SHALL read only `task2/tickets/INDEX.md` to score and select a candidate ticket; it SHALL NOT read `task2/plan.md` or scan all ticket files. After selection, step 1 SHALL page in the selected ticket's file for full body. `/new_task2` step 11 SHALL write a new ticket file under `task2/tickets/active/` with all required frontmatter fields populated, then run `task2/scripts/regen_tickets_index.py` to update INDEX.md. `/done_pr` step 1b and step 1b' SHALL grep `task2/tickets/active/` (not `task2/plan.md`) to find the ticket being archived. `/done_pr` step 1c SHALL `git mv` the ticket file from `active/` to `archive/`, update `status`, `merged_pr`, and `archived_at` in the frontmatter in-place, and run `regen_tickets_index.py` — producing one commit instead of two. `/review_task2` step 3 SHALL grep `task2/tickets/active/` for cross-check purposes.

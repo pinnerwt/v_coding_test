@@ -2,7 +2,7 @@
 id: 52
 slug: robustify-task2-benchmark-yml-pr-comment
 status: active
-tier: 5
+tier: 2
 urgency: P2
 axes:
   pass_rate: 0

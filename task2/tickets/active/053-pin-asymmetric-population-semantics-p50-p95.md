@@ -2,7 +2,7 @@
 id: 53
 slug: pin-asymmetric-population-semantics-p50-p95
 status: active
-tier: 5
+tier: 2
 urgency: P2
 axes:
   pass_rate: 0
