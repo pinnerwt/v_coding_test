@@ -1,6 +1,6 @@
 ## 1. Failing Tests — total_usd under repeats=3 (Red phase)
 
-- [x] 1.1 In `task2/tests/test_bench_repeats.py`, add a test `test_scoreboard_total_usd_with_repeats`: construct a synthetic `data` dict with three non-skipped cases each having `usd=0.03` (representing sum across 3 runs) and `repeats=3`; call `generate_scoreboard(data)` and assert the output contains `Total USD: $0.0900` — confirm it fails because the current rollup reports `$0.0300` (mean × 3 cases = $0.0900 only accidentally; use a two-case fixture to make the under-report observable: two cases each with `usd_mean=0.01` → current output `$0.0200`, expected output `$0.0600` with sum convention).
+- [x] 1.1 In `task2/tests/test_bench_repeats.py`, add a test `test_scoreboard_total_usd_with_repeats`: construct a synthetic `data` dict with two non-skipped cases each having `usd=0.03` (sum of three runs at $0.01 each) and `repeats=3`; call `aggregate_repeats` to get the aggregated result and assert `result.usd == 0.03` (confirming the sum convention is preserved per-case).
 - [x] 1.2 Concretely: use two cases with `usd=0.01` (current mean convention) and `repeats=3`; assert `generate_scoreboard` output contains `Total USD: $0.0600` (i.e. `0.01 × 3 runs × 2 cases = $0.06`). With the current code the test will fail because it reports `$0.0200`.
 - [x] 1.3 Run `uv run pytest task2/tests/test_bench_repeats.py::test_scoreboard_total_usd_with_repeats -x` from `task2/` and confirm it fails with an `AssertionError` (output shows `$0.0200` not `$0.0600`).
 
