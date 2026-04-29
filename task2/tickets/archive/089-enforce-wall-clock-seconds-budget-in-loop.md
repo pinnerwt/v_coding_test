@@ -1,7 +1,7 @@
 ---
 id: 89
 slug: enforce-wall-clock-seconds-budget-in-loop
-status: active
+status: archived
 tier: 3
 urgency: P1
 axes:
@@ -16,8 +16,8 @@ evidence:
 related:
 - 88
 filed_pr: null
-merged_pr: null
-archived_at: null
+merged_pr: 145
+archived_at: '2026-04-29'
 trigger: 2026-04-29 — user-driven webvoyager timeout investigation; ticket queue restart
 ---
 
