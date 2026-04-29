@@ -6,7 +6,7 @@ tier: 5
 urgency: P1
 axes:
   pass_rate: 30
-  tokens_pct: -25
+  tokens_pct: -30
   latency_pct: -25
 dependencies: []
 pre_flight_gates: []
