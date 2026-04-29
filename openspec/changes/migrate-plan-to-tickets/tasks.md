@@ -13,8 +13,8 @@
 
 ## 3. Red — Write failing tests for index regen script
 
-- [ ] 3.1 In `task2/tests/`, create or extend to include idempotency test `test_regen_tickets_index_idempotent`: run `regen_tickets_index.py`, capture INDEX.md content; run again, assert zero diff.
-- [ ] 3.2 Run the test — confirm it fails red (script does not exist yet).
+- [x] 3.1 In `task2/tests/`, create or extend to include idempotency test `test_regen_tickets_index_idempotent`: run `regen_tickets_index.py`, capture INDEX.md content; run again, assert zero diff.
+- [x] 3.2 Run the test — confirm it fails red (script does not exist yet).
 
 ## 4. Green — Write regen script and seed INDEX.md
 
