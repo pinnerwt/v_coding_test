@@ -97,9 +97,10 @@ def test_archived_changes_produce_archive_ticket_with_merged_pr(tmp_path):
     assert cited_ticket_ids, "No ticket citations found in archived proposals — check archive dir"
     verifiable_ids = {tid for tid in cited_ticket_ids if _git_has_pr_for_ticket(tid) is not None}
     assert verifiable_ids, "No verifiable ticket citations found — git log has no PR refs for any"
-    archive_files = list(archive_dir.glob("*.md"))
-    if not archive_files:
-        archive_files = list(TICKETS_ARCHIVE_DIR.glob("*.md"))
+    # plan.md is now a stub post-migration; verify against the committed
+    # tickets/archive snapshot when the tmp migration produces no output
+    archive_files = list(archive_dir.glob("*.md")) or list(TICKETS_ARCHIVE_DIR.glob("*.md"))
+    assert archive_files, "no archive files in tmp dir or committed tickets/archive"
     archive_ids_with_merged_pr: set[int] = set()
     for f in archive_files:
         text = f.read_text()

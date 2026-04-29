@@ -2,12 +2,12 @@ import argparse
 import re
 import subprocess
 import sys
+from datetime import date
 from pathlib import Path
 
 import yaml
 
 REPO_ROOT = Path(__file__).parent.parent.parent
-ARCHIVE_DIR = REPO_ROOT / "openspec" / "changes" / "archive"
 
 _TICKET_SECTION_HEADERS = frozenset(
     ["## TDD tickets (each is red → green → refactor)", "## Benchmark improvements (candidates)"]
@@ -83,8 +83,6 @@ def _extract_tickets(plan_text: str) -> list[dict]:
                 break
         if stripped.startswith(_STOP_HEADER) and in_section:
             _flush()
-            current = None
-            body_lines = []
             break
         if stripped.startswith("## ") and in_section:
             continue
@@ -151,11 +149,9 @@ def _get_pr_for_archive_dir(change_name: str, repo_root: Path) -> int | None:
 
 _DATE_PREFIX_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})-")
 
-MIGRATION_DATE = "2026-04-29"
-
 
 def _extract_merged_ticket_map(
-    repo_root: Path,
+    repo_root: Path, fallback_date: str
 ) -> tuple[dict[int, int | None], dict[int, str]]:
     merged: dict[int, int | None] = {}
     archived_at: dict[int, str] = {}
@@ -165,7 +161,7 @@ def _extract_merged_ticket_map(
         change_name = proposal.parent.name
         archive_pr = _get_pr_for_archive_dir(change_name, repo_root)
         date_m = _DATE_PREFIX_RE.match(change_name)
-        date_iso = date_m.group(1) if date_m else MIGRATION_DATE
+        date_iso = date_m.group(1) if date_m else fallback_date
         for tid in ticket_ids:
             pr_num = archive_pr or _git_filed_pr(tid, repo_root)
             if tid not in merged or (merged[tid] is None and pr_num is not None):
@@ -175,7 +171,7 @@ def _extract_merged_ticket_map(
 
 
 def _git_filed_pr(ticket_id: int, repo_root: Path) -> int | None:
-    # why: only commits with pattern (#ticket)(#pr) are ticket-to-PR mappings;
+    # only commits with pattern (#ticket)(#pr) are ticket-to-PR mappings;
     # a lone (#N) is just the PR number, not a ticket reference
     try:
         out = subprocess.check_output(
@@ -285,8 +281,9 @@ def migrate(plan_path: Path, out_dir: Path, repo_root: Path) -> None:
     tickets = _extract_tickets(plan_text)
     pre_count = len(tickets)
 
+    today_iso = date.today().isoformat()
     urgency_map = _extract_urgency_map(plan_text)
-    merged_map, merged_archived_at = _extract_merged_ticket_map(repo_root)
+    merged_map, merged_archived_at = _extract_merged_ticket_map(repo_root, today_iso)
 
     active_dir = out_dir / "active"
     archive_dir = out_dir / "archive"
@@ -300,7 +297,7 @@ def migrate(plan_path: Path, out_dir: Path, repo_root: Path) -> None:
         filed_pr = _git_filed_pr(tid, repo_root)
         is_undone = tid in urgency_map
         status = "active" if is_undone else "archived"
-        archived_at = None if is_undone else merged_archived_at.get(tid, MIGRATION_DATE)
+        archived_at = None if is_undone else merged_archived_at.get(tid, today_iso)
         urgency = urgency_map.get(tid, "P3")
 
         fm_text = _build_frontmatter(ticket, urgency, merged_pr, filed_pr, status, archived_at)

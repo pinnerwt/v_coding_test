@@ -1,3 +1,4 @@
+import argparse
 from pathlib import Path
 
 import yaml
@@ -59,8 +60,8 @@ def regen(tickets_dir: Path, repo_root: Path) -> None:
     active_dir = tickets_dir / "active"
     archive_dir = tickets_dir / "archive"
 
-    active_tickets = [_parse_ticket(p) for p in sorted(active_dir.glob("*.md"))]
-    archive_tickets = [_parse_ticket(p) for p in sorted(archive_dir.glob("*.md"))]
+    active_tickets = [_parse_ticket(p) for p in active_dir.glob("*.md")]
+    archive_tickets = [_parse_ticket(p) for p in archive_dir.glob("*.md")]
 
     active_tickets.sort(key=lambda fm: fm["id"])
     archive_tickets.sort(key=lambda fm: (fm.get("archived_at") or "", fm["id"]))
@@ -78,8 +79,6 @@ def regen(tickets_dir: Path, repo_root: Path) -> None:
 
 
 def main() -> None:
-    import argparse
-
     parser = argparse.ArgumentParser()
     parser.add_argument("--tickets-dir", type=Path, default=TICKETS_DIR)
     parser.add_argument("--repo-root", type=Path, default=REPO_ROOT)

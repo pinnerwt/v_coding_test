@@ -160,9 +160,6 @@ def _parse_index_rows() -> dict[int, dict]:
             }
         elif header_seen and line.startswith("## "):
             header_seen = False
-            if line.startswith("## "):
-                if "Active" in line or "Archive" in line:
-                    header_seen = False
     return rows
 
 
