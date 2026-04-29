@@ -11,7 +11,34 @@ Automate the full development cycle for the next Task 2 TDD ticket: derive ticke
 
 ### 1. Identify the next ticket
 
-**Selection rule (category-ordered, per user directive 2026-04-29 — supersedes the 2026-04-28 benchmark-impact-first rule):** evaluate candidates against six tiers in order; **the highest tier with a viable candidate wins**. Within the winning tier, **pass-rate (correctness) wins over tokens/latency**: among candidates with the same tier, any candidate whose `axes.pass_rate > 0` outranks every candidate that only moves tokens or latency. The full three-axis impact rule is only the tie-breaker among pass-rate-positive candidates (or as the fallback when zero pass-rate-positive candidates are viable). Final tie-break: lowest ticket number. Two cross-cutting filters apply *before* the tier sort and can disqualify a candidate from any tier.
+**Selection rule (deliverable-first, per user directive 2026-04-29 evening — supersedes the same-day category-ordered rule whenever a demo-deliverable gap exists):** before evaluating any tier-1-through-6 candidate, check whether the **first reviewable demo on Zeabur** is in place. If it is not, the only viable tickets this iteration are the ones that close that gap — everything else defers, regardless of tier. The category-ordered six-tier rule below applies only after the demo-deliverable bar is met.
+
+**Tier 0 (absolute, pre-empts all other tiers): demo-deliverable scope.** `AI-Coding-Test-EN.md` defines Task 2's reviewer-facing deliverable as a public Git repo URL plus a Zeabur URL where reviewers submit unseen natural-language tasks. Until that URL is live and exercising the agent end-to-end, the iteration's job is to ship it — not to add validators, fixtures, scoreboards, or token/latency optimizations.
+
+  **Bar (all five MUST be true to lift Tier 0):**
+  1. `task2/Dockerfile` builds cleanly and runs `task2/api/server.py` on the configured port.
+  2. The Zeabur project is provisioned, env vars (`LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY`, `DB_PATH`) are set, and the deploy succeeded.
+  3. `task2/README.md` `### Zeabur` section has a real URL (not `<TBD>`) and documents how to submit a task.
+  4. A live submission to that URL via the documented interface returns a structured response (success OR a clearly-classified failure — the bar is "the agent loop ran and produced an observable outcome," not "every task succeeds").
+  5. `prompts/task2/` reflects the prompts the deployed agent actually uses (so reviewers can read them without spelunking the repo).
+
+  **What counts as a Tier 0 ticket:** anything whose acceptance criterion moves one of those five bars closer to true. Concretely: Dockerfile fixes, deploy-config tickets, missing endpoints on `api/server.py` (e.g. a task-submission HTTP route or simple HTML form), README deployment-doc tickets, prompts-folder sync tickets, smoke-test-against-deployed-URL tickets. If a candidate ticket is silent on these axes, it is **not** Tier 0.
+
+  **What is NOT Tier 0:** new validators (e.g. `does_not_contain`), additional eval fixtures, scoreboard polish, trend-SVG fixes, token-trimming refactors, latency micro-optimizations, audit/diagnostic tickets, robustness mini-suites, OpenSpec workflow improvements. These are all valuable AFTER the demo lands; before it lands, they are scope creep that costs deploy-day time and adds nothing the reviewer can see.
+
+  **How to detect the gap quickly each iteration (before scoring any ticket):**
+  ```bash
+  grep -E "TBD|after deployment" task2/README.md | grep -i zeabur   # non-empty → Tier 0 active
+  ls task2/Dockerfile task2/zeabur.json 2>&1 | grep -i "no such"     # any → Tier 0 active
+  ls prompts/task2/ 2>/dev/null | head                              # empty → Tier 0 active
+  ```
+  If any check signals a gap, Tier 0 is open. Find or file the smallest ticket that closes that one gap (filing a Tier 0 ticket on the fly is not just allowed but expected — `task2/tickets/active/` is how this skill carries scope across iterations). Pick that ticket; defer everything else.
+
+  **When Tier 0 lifts:** all five bars are true AND a fresh manual smoke against the deployed URL has been observed in the last day. Record this lift explicitly in the iteration log (`iteration N: Tier 0 lifted — Zeabur URL <X> verified responding to task submission at <timestamp>`). Once lifted, the rule below (Tiers 1-6) takes over for the next iteration. If a regression takes the Zeabur URL offline mid-cycle, Tier 0 re-engages until it is restored.
+
+  **Why this rule exists, with the load-bearing example.** PRs #135 (ticket #57, render_failure_classes_svg single-run polygons) and the in-flight robustness mini-suite (ticket #39) on 2026-04-29 were both correctness-led, both passed local tests, both shipped real value — but neither moved the Zeabur deploy any closer to existing, and the interview deadline is the day after tomorrow. The user cut over from "iterate on minor correctness/tokens/latency tickets" to "deliver the first demo version tomorrow" mid-iteration. Sustaining the prior trajectory would have produced 5+ more polished tickets and zero deployable URL — a Grade-C outcome under the rubric in `AI-Coding-Test-EN.md` regardless of how green the local benchmark was. How to apply: at the start of every iteration, run the three detection commands above before reading INDEX.md; if any returns a gap signal, treat INDEX.md's tier-1-through-6 candidates as out of scope until the gap closes.
+
+**Selection rule (Tiers 1-6, applies only when Tier 0 is satisfied):** evaluate candidates against six tiers in order; **the highest tier with a viable candidate wins**. Within the winning tier, **pass-rate (correctness) wins over tokens/latency**: among candidates with the same tier, any candidate whose `axes.pass_rate > 0` outranks every candidate that only moves tokens or latency. The full three-axis impact rule is only the tie-breaker among pass-rate-positive candidates (or as the fallback when zero pass-rate-positive candidates are viable). Final tie-break: lowest ticket number. Two cross-cutting filters apply *before* the tier sort and can disqualify a candidate from any tier.
 
 **Tiers, highest priority first:**
 
@@ -28,6 +55,8 @@ Automate the full development cycle for the next Task 2 TDD ticket: derive ticke
 - **Pre-flight gates.** Tickets with explicit gate text in the body or `pre_flight_gates:` frontmatter list (e.g. `must-run-with-no-other-task2-prs-open`, `qwen-reachable`, `no-benchmark-in-flight`) are filtered out when the gate fails right now. Confirm gates with concrete checks: `gh pr list --head 'task2/*' --state open --json number` for the first; `curl -sf http://localhost:8090/v1/models -m 3 -o /dev/null` for the second. Pick the next viable candidate; do not implement around the gate.
 
 How to apply, in order:
+
+0. **Tier 0 deliverable-gap check (FIRST — before reading the scoreboard or INDEX.md).** Run the three detection commands from the Tier 0 block above. If any returns a gap signal, the iteration's only valid outcome is closing one of those five bars. Skip the scoreboard read, skip the candidate list, and either pick an existing Tier 0 ticket from `task2/tickets/active/` or file one on the spot (a one-paragraph ticket file under `task2/tickets/active/<NNN>-<slug>.md` with the standard frontmatter — `tier: 0`, `urgency: P0`, `axes: {pass_rate: 0, tokens_pct: 0, latency_pct: 0}`, body naming the gap and the acceptance criterion). Then proceed to Step 5 with that ticket. Do not run Steps 1-4. Once Tier 0 is lifted (recorded in the iteration log), step 0 short-circuits to "Tier 0 satisfied" and execution continues at Step 1.
 
 1. **Read the latest benchmark scoreboard** to know the current state of all three axes.
    ```bash
