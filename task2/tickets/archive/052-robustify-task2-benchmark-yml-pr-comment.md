@@ -1,7 +1,7 @@
 ---
 id: 52
 slug: robustify-task2-benchmark-yml-pr-comment
-status: active
+status: archived
 tier: 2
 urgency: P0
 axes:
@@ -13,9 +13,9 @@ pre_flight_gates: []
 evidence: []
 related:
 - 76
-filed_pr: null
-merged_pr: null
-archived_at: null
+filed_pr: 120
+merged_pr: 120
+archived_at: '2026-04-29'
 trigger: 'surfaced by review subagent on PR #76 (iteration 1); urgency bumped P2→P0
   by user directive on 2026-04-29 ("Add a ticket with high urgency to fix the CI workflow")
   during /auto_task2 iteration 2.'
