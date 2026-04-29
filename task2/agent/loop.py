@@ -817,7 +817,6 @@ def loop(
         t0 = time.monotonic()
         _step_id = f"{run_id}:step-{step_num}" if run_id is not None else None
 
-        t_obs_start = time.monotonic()
         observation = observe.build_observation(browser, last_actions)
         last_actions = []
 
@@ -881,7 +880,7 @@ def loop(
                 [],
                 latency_ms_per_step,
                 step_breakdown,
-                latency_breakdown=_phase_breakdown(t_obs_start, t_llm_start, t_dispatch_start),
+                latency_breakdown=_phase_breakdown(t0, t_llm_start, t_dispatch_start),
             )
             if _consecutive_no_tool_call_steps >= _NO_TOOL_CALL_K:
                 return RunResult(
@@ -939,7 +938,7 @@ def loop(
                     dispatched_tool_names,
                     latency_ms_per_step,
                     step_breakdown,
-                    latency_breakdown=_phase_breakdown(t_obs_start, t_llm_start, t_dispatch_start),
+                    latency_breakdown=_phase_breakdown(t0, t_llm_start, t_dispatch_start),
                 )
                 return RunResult(
                     status=status,
@@ -990,7 +989,7 @@ def loop(
                     dispatched_tool_names,
                     latency_ms_per_step,
                     step_breakdown,
-                    latency_breakdown=_phase_breakdown(t_obs_start, t_llm_start, t_dispatch_start),
+                    latency_breakdown=_phase_breakdown(t0, t_llm_start, t_dispatch_start),
                 )
                 return RunResult(
                     status="failed",
@@ -1030,7 +1029,7 @@ def loop(
                     dispatched_tool_names,
                     latency_ms_per_step,
                     step_breakdown,
-                    latency_breakdown=_phase_breakdown(t_obs_start, t_llm_start, t_dispatch_start),
+                    latency_breakdown=_phase_breakdown(t0, t_llm_start, t_dispatch_start),
                 )
                 return RunResult(
                     status="failed",
@@ -1095,9 +1094,7 @@ def loop(
                         dispatched_tool_names,
                         latency_ms_per_step,
                         step_breakdown,
-                        latency_breakdown=_phase_breakdown(
-                            t_obs_start, t_llm_start, t_dispatch_start
-                        ),
+                        latency_breakdown=_phase_breakdown(t0, t_llm_start, t_dispatch_start),
                     )
                     return RunResult(
                         status="failed",
@@ -1120,7 +1117,7 @@ def loop(
             dispatched_tool_names,
             latency_ms_per_step,
             step_breakdown,
-            latency_breakdown=_phase_breakdown(t_obs_start, t_llm_start, t_dispatch_start),
+            latency_breakdown=_phase_breakdown(t0, t_llm_start, t_dispatch_start),
         )
 
     return RunResult(

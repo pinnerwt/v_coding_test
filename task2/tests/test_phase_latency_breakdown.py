@@ -95,30 +95,6 @@ class _SimpleLLMClient:
         return _response_no_tool_call()
 
 
-class _NoToolCallThenDoneLLMClient:
-    """Returns no tool calls for two steps, then done on step 3."""
-
-    def __init__(self):
-        self._call_count = 0
-
-    def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
-        if tools is None:
-            return _plan_stub_response()
-        self._call_count += 1
-        if self._call_count <= 2:
-            return _response_no_tool_call()
-        return _response_with_tool_call(
-            _tool_call(
-                "done",
-                {
-                    "result": {"answer": "ok"},
-                    "evidence": {"url": "http://fake", "text_snippet": "ok"},
-                },
-                call_id=f"tc-{self._call_count}",
-            )
-        )
-
-
 def _make_stub_browser() -> MagicMock:
     browser = MagicMock()
     browser._page = None
@@ -195,7 +171,17 @@ def test_sum_invariant_holds_across_5_step_run():
 
 def test_latency_breakdown_present_on_all_entries_including_no_tool_call():
     """Every step_breakdown entry has latency_breakdown_ms with all three integer keys."""
-    llm = _NoToolCallThenDoneLLMClient()
+    done_tc = _tool_call(
+        "done",
+        {
+            "result": {"answer": "ok"},
+            "evidence": {"url": "http://fake", "text_snippet": "ok"},
+        },
+        call_id="tc-3",
+    )
+    llm = _SimpleLLMClient(
+        [_response_no_tool_call(), _response_no_tool_call(), _response_with_tool_call(done_tc)]
+    )
     browser = _make_stub_browser()
 
     with patch("agent.loop.observe.build_observation", return_value=_fake_observation()):
