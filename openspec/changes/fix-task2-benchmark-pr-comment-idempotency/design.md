@@ -51,11 +51,11 @@ The current step (lines 55–76 of the workflow at time of ticket filing):
 
 This returns the numeric id of the last bot comment, or empty string if none exists. The `tail -1` ensures we handle the case where prior failures left multiple bot comments: we always update whichever is last. Alternative considered: iterate over all bot comment ids and delete extras. Rejected — out of scope; updating the last one is sufficient for correctness.
 
-### Update via `gh api --method PATCH` with `-f body=@<file>`
+### Update via `gh api --method PATCH` with `-F body=@<file>`
 
-`gh api --method PATCH "/repos/$REPO/issues/comments/$COMMENT_ID" -f "body=@$DIFF_FILE"`
+`gh api --method PATCH "repos/$REPO/issues/comments/$COMMENT_ID" -F "body=@$DIFF_FILE"`
 
-The `-f body=@<file>` form reads the file and passes it as the field value, correctly handling multi-line Markdown with embedded quotes and backticks. Alternative considered: `-F body="$(cat $DIFF_FILE)"`. Rejected — command substitution strips trailing newlines and can exceed shell argument length limits on large diffs.
+The `-F` flag (capital F, typed field) is required here. `-f` (lowercase, raw field) does NOT interpret `@<filename>` as "read file contents" — it would send the literal string `@/path/to/diff.md` as the body, which is incorrect. `-F` (typed field) recognises the `@<filename>` form and reads the file, correctly handling multi-line Markdown with embedded quotes and backticks. Alternative considered: `-f body="$(cat $DIFF_FILE)"`. Rejected — command substitution strips trailing newlines and can exceed shell argument length limits on large diffs.
 
 Note: `gh api PATCH /repos/.../issues/comments/<id>` requires the `issues` write scope even though the comment is on a pull request. GitHub's REST API routes all PR review comments and PR issue comments through the Issues endpoint (`/repos/:owner/:repo/issues/:issue_number/comments`). The `pull-requests: write` permission covers `gh pr comment` but NOT `gh api PATCH /issues/comments/<id>`. Both permissions are therefore required.
 
@@ -67,9 +67,12 @@ Note: `gh api PATCH /repos/.../issues/comments/<id>` requires the `issues` write
 
 ### Python YAML-shape test as the load-bearing red/green
 
-The test loads `.github/workflows/task2-benchmark.yml` via `yaml.safe_load`, navigates to the job's steps list, finds the step named "Post diff as PR comment", and asserts the `run:` string contains:
-- the detection `gh api repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments` call
-- `gh api --method PATCH` for the update path
+The test loads `.github/workflows/task2-benchmark.yml` via `yaml.safe_load`, navigates to the job's steps list, finds the step named "Post diff as PR comment", and asserts the `run:` string:
+- contains `gh api` and `/comments` (detection call sanity check)
+- contains `select(.user.login == "github-actions[bot]")` (the `--jq` filter)
+- contains `gh api --method PATCH` (update path)
+- contains `-F "body=@` (typed-field file-read form, capital F)
+- does NOT contain `--edit-last` or `2>/dev/null` (old pattern is gone)
 
 This test fails before the YAML edit (red) and passes after (green), satisfying the TDD discipline from CLAUDE.md. `actionlint` is documented as a recommended local verification step but is not added as a CI dependency or a `uv` dev dep.
 
