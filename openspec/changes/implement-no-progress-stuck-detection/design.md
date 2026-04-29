@@ -55,7 +55,7 @@ The bail path calls `_record_step(...)` (preserving metrics) then returns `RunRe
 
 **Decision 5 — `_no_progress_buf` initialization and reset**
 
-Initialized to `[]` at the start of `loop()`. Not reset between steps (rolling window). No reset on supervisor involvement (unlike `_stuck_buf`) — supervisor-mediated outcomes are already counted via `any_action_succeeded` (if supervisor caused a successful `click`, the step is not stuck).
+Initialized to `[]` at the start of `loop()`. Not reset between steps (rolling window). No reset on L1→L2 supervisor escalations (unlike `_stuck_buf`) — supervisor-mediated outcomes are already counted via `any_action_succeeded` (if supervisor caused a successful `click`, the step is not stuck). CLEARED on `replan` (when supervisor policy is `"halt"` and `replan_used == False`): a replan is a strategy-level reset that invalidates the prior observation window — the agent may now be executing an entirely different plan, so the no-progress window must restart. This is distinct from a simple L1→L2 escalation which stays within the same strategy.
 
 ## Risks / Trade-offs
 

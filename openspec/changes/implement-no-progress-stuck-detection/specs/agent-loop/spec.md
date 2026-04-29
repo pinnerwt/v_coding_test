@@ -38,7 +38,7 @@ At the end of each step's tool-call dispatch loop (after all tool calls in the L
 - Trim `_no_progress_buf` to the last `_NO_PROGRESS_K` entries (remove from the front if over length).
 - Check: if `len(_no_progress_buf) == _NO_PROGRESS_K` AND all entries share the same fingerprint AND all entries have `any_action_succeeded == False`, then call `_record_step(...)` and return `RunResult(status="failed", reason="no_progress", result=None, evidence=None, verifier=None, steps=step_num, prompt_tokens=cum_prompt_tokens, completion_tokens=cum_completion_tokens, usd=cum_usd, latency_ms_total=sum(latency_ms_per_step), latency_ms_per_step=latency_ms_per_step, step_breakdown=step_breakdown)`.
 
-`_no_progress_buf` SHALL be initialized to `[]` at the start of `loop()` and SHALL NOT be reset between steps. It SHALL NOT be reset on supervisor involvement (unlike `_stuck_buf`) — supervisor-mediated outcomes are already reflected in `any_action_succeeded`.
+`_no_progress_buf` SHALL be initialized to `[]` at the start of `loop()` and SHALL NOT be reset between steps. It SHALL NOT be reset on L1→L2 supervisor escalations (unlike `_stuck_buf`) — supervisor-mediated outcomes are already reflected in `any_action_succeeded`. It SHALL be cleared when a `replan` is triggered (i.e. when the supervisor policy is `"halt"` and `replan_used` is `False`), because `replan` constitutes a strategy reset that invalidates the prior observation window; this is distinct from a simple L1→L2 escalation.
 
 The `_no_progress_buf` check SHALL run only on steps where the tool-call loop completed without an earlier `_stuck_buf` bail. It SHALL NOT run on steps with no tool calls (those are handled by `_consecutive_no_tool_call_steps`).
 
@@ -79,6 +79,13 @@ The `latency_breakdown_ms` dict MUST be present on the bailing step's record (th
 - **WHEN** `RunResult` is returned with `reason="no_progress"`
 - **THEN** `RunResult.step_breakdown` SHALL have exactly `4` entries
 - **AND** every entry in `step_breakdown` SHALL have a `latency_breakdown_ms` key with integer fields `observation_ms`, `llm_ms`, and `dispatch_ms`
+
+#### Scenario: replan clears the no_progress buffer so post-replan steps start a fresh window
+
+- **GIVEN** a run that has accumulated some entries in `_no_progress_buf` (but fewer than `_NO_PROGRESS_K`)
+- **AND** the supervisor triggers a `replan` (policy `"halt"`, `replan_used == False`)
+- **WHEN** the replan completes and execution continues
+- **THEN** `_no_progress_buf` SHALL be empty and the no_progress bail counter starts fresh from zero
 
 #### Scenario: existing stuck_repeat test is unaffected by no_progress buffer
 
