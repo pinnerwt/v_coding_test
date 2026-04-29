@@ -1,0 +1,508 @@
+{
+  "run_at": "2026-04-29T17:56:38.095203+00:00",
+  "cases": [
+    {
+      "id": "webvoyager-1",
+      "status": "timeout",
+      "steps": 14,
+      "usd": 0.167452,
+      "l_tier_counts": {},
+      "validators": [
+        {
+          "name": "answer.nonempty",
+          "ok": false
+        }
+      ],
+      "prompt_tokens": 163332,
+      "completion_tokens": 2060,
+      "latency_ms_total": 150691,
+      "latency_ms_per_step": [
+        19849,
+        6366,
+        3970,
+        4591,
+        4624,
+        5409,
+        4835,
+        8375,
+        5372,
+        10259,
+        7524,
+        7501,
+        30560,
+        31456
+      ],
+      "step_breakdown": [
+        {
+          "step": 1,
+          "latency_ms": 19849,
+          "prompt_tokens": 1084,
+          "completion_tokens": 62,
+          "usd": 0.001208,
+          "tool_calls": [
+            "goto"
+          ],
+          "latency_breakdown_ms": {
+            "observation_ms": 16631,
+            "llm_ms": 2623,
+            "dispatch_ms": 594
+          }
+        },
+        {
+          "step": 2,
+          "latency_ms": 6366,
+          "prompt_tokens": 3349,
+          "completion_tokens": 101,
+          "usd": 0.0035510000000000003,
+          "tool_calls": [
+            "click"
+          ],
+          "latency_breakdown_ms": {
+            "observation_ms": 153,
+            "llm_ms": 5658,
+            "dispatch_ms": 554
+          }
+        },
+        {
+          "step": 3,
+          "latency_ms": 3970,
+          "prompt_tokens": 3761,
+          "completion_tokens": 97,
+          "usd": 0.003955,
+          "tool_calls": [
+            "type"
+          ],
+          "latency_breakdown_ms": {
+            "observation_ms": 16,
+            "llm_ms": 3954,
+            "dispatch_ms": 0
+          }
+        },
+        {
+          "step": 4,
+          "latency_ms": 4591,
+          "prompt_tokens": 4394,
+          "completion_tokens": 109,
+          "usd": 0.004612000000000001,
+          "tool_calls": [
+            "type"
+          ],
+          "latency_breakdown_ms": {
+            "observation_ms": 38,
+            "llm_ms": 4538,
+            "dispatch_ms": 14
+          }
+        },
+        {
+          "step": 5,
+          "latency_ms": 4624,
+          "prompt_tokens": 4969,
+          "completion_tokens": 96,
+          "usd": 0.005161000000000001,
+          "tool_calls": [
+            "goto"
+          ],
+          "latency_breakdown_ms": {
+            "observation_ms": 22,
+            "llm_ms": 4112,
+            "dispatch_ms": 490
+          }
+        },
+        {
+          "step": 6,
+          "latency_ms": 5409,
+          "prompt_tokens": 7017,
+          "completion_tokens": 82,
+          "usd": 0.007181000000000001,
+          "tool_calls": [
+            "read"
+          ],
+          "latency_breakdown_ms": {
+            "observation_ms": 401,
+            "llm_ms": 5007,
+            "dispatch_ms": 0
+          }
+        },
+        {
+          "step": 7,
+          "latency_ms": 4835,
+          "prompt_tokens": 9276,
+          "completion_tokens": 55,
+          "usd": 0.009386,
+          "tool_calls": [
+            "read"
+          ],
+          "latency_breakdown_ms": {
+            "observation_ms": 311,
+            "llm_ms": 4518,
+            "dispatch_ms": 5
+          }
+        },
+        {
+          "step": 8,
+          "latency_ms": 8375,
+          "prompt_tokens": 11900,
+          "completion_tokens": 153,
+          "usd": 0.012206000000000002,
+          "tool_calls": [
+            "click"
+          ],
+          "latency_breakdown_ms": {
+            "observation_ms": 302,
+            "llm_ms": 7977,
+            "dispatch_ms": 94
+          }
+        },
+        {
+          "step": 9,
+          "latency_ms": 5372,
+          "prompt_tokens": 14026,
+          "completion_tokens": 74,
+          "usd": 0.014174,
+          "tool_calls": [
+            "read"
+          ],
+          "latency_breakdown_ms": {
+            "observation_ms": 298,
+            "llm_ms": 5068,
+            "dispatch_ms": 5
+          }
+        },
+        {
+          "step": 10,
+          "latency_ms": 10259,
+          "prompt_tokens": 16650,
+          "completion_tokens": 206,
+          "usd": 0.017061999999999997,
+          "tool_calls": [
+            "click"
+          ],
+          "latency_breakdown_ms": {
+            "observation_ms": 310,
+            "llm_ms": 9949,
+            "dispatch_ms": 0
+          }
+        },
+        {
+          "step": 11,
+          "latency_ms": 7524,
+          "prompt_tokens": 18886,
+          "completion_tokens": 128,
+          "usd": 0.019142,
+          "tool_calls": [
+            "click"
+          ],
+          "latency_breakdown_ms": {
+            "observation_ms": 341,
+            "llm_ms": 7123,
+            "dispatch_ms": 60
+          }
+        },
+        {
+          "step": 12,
+          "latency_ms": 7501,
+          "prompt_tokens": 21012,
+          "completion_tokens": 130,
+          "usd": 0.021272,
+          "tool_calls": [
+            "read"
+          ],
+          "latency_breakdown_ms": {
+            "observation_ms": 316,
+            "llm_ms": 7180,
+            "dispatch_ms": 4
+          }
+        },
+        {
+          "step": 13,
+          "latency_ms": 30560,
+          "prompt_tokens": 23458,
+          "completion_tokens": 109,
+          "usd": 0.023676,
+          "tool_calls": [
+            "click"
+          ],
+          "latency_breakdown_ms": {
+            "observation_ms": 284,
+            "llm_ms": 30250,
+            "dispatch_ms": 25
+          }
+        },
+        {
+          "step": 14,
+          "latency_ms": 31456,
+          "prompt_tokens": 23365,
+          "completion_tokens": 139,
+          "usd": 0.023643,
+          "tool_calls": [
+            "click"
+          ],
+          "latency_breakdown_ms": {
+            "observation_ms": 299,
+            "llm_ms": 31157,
+            "dispatch_ms": 0
+          }
+        }
+      ],
+      "escalations": [
+        {
+          "intent": "Search textbox",
+          "from_tier": "L1_ax",
+          "to_tier": null,
+          "reason": "locatormiss"
+        }
+      ],
+      "replans": 0,
+      "cache_events": {
+        "hits": 0,
+        "invalidations": 0,
+        "misses": 2
+      },
+      "failure_class": null,
+      "failure_detail": null,
+      "skip_reason": null,
+      "canary": false,
+      "near_budget": false
+    },
+    {
+      "id": "webvoyager-2",
+      "status": "succeeded",
+      "steps": 6,
+      "usd": 0.053447,
+      "l_tier_counts": {},
+      "validators": [
+        {
+          "name": "answer.nonempty",
+          "ok": true
+        }
+      ],
+      "prompt_tokens": 50669,
+      "completion_tokens": 1389,
+      "latency_ms_total": 73782,
+      "latency_ms_per_step": [
+        18317,
+        11977,
+        9995,
+        5436,
+        4080,
+        23977
+      ],
+      "step_breakdown": [
+        {
+          "step": 1,
+          "latency_ms": 18317,
+          "prompt_tokens": 3012,
+          "completion_tokens": 77,
+          "usd": 0.003166,
+          "tool_calls": [
+            "goto"
+          ],
+          "latency_breakdown_ms": {
+            "observation_ms": 11563,
+            "llm_ms": 6519,
+            "dispatch_ms": 234
+          }
+        },
+        {
+          "step": 2,
+          "latency_ms": 11977,
+          "prompt_tokens": 5425,
+          "completion_tokens": 107,
+          "usd": 0.005639,
+          "tool_calls": [
+            "type"
+          ],
+          "latency_breakdown_ms": {
+            "observation_ms": 86,
+            "llm_ms": 6844,
+            "dispatch_ms": 5045
+          }
+        },
+        {
+          "step": 3,
+          "latency_ms": 9995,
+          "prompt_tokens": 7879,
+          "completion_tokens": 171,
+          "usd": 0.008221000000000001,
+          "tool_calls": [
+            "goto"
+          ],
+          "latency_breakdown_ms": {
+            "observation_ms": 71,
+            "llm_ms": 9008,
+            "dispatch_ms": 915
+          }
+        },
+        {
+          "step": 4,
+          "latency_ms": 5436,
+          "prompt_tokens": 9218,
+          "completion_tokens": 99,
+          "usd": 0.009416,
+          "tool_calls": [
+            "read"
+          ],
+          "latency_breakdown_ms": {
+            "observation_ms": 23,
+            "llm_ms": 5413,
+            "dispatch_ms": 0
+          }
+        },
+        {
+          "step": 5,
+          "latency_ms": 4080,
+          "prompt_tokens": 10625,
+          "completion_tokens": 56,
+          "usd": 0.010737,
+          "tool_calls": [
+            "read"
+          ],
+          "latency_breakdown_ms": {
+            "observation_ms": 25,
+            "llm_ms": 4051,
+            "dispatch_ms": 3
+          }
+        },
+        {
+          "step": 6,
+          "latency_ms": 23977,
+          "prompt_tokens": 12399,
+          "completion_tokens": 630,
+          "usd": 0.013659,
+          "tool_calls": [
+            "done"
+          ],
+          "latency_breakdown_ms": {
+            "observation_ms": 25,
+            "llm_ms": 23951,
+            "dispatch_ms": 0
+          }
+        }
+      ],
+      "escalations": [],
+      "replans": 0,
+      "cache_events": {
+        "hits": 0,
+        "invalidations": 0,
+        "misses": 0
+      },
+      "failure_class": null,
+      "failure_detail": null,
+      "skip_reason": null,
+      "canary": false,
+      "near_budget": false
+    },
+    {
+      "id": "webvoyager-3",
+      "status": "succeeded",
+      "steps": 5,
+      "usd": 0.029733999999999997,
+      "l_tier_counts": {},
+      "validators": [
+        {
+          "name": "answer.nonempty",
+          "ok": true
+        }
+      ],
+      "prompt_tokens": 28030,
+      "completion_tokens": 852,
+      "latency_ms_total": 50012,
+      "latency_ms_per_step": [
+        18378,
+        12116,
+        6104,
+        5850,
+        7564
+      ],
+      "step_breakdown": [
+        {
+          "step": 1,
+          "latency_ms": 18378,
+          "prompt_tokens": 2178,
+          "completion_tokens": 94,
+          "usd": 0.002366,
+          "tool_calls": [
+            "goto"
+          ],
+          "latency_breakdown_ms": {
+            "observation_ms": 11521,
+            "llm_ms": 6183,
+            "dispatch_ms": 673
+          }
+        },
+        {
+          "step": 2,
+          "latency_ms": 12116,
+          "prompt_tokens": 3737,
+          "completion_tokens": 135,
+          "usd": 0.004007,
+          "tool_calls": [
+            "click"
+          ],
+          "latency_breakdown_ms": {
+            "observation_ms": 88,
+            "llm_ms": 6983,
+            "dispatch_ms": 5043
+          }
+        },
+        {
+          "step": 3,
+          "latency_ms": 6104,
+          "prompt_tokens": 5367,
+          "completion_tokens": 75,
+          "usd": 0.005517,
+          "tool_calls": [
+            "goto"
+          ],
+          "latency_breakdown_ms": {
+            "observation_ms": 53,
+            "llm_ms": 4904,
+            "dispatch_ms": 1145
+          }
+        },
+        {
+          "step": 4,
+          "latency_ms": 5850,
+          "prompt_tokens": 6768,
+          "completion_tokens": 109,
+          "usd": 0.006986,
+          "tool_calls": [
+            "read"
+          ],
+          "latency_breakdown_ms": {
+            "observation_ms": 64,
+            "llm_ms": 5785,
+            "dispatch_ms": 0
+          }
+        },
+        {
+          "step": 5,
+          "latency_ms": 7564,
+          "prompt_tokens": 8701,
+          "completion_tokens": 143,
+          "usd": 0.008987,
+          "tool_calls": [
+            "done"
+          ],
+          "latency_breakdown_ms": {
+            "observation_ms": 30,
+            "llm_ms": 7534,
+            "dispatch_ms": 0
+          }
+        }
+      ],
+      "escalations": [],
+      "replans": 0,
+      "cache_events": {
+        "hits": 0,
+        "invalidations": 0,
+        "misses": 0
+      },
+      "failure_class": null,
+      "failure_detail": null,
+      "skip_reason": null,
+      "canary": false,
+      "near_budget": false
+    }
+  ]
+}

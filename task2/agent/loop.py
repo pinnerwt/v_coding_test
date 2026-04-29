@@ -226,6 +226,14 @@ class _DecisionMarker:
     kind: str = "decision"
 
 
+def _phase_breakdown(t0: float, t_llm_start: float, t_dispatch_start: float) -> dict:
+    return {
+        "observation_ms": int((t_llm_start - t0) * 1000),
+        "llm_ms": int((t_dispatch_start - t_llm_start) * 1000),
+        "dispatch_ms": int((time.monotonic() - t_dispatch_start) * 1000),
+    }
+
+
 def _record_step(
     step_num: int,
     t0: float,
@@ -233,6 +241,8 @@ def _record_step(
     tool_names: list[str],
     per_step: list[int],
     breakdown: list[dict],
+    *,
+    latency_breakdown: dict,
 ) -> int:
     step_ms = int((time.monotonic() - t0) * 1000)
     per_step.append(step_ms)
@@ -244,6 +254,7 @@ def _record_step(
             "completion_tokens": response.usage.completion_tokens,
             "usd": response.usd,
             "tool_calls": tool_names,
+            "latency_breakdown_ms": latency_breakdown,
         }
     )
     return step_ms
@@ -837,6 +848,7 @@ def loop(
             events.append(_DecisionMarker())
 
         messages = _compact_messages(messages, _budget)
+        t_llm_start = time.monotonic()
         response = llm_client.chat(messages, tools=TOOLS)
 
         cum_prompt_tokens += response.usage.prompt_tokens
@@ -857,9 +869,19 @@ def loop(
 
         dispatched_tool_names: list[str] = []
 
+        t_dispatch_start = time.monotonic()
+
         if not response.tool_calls:
             _consecutive_no_tool_call_steps += 1
-            _record_step(step_num, t0, response, [], latency_ms_per_step, step_breakdown)
+            _record_step(
+                step_num,
+                t0,
+                response,
+                [],
+                latency_ms_per_step,
+                step_breakdown,
+                latency_breakdown=_phase_breakdown(t0, t_llm_start, t_dispatch_start),
+            )
             if _consecutive_no_tool_call_steps >= _NO_TOOL_CALL_K:
                 return RunResult(
                     status="failed",
@@ -916,6 +938,7 @@ def loop(
                     dispatched_tool_names,
                     latency_ms_per_step,
                     step_breakdown,
+                    latency_breakdown=_phase_breakdown(t0, t_llm_start, t_dispatch_start),
                 )
                 return RunResult(
                     status=status,
@@ -966,6 +989,7 @@ def loop(
                     dispatched_tool_names,
                     latency_ms_per_step,
                     step_breakdown,
+                    latency_breakdown=_phase_breakdown(t0, t_llm_start, t_dispatch_start),
                 )
                 return RunResult(
                     status="failed",
@@ -1005,6 +1029,7 @@ def loop(
                     dispatched_tool_names,
                     latency_ms_per_step,
                     step_breakdown,
+                    latency_breakdown=_phase_breakdown(t0, t_llm_start, t_dispatch_start),
                 )
                 return RunResult(
                     status="failed",
@@ -1069,6 +1094,7 @@ def loop(
                         dispatched_tool_names,
                         latency_ms_per_step,
                         step_breakdown,
+                        latency_breakdown=_phase_breakdown(t0, t_llm_start, t_dispatch_start),
                     )
                     return RunResult(
                         status="failed",
@@ -1091,6 +1117,7 @@ def loop(
             dispatched_tool_names,
             latency_ms_per_step,
             step_breakdown,
+            latency_breakdown=_phase_breakdown(t0, t_llm_start, t_dispatch_start),
         )
 
     return RunResult(

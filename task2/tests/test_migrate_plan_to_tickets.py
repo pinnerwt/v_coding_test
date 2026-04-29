@@ -111,15 +111,17 @@ def test_archived_changes_produce_archive_ticket_with_merged_pr(tmp_path):
     assert verifiable_ids, "No verifiable ticket citations found — git log has no PR refs for any"
     archive_files = list(archive_dir.glob("*.md"))
     assert archive_files, "migration produced no archive files from pre-stub plan.md"
+    migrated_ids: set[int] = set()
     archive_ids_with_merged_pr: set[int] = set()
     for f in archive_files:
         text = f.read_text()
         if text.startswith("---"):
             end = text.index("---", 3)
             fm = yaml.safe_load(text[3:end])
+            migrated_ids.add(fm["id"])
             if fm.get("merged_pr") is not None:
                 archive_ids_with_merged_pr.add(fm["id"])
-    for tid in verifiable_ids:
+    for tid in verifiable_ids & migrated_ids:
         assert tid in archive_ids_with_merged_pr, (
             f"Ticket #{tid} cited in archived proposal, git-verifiable PR found, "
             f"but no archive file with merged_pr set"

@@ -47,7 +47,7 @@ The system SHALL provide `agent.loop.loop(task, browser, llm_client, *, max_step
 - `prompt_tokens`, `completion_tokens`, `usd` SHALL be cumulated from each `llm_client.chat()` call, **including the planner LLM call(s)**.
 - `latency_ms_per_step` SHALL have one entry per step (wall time for the full observe→decide→dispatch cycle).
 - `latency_ms_total` SHALL equal `sum(latency_ms_per_step)`.
-- `step_breakdown[i]` SHALL have `step=i+1`, `latency_ms`, `prompt_tokens`, `completion_tokens`, `usd`, `tool_calls` (list of tool name strings called in that step).
+- `step_breakdown[i]` SHALL have `step=i+1`, `latency_ms`, `prompt_tokens`, `completion_tokens`, `usd`, `tool_calls` (list of tool name strings called in that step), and `latency_breakdown_ms` (a dict with integer keys `observation_ms`, `llm_ms`, `dispatch_ms` — see the `Per-step phase latency breakdown` requirement).
 - The loop SHALL call `agent.plan.plan()` once after the first observation and inject "Plan progress" into every subsequent decision user message.
 - On supervisor `policy="halt"`, the loop SHALL trigger at most one `agent.plan.replan()` before returning `RunResult(status="failed")`.
 - The new `locator_cache: LocatorCache | None = None` kwarg SHALL be accepted and, when not `None`, threaded as the cache argument into `_locate_with_supervisor` during `read` tool dispatch with a non-empty `intent`. When `None`, the loop SHALL not pass any cache to `_locate_with_supervisor` (current default behavior is preserved for all existing callers).
@@ -997,3 +997,40 @@ The early-return `RunResult` SHALL preserve the cumulative metrics observed up t
 
 - **WHEN** `inspect.signature(agent.loop.loop).parameters` is read
 - **THEN** the parameter list SHALL include `budget_seconds` as a keyword-only parameter with default `None`
+
+### Requirement: Per-step phase latency breakdown
+
+The system SHALL capture monotonic timestamps inside each iteration of `loop()` and write them under a `latency_breakdown_ms` key in every `step_breakdown` entry.
+
+- `t0` (the existing per-step anchor used for `step_ms`) SHALL serve as the observation start.
+- `t_llm_start` SHALL be captured immediately before `llm_client.chat(...)` is called.
+- `t_dispatch_start` SHALL be captured immediately before the `for tool_call in response.tool_calls:` loop begins (or, when no tool calls are present, immediately before the no-tool-call branch is evaluated).
+- `observation_ms` SHALL equal `int((t_llm_start - t0) * 1000)`.
+- `llm_ms` SHALL equal `int((t_dispatch_start - t_llm_start) * 1000)`.
+- `dispatch_ms` SHALL equal `int((time.monotonic() - t_dispatch_start) * 1000)` computed at the `_record_step` call site.
+- The `latency_breakdown_ms` dict written into `step_breakdown[i]` SHALL have exactly the keys `observation_ms`, `llm_ms`, and `dispatch_ms`, all integers.
+- The dict SHALL be present on every `step_breakdown` entry regardless of how the step exits (no-tool-call, `done`, `fail`, `stuck_repeat`, replan-exhaustion, max-steps). No entry SHALL have a missing or `null` `latency_breakdown_ms`.
+- Sum invariant: `abs((observation_ms + llm_ms + dispatch_ms) - latency_ms) <= 5` SHALL hold for every step in a run, allowing ±5 ms for bookkeeping overhead.
+
+#### Scenario: Phase ranges match stub sleep durations
+
+- **GIVEN** a stub `LLMClient` whose `chat()` sleeps 0.4 s before returning
+- **AND** a stub `Browser` whose `build_observation()` sleeps 0.1 s before returning
+- **AND** the stub LLM returns a `done` tool call so the run completes in one step
+- **WHEN** `loop(task, browser, llm_client)` is called
+- **THEN** `step_breakdown[0]["latency_breakdown_ms"]["llm_ms"]` SHALL be in the range `[350, 600]`
+- **AND** `step_breakdown[0]["latency_breakdown_ms"]["observation_ms"]` SHALL be in the range `[80, 200]`
+
+#### Scenario: Sum invariant holds across all steps in a 5-step run
+
+- **GIVEN** a stub `LLMClient` that returns `goto` on steps 1–4 and `done` on step 5
+- **WHEN** `loop(task, browser, llm_client)` runs to completion
+- **THEN** for every entry `s` in `result.step_breakdown`, `abs((s["latency_breakdown_ms"]["observation_ms"] + s["latency_breakdown_ms"]["llm_ms"] + s["latency_breakdown_ms"]["dispatch_ms"]) - s["latency_ms"]) <= 5` SHALL hold
+
+#### Scenario: latency_breakdown_ms present on all entries including no-tool-call steps
+
+- **GIVEN** a stub `LLMClient` that returns no tool calls for two steps then `done` on step 3
+- **WHEN** `loop(task, browser, llm_client)` is called
+- **THEN** every entry in `result.step_breakdown` SHALL have a `latency_breakdown_ms` key
+- **AND** each `latency_breakdown_ms` SHALL contain exactly the keys `observation_ms`, `llm_ms`, and `dispatch_ms`
+- **AND** none of those values SHALL be `None`
