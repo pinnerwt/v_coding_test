@@ -1,7 +1,7 @@
 ---
 id: 84
 slug: archive-helper-stages-frontmatter-updates
-status: active
+status: archived
 tier: 1
 urgency: P1
 axes:
@@ -17,8 +17,8 @@ related:
 - 82
 - 83
 filed_pr: null
-merged_pr: null
-archived_at: null
+merged_pr: 130
+archived_at: '2026-04-29'
 trigger: 'discovered during retroactive archival of tickets #79 and #80 on 2026-04-29 — `git status` after running the helper showed both archive files as `M` (unstaged frontmatter updates), and a fresh commit had to be added to land them. The helper writes frontmatter to `active_path` then runs `git mv active archive`. `git mv` only re-stages the rename based on the INDEX entry of the source — it does NOT re-stage post-write content. Result: the rename lands in the commit, but the `status: archived` / `merged_pr: <PR>` / `archived_at: <date>` edits are silently left in the working tree.'
 ---
 
