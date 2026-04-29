@@ -42,7 +42,7 @@ The `ToolName` literal in `loop.py` SHALL be updated to include `"click"`.
 - **GIVEN** a page where the located element raises `playwright.sync_api.Error("Element is not attached to the DOM")` when clicked
 - **WHEN** `_dispatch("click", {"intent": "Submit button"}, browser, supervisor, ...)` is called
 - **THEN** the emitted `ActEvent` SHALL have `outcome="error"`
-- **AND** `ActEvent.diff["error"]` SHALL start with `"Error: "` (the playwright base class name) and SHALL contain `"Element is not attached to the DOM"`
+- **AND** `ActEvent.diff["error"]` SHALL be a non-empty string of the form `"<exception_class_name>: <message>"` where `<exception_class_name>` equals the raised exception's `__class__.__name__` and `<message>` contains `"Element is not attached to the DOM"`
 
 ### Requirement: type tool dispatch in loop
 

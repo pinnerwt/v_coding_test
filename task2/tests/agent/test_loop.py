@@ -3288,6 +3288,49 @@ def test_loop_type_timeout_records_exception_class_and_message_in_diff(monkeypat
     writer.close()
 
 
+def test_loop_type_error_records_exception_class_and_message_in_diff(monkeypatch):
+    import playwright.sync_api as pw_api
+
+    from agent.loop import _dispatch
+    from agent.supervisor import Supervisor
+
+    selector = "input#email"
+    fill_err = pw_api.Error("element is not an HTMLInputElement")
+    fake_browser, locate_result, _stub_locator = _make_fake_browser_for_type(
+        selector, fill_raises=fill_err
+    )
+
+    monkeypatch.setattr(
+        "agent.loop._locate_or_error_msg",
+        lambda *_args, **_kwargs: locate_result,
+    )
+
+    run_id = "unit-type-error-diff"
+    writer = _open_click_writer(run_id)
+
+    _dispatch(
+        "type",
+        {"intent": "Email textbox", "text": "foo"},
+        fake_browser,
+        Supervisor(),
+        trace_writer=writer,
+        run_id=run_id,
+        step_id=f"{run_id}:step-1",
+    )
+
+    act_events = [e for e in writer.iter_events(run_id) if isinstance(e, ActEvent)]
+    assert len(act_events) == 1
+    assert act_events[0].outcome == "error"
+    err_str = act_events[0].diff.get("error")
+    assert isinstance(err_str, str) and err_str
+    cls_name, _, msg = err_str.partition(": ")
+    assert cls_name == "Error", (
+        f"expected exception class name 'Error' (playwright base), got {cls_name!r}"
+    )
+    assert "element is not an HTMLInputElement" in msg
+    writer.close()
+
+
 # ---------------------------------------------------------------------------
 # Type tool: validation guard — missing/empty intent or text → error, no ActEvent
 # ---------------------------------------------------------------------------

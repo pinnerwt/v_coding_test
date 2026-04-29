@@ -17,7 +17,7 @@ WebVoyager-2 fails at step 4 with `failure_class=tool_error` and `failure_detail
 
 ### Modified Capabilities
 
-- `agent-loop`: the `click tool dispatch in loop` and `type tool dispatch in loop` requirements MODIFIED to require `diff={"error": "<repr>"}` on `outcome` in `{"error", "timeout"}` (was `diff={}` unconditionally).
+- `agent-loop`: the `click tool dispatch in loop` and `type tool dispatch in loop` requirements MODIFIED to require `diff={"error": "<class>: <message>"}` (the exception's `__class__.__name__` followed by `": "` followed by `str(exc)`) on `outcome` in `{"error", "timeout"}` (was `diff={}` unconditionally).
 
 ## Impact
 
