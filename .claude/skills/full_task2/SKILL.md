@@ -174,6 +174,8 @@ git push -u origin "chore/archive-ticket-${pr_num}"
 
 Note: `git add` on the deleted active file may show "pathspec did not match" if `git mv` already handled it — the `2>/dev/null || true` guards against that. Use `git status --porcelain` to confirm the right files are staged before committing.
 
+**Why the `git add task2/tickets/archive/${...}.md` line matters (do NOT skip it).** The helper's order is `active_path.write_text(new_text)` → `git mv active archive`. `git mv` only stages the rename based on the index entry of the source — it does NOT re-stage post-write content. So immediately after the helper returns, the index has the rename with the OLD content while the working tree has the NEW (archived) frontmatter. A blind commit at this point lands the rename without the `status: archived` / `merged_pr` / `archived_at` updates, half-archiving the ticket. The `git add archive/<dst>` line re-stages the working-tree content over the index, capturing the frontmatter writes. **Why:** confirmed in `/auto_task2` iteration 8 on 2026-04-29 — the retroactive cleanup of #79 and #80 bypassed this step, committed only the rename, and required a fix-up commit. **How to apply:** if you invoke `archive_workflow_only_ticket.py` outside this Phase 4 block (e.g. for retroactive cleanup), always follow with `git add task2/tickets/archive/<NNN>-<slug>.md` AND `git status --porcelain` to confirm no `M` entries remain on the moved file before committing. Tracked as ticket #84 — when that ticket lands, the helper itself will stage its content writes and this footgun goes away.
+
 **Step 5 — Open PR and auto-merge:**
 
 ```bash
