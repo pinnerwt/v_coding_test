@@ -162,6 +162,9 @@ def test_dependency_resolution():
             )
 
 
+_UNESCAPED_PIPE_RE = re.compile(r"(?<!\\)\|")
+
+
 def _parse_index_rows() -> dict[int, dict]:
     if not INDEX_MD.exists():
         return {}
@@ -175,13 +178,16 @@ def _parse_index_rows() -> dict[int, dict]:
         if header_seen and line.startswith("|---"):
             continue
         if header_seen and line.startswith("|") and not line.startswith("## "):
-            parts = [p.strip() for p in line.split("|")[1:-1]]
-            if len(parts) < 9:
-                continue
+            split = _UNESCAPED_PIPE_RE.split(line)
+            parts = [p.strip().replace("\\|", "|") for p in split[1:-1]]
             try:
                 tid = int(parts[0])
-            except ValueError:
+            except (ValueError, IndexError):
                 continue
+            assert len(parts) == 10, (
+                f"INDEX.md row for ticket #{tid} has {len(parts)} cells, expected 10"
+                f" (likely unescaped `|` in summary): {line[:120]!r}"
+            )
             raw_deps = parts[6].strip()
             raw_gates = parts[7].strip()
             deps = [int(t) for t in raw_deps.split() if t] if raw_deps else []
@@ -196,7 +202,7 @@ def _parse_index_rows() -> dict[int, dict]:
                 "dependencies": deps,
                 "pre_flight_gates": gates,
                 "summary": parts[8],
-                "file": parts[9] if len(parts) > 9 else "",
+                "file": parts[9],
             }
         elif header_seen and line.startswith("## "):
             header_seen = False
@@ -206,6 +212,11 @@ def _parse_index_rows() -> dict[int, dict]:
 def test_index_mirrors_frontmatter():
     index_rows = _parse_index_rows()
     assert index_rows, "INDEX.md has no parseable rows — run regen_tickets_index.py first"
+    on_disk_count = len(_all_ticket_files())
+    assert len(index_rows) == on_disk_count, (
+        f"INDEX.md parsed {len(index_rows)} rows but {on_disk_count} ticket files exist on disk"
+        " — likely a row was silently dropped due to malformed pipe escaping"
+    )
     for path, _ in _all_ticket_files():
         fm = _parse_frontmatter(path)
         tid = fm["id"]

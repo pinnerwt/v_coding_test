@@ -34,6 +34,10 @@ def _fmt_list(val: list) -> str:
     return " ".join(str(v) for v in val)
 
 
+def _escape_cell(s: str) -> str:
+    return s.replace("|", "\\|")
+
+
 def _render_table(tickets: list[dict], rel_base: Path) -> str:
     header = (
         "| id | urgency | tier | pass_rate | tokens_pct | latency_pct"
@@ -50,7 +54,7 @@ def _render_table(tickets: list[dict], rel_base: Path) -> str:
             f" | {axes.get('latency_pct', 0)}"
             f" | {_fmt_list(fm.get('dependencies', []))}"
             f" | {_fmt_list(fm.get('pre_flight_gates', []))}"
-            f" | {fm['_summary']}"
+            f" | {_escape_cell(fm['_summary'])}"
             f" | {rel} |"
         )
     return header + "\n".join(rows) + "\n"

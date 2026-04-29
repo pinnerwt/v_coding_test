@@ -1,5 +1,4 @@
 import re
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -11,13 +10,12 @@ TASK2 = REPO_ROOT / "task2"
 PLAN_MD = TASK2 / "plan.md"
 MIGRATE_SCRIPT = TASK2 / "scripts" / "migrate_plan_to_tickets.py"
 ARCHIVE_DIR = REPO_ROOT / "openspec" / "changes" / "archive"
-TICKETS_ARCHIVE_DIR = TASK2 / "tickets" / "archive"
 
 
-def _count_tickets_in_plan(plan_path: Path) -> int:
+def _count_tickets_in_plan_text(plan_text: str) -> int:
     in_ticket_section = False
     count = 0
-    for line in plan_path.read_text().splitlines():
+    for line in plan_text.splitlines():
         if line.startswith("## TDD tickets") or line.startswith("## Benchmark improvements"):
             in_ticket_section = True
         elif line.startswith("## ") and in_ticket_section:
@@ -28,8 +26,9 @@ def _count_tickets_in_plan(plan_path: Path) -> int:
 
 
 def test_migration_count_matches_plan_md(tmp_path):
+    plan_text = _pre_stub_plan_text()
     plan_copy = tmp_path / "plan.md"
-    shutil.copy(PLAN_MD, plan_copy)
+    plan_copy.write_text(plan_text)
     active_dir = tmp_path / "tickets" / "active"
     archive_dir = tmp_path / "tickets" / "archive"
     active_dir.mkdir(parents=True)
@@ -49,7 +48,7 @@ def test_migration_count_matches_plan_md(tmp_path):
     )
     assert result.returncode == 0, f"Migration failed:\n{result.stderr}"
     emitted = list(active_dir.glob("*.md")) + list(archive_dir.glob("*.md"))
-    expected = _count_tickets_in_plan(PLAN_MD)
+    expected = _count_tickets_in_plan_text(plan_text)
     assert len(emitted) == expected, (
         f"emitted {len(emitted)} files but expected {expected} (from plan.md ticket sections)"
     )
@@ -75,9 +74,21 @@ def _git_has_pr_for_ticket(ticket_id: int) -> int | None:
     return None
 
 
+def _pre_stub_plan_text() -> str:
+    out = subprocess.check_output(
+        ["git", "log", "--diff-filter=M", "--format=%H", "--", "task2/plan.md"],
+        cwd=str(REPO_ROOT),
+        text=True,
+    )
+    stub_sha = out.splitlines()[0]
+    return subprocess.check_output(
+        ["git", "show", f"{stub_sha}^:task2/plan.md"], cwd=str(REPO_ROOT), text=True
+    )
+
+
 def test_archived_changes_produce_archive_ticket_with_merged_pr(tmp_path):
     plan_copy = tmp_path / "plan.md"
-    shutil.copy(PLAN_MD, plan_copy)
+    plan_copy.write_text(_pre_stub_plan_text())
     tickets_dir = tmp_path / "tickets"
     active_dir = tickets_dir / "active"
     archive_dir = tickets_dir / "archive"
@@ -97,10 +108,8 @@ def test_archived_changes_produce_archive_ticket_with_merged_pr(tmp_path):
     assert cited_ticket_ids, "No ticket citations found in archived proposals — check archive dir"
     verifiable_ids = {tid for tid in cited_ticket_ids if _git_has_pr_for_ticket(tid) is not None}
     assert verifiable_ids, "No verifiable ticket citations found — git log has no PR refs for any"
-    # plan.md is now a stub post-migration; verify against the committed
-    # tickets/archive snapshot when the tmp migration produces no output
-    archive_files = list(archive_dir.glob("*.md")) or list(TICKETS_ARCHIVE_DIR.glob("*.md"))
-    assert archive_files, "no archive files in tmp dir or committed tickets/archive"
+    archive_files = list(archive_dir.glob("*.md"))
+    assert archive_files, "migration produced no archive files from pre-stub plan.md"
     archive_ids_with_merged_pr: set[int] = set()
     for f in archive_files:
         text = f.read_text()
