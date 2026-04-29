@@ -135,7 +135,7 @@ Wraps up an OpenSpec-driven PR end-to-end: archive → commit → push → merge
      - `merged_pr: <PR number>` — use `gh pr view --json number -q .number` to get the current PR number.
      - `archived_at: <YYYY-MM-DD>` — today's date in ISO-8601 format.
    - Run `uv run python task2/scripts/regen_tickets_index.py` to update `task2/tickets/INDEX.md`.
-   - Stage the moved file and INDEX.md and commit in a single commit:
+   - Stage the moved file and INDEX.md and commit in a single commit. **Do not** stage by the *original* path (`git add task2/tickets/active/<NNN>-*.md`) — after `git mv`, the source path no longer exists in the working tree and `git add` rejects it with `pathspec '...' did not match any files`. Use `git add -u task2/tickets/` (picks up the rename plus the post-edit modification) followed by `git add task2/tickets/archive/<NNN>-*.md task2/tickets/INDEX.md` (idempotent — covers the dest path and INDEX.md). Confirm `git status --porcelain task2/tickets/` shows one `R` (rename) plus one `M` (INDEX.md) before commit. Why: confirmed in PR #115 on 2026-04-29 — the first commit attempt named the active/-side path and was rejected, costing one cycle. How to apply: always stage by destination path (or use `-u`) for `git mv` follow-ups; the source path is a phantom after the move.
      ```
      docs(task2): archive ticket #<N> — <short title>
      ```
