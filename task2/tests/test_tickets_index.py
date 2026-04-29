@@ -1,5 +1,7 @@
+import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import yaml
@@ -188,4 +190,78 @@ def test_index_mirrors_frontmatter():
         assert row["latency_pct"] == fm["axes"]["latency_pct"], (
             f"Ticket #{tid}: INDEX latency_pct={row['latency_pct']}"
             f" != fm={fm['axes']['latency_pct']}"
+        )
+
+
+_ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def test_archive_tickets_have_non_null_archived_at_and_merged_pr():
+    for path in sorted(ARCHIVE_DIR.glob("*.md")):
+        fm = _parse_frontmatter(path)
+        assert fm.get("merged_pr") is not None and isinstance(fm["merged_pr"], int), (
+            f"{path.name}: archive ticket must have non-null int merged_pr"
+        )
+        archived_at = fm.get("archived_at")
+        assert archived_at is not None, (
+            f"{path.name}: archive ticket must have non-null archived_at"
+        )
+        assert _ISO_DATE_RE.match(str(archived_at)), (
+            f"{path.name}: archived_at={archived_at!r} is not ISO-8601 YYYY-MM-DD"
+        )
+
+
+def test_all_tickets_have_nonempty_trigger():
+    for path, _folder in _all_ticket_files():
+        fm = _parse_frontmatter(path)
+        trigger = fm.get("trigger", "")
+        assert trigger and str(trigger).strip(), (
+            f"{path.name}: trigger must be a non-empty string, got {trigger!r}"
+        )
+
+
+def test_regen_after_add_reflects_new_entry():
+    import shutil
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp = Path(tmpdir)
+        tickets_copy = tmp / "tickets"
+        shutil.copytree(TICKETS_DIR, tickets_copy)
+        sentinel = tickets_copy / "active" / "999-test-sentinel.md"
+        frontmatter = {
+            "id": 999,
+            "slug": "test-sentinel",
+            "status": "active",
+            "tier": 6,
+            "urgency": "P3",
+            "axes": {"pass_rate": 0, "tokens_pct": 0, "latency_pct": 0},
+            "dependencies": [],
+            "pre_flight_gates": [],
+            "evidence": [],
+            "related": [],
+            "filed_pr": None,
+            "merged_pr": None,
+            "archived_at": None,
+            "trigger": "test sentinel for regen_after_add scenario",
+        }
+        sentinel.write_text(
+            "---\n" + yaml.dump(frontmatter, default_flow_style=False) + "---\n\nsentinel body\n"
+        )
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(REGEN_SCRIPT),
+                "--tickets-dir",
+                str(tickets_copy),
+                "--repo-root",
+                str(tmp),
+            ],
+            capture_output=True,
+            text=True,
+            cwd=str(REPO_ROOT),
+        )
+        assert result.returncode == 0, f"regen failed:\n{result.stderr}"
+        index_content = (tickets_copy / "INDEX.md").read_text()
+        assert "999" in index_content, (
+            "INDEX.md does not contain newly added ticket #999 after regen"
         )

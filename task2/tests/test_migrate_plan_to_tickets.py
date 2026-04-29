@@ -113,3 +113,52 @@ def test_archived_changes_produce_archive_ticket_with_merged_pr(tmp_path):
             f"Ticket #{tid} cited in archived proposal, git-verifiable PR found, "
             f"but no archive file with merged_pr set"
         )
+
+
+def test_migration_exits_nonzero_on_count_mismatch(tmp_path):
+    import unittest.mock as mock
+
+    import scripts.migrate_plan_to_tickets as mod
+
+    plan_content = (
+        "## TDD tickets (each is red → green → refactor)\n\n"
+        "1. **Ticket Alpha** — alpha description.\n\n"
+        "2. **Ticket Beta** — beta description.\n\n"
+        "## Undone\n"
+    )
+    plan_path = tmp_path / "plan.md"
+    plan_path.write_text(plan_content)
+    out_dir = tmp_path / "tickets"
+    (out_dir / "active").mkdir(parents=True)
+    (out_dir / "archive").mkdir(parents=True)
+
+    original_extract = mod._extract_tickets
+
+    def _inject_extra(plan_text: str) -> list[dict]:
+        tickets = original_extract(plan_text)
+        return tickets + [{"id": 9999, "title": "phantom-ticket-not-emitted", "body": ""}]
+
+    exit_codes: list[int] = []
+
+    def _capture_exit(code: int = 0) -> None:
+        exit_codes.append(code)
+        raise SystemExit(code)
+
+    original_write = mod.Path.write_text
+
+    def _fail_for_phantom(self, text, *args, **kwargs):
+        if "phantom-ticket" in str(self):
+            raise OSError("simulated write failure for phantom ticket")
+        return original_write(self, text, *args, **kwargs)
+
+    with mock.patch.object(mod, "_extract_tickets", _inject_extra):
+        with mock.patch.object(mod.Path, "write_text", _fail_for_phantom):
+            with mock.patch("sys.exit", side_effect=_capture_exit):
+                try:
+                    mod.migrate(plan_path, out_dir, REPO_ROOT)
+                except SystemExit:
+                    pass
+
+    assert exit_codes and exit_codes[-1] != 0, (
+        "migrate() should call sys.exit with non-zero code when emitted count differs from parsed"
+    )
