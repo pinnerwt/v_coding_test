@@ -73,8 +73,8 @@ jobs:
             --jq '.[] | select(.user.login == "github-actions[bot]") | .id' \
             | tail -1)
           if [ -n "$COMMENT_ID" ]; then
-            gh api --method PATCH "/repos/$REPO/issues/comments/$COMMENT_ID" \
-              -f "body=@$DIFF_FILE"
+            gh api --method PATCH "repos/$REPO/issues/comments/$COMMENT_ID" \
+              -F "body=@$DIFF_FILE"
           else
             gh pr comment "$PR_NUMBER" --body-file "$DIFF_FILE" --repo "$REPO"
           fi
