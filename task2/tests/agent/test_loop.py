@@ -3425,7 +3425,6 @@ class _AlternatingGotoClient:
 
 
 def test_loop_stuck_repeat_no_false_positive_on_alternation():
-    """Alternating goto(a/b/a) must NOT trigger stuck detection; loop exits via timeout."""
     stub_browser = _StubBrowserForCompaction()
     stub_llm = _AlternatingGotoClient()
     with patch("agent.loop.observe.build_observation", return_value=_LARGE_OBSERVATION):
@@ -3492,3 +3491,4 @@ def test_loop_stuck_repeat_does_not_preempt_supervisor_halt():
     with patch("agent.loop.observe.build_observation", return_value="state: ok"):
         result = loop("task", browser=stub_browser, llm_client=fake_llm, max_steps=10)
     assert result.reason != "stuck_repeat"
+    assert result.steps >= 4

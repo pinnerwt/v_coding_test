@@ -27,9 +27,9 @@ The relevant symbols in `loop.py`:
 
 **D1: Buffer placement in `loop()`**
 
-The K-buffer `_stuck_buf: list[str]` is initialized to `[]` at the start of `loop()` alongside `last_actions`. Each time the LLM emits tool calls (after `response.tool_calls` is confirmed non-empty, before dispatching), each `(tool_call.name, json.dumps(args, sort_keys=True))` tuple is serialized to a single canonical string and appended to `_stuck_buf`. The buffer is then trimmed to the last K entries. The stuck check fires immediately after appending: if `len(_stuck_buf) == K` and `len(set(_stuck_buf)) == 1`, exit early. Placement is after `args` is parsed from `tool_call.arguments` (inside the `for tool_call in response.tool_calls:` loop, after the JSON parse succeeds) so the canonical string is computed on clean data.
+The K-buffer `_stuck_buf: list[str]` is initialized to `[]` at the start of `loop()` alongside `last_actions`. Each time the LLM emits tool calls, each `(tool_call.name, json.dumps(args, sort_keys=True))` tuple is serialized to a single canonical string and appended to `_stuck_buf` **after** `_dispatch` returns successfully. The buffer is then trimmed to the last K entries. The stuck check fires immediately after appending: if `len(_stuck_buf) == K` and `len(set(_stuck_buf)) == 1`, exit early. Placement is after dispatch so D7's supervisor-reset can detect whether the supervisor took ownership of the call (if `supervisor.total_attempts()` increased during the dispatch, the buffer is cleared before appending).
 
-Alternative considered: checking after the full step (post-dispatch). Rejected because the goal is to detect the *decision* cycle, not the dispatch outcome — a stuck LLM should be detected the moment its K-th repeated call is parsed, not after all dispatches of that step run.
+Alternative considered: appending the canonical string pre-dispatch (immediately after the JSON parse succeeds). Rejected because this would pre-empt the supervisor's locator-escalation halt path on identical `read(intent=X)` calls — see D7.
 
 **D2: Canonicalization via `json.dumps(args, sort_keys=True)`**
 
@@ -57,7 +57,9 @@ The existing trace schema has no `StuckEvent` kind. Emitting a `SupervisorEvent(
 
 Stuck-detection must not pre-empt the supervisor's locator-escalation/halt/replan path. The supervisor is the legitimate handler for "agent keeps emitting the same `read(intent=X)` call" — it escalates L1→L2→L3, then halts on attempt > `max_attempts`, then triggers a one-shot replan. If the stuck-buffer were checked *before* dispatch (as originally implemented), 3 consecutive identical `read` calls would trigger `stuck_repeat` before the supervisor could fire its halt.
 
-Fix applied (Option A): the buffer append and stuck check are moved to *after* `_dispatch`. Before dispatch, the total call count `sum(supervisor._attempts.values())` is snapshotted; after dispatch, if that count increased (i.e., `supervisor.handle()` was called during the dispatch), `_stuck_buf` is cleared before appending. This resets the window whenever the supervisor takes ownership of an intent, ensuring stuck-detection only catches planner-level stuck cases that the supervisor does not already handle (e.g. repeated `goto(url=X)`, repeated `click`, repeated `type`).
+Fix applied (Option A): the buffer append and stuck check are moved to *after* `_dispatch`. Before dispatch, `supervisor.total_attempts()` is snapshotted; after dispatch, if that count increased (i.e., `supervisor.handle()` was called during the dispatch), `_stuck_buf` is cleared before appending. This resets the window whenever the supervisor takes ownership of an intent, ensuring stuck-detection only catches planner-level stuck cases that the supervisor does not already handle (e.g. repeated `goto(url=X)`, repeated `click`, repeated `type`).
+
+Implementation note: `read()` calls are supervisor-mediated; the supervisor's own halt/replan path fires before stuck-detection can accumulate K identical entries. Use non-supervisor tools (e.g. `goto`, `click` with a stub that never triggers a locator-miss) to exercise this scenario.
 
 ## Risks / Trade-offs
 

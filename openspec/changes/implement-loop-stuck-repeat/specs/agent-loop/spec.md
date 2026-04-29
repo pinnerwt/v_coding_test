@@ -20,7 +20,7 @@
 
 - `RunResult(status="failed", reason="stuck_repeat", result=None, evidence=None, verifier=None, steps=step_num, ...)`
 
-The `_stuck_buf` SHALL be initialized to `[]` at the start of `loop()` and SHALL NOT be reset between steps (it is a rolling window across the entire run). However, if the supervisor handles a tool call during dispatch (i.e. `supervisor._attempts` increases), the buffer SHALL be cleared before appending that call's entry, so that supervisor-mediated repetition is handled by the supervisor's own halt/replan path rather than stuck-detection.
+The `_stuck_buf` SHALL be initialized to `[]` at the start of `loop()` and SHALL NOT be reset between steps (it is a rolling window across the entire run). However, if the supervisor handles a tool call during dispatch (detected by snapshotting the supervisor's attempt count before dispatch and observing an increase after), the buffer SHALL be cleared, and the current call's canonical entry SHALL then be appended to the empty buffer. This ensures supervisor-mediated repetition is owned by the supervisor's halt/replan path rather than stuck-detection.
 
 #### Scenario: Three identical goto calls in a row trigger stuck exit at step 3
 
@@ -47,5 +47,3 @@ The `_stuck_buf` SHALL be initialized to `[]` at the start of `loop()` and SHALL
 - **THEN** `RunResult.steps` SHALL be less than `20`
 - **AND** `RunResult.status` SHALL equal `"failed"`
 - **AND** `RunResult.reason` SHALL equal `"stuck_repeat"`
-
-_Note: `read()` calls are supervisor-mediated; the supervisor's own halt/replan path fires before stuck-detection can accumulate K identical entries. Use non-supervisor tools (e.g. `goto`, `click` with a stub that never triggers a locator-miss) to exercise this scenario._

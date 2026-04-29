@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from agent.locator_cache import LocatorCache
 
 RunStatus = Literal["succeeded", "unverified", "failed", "timeout"]
+RunResultReason = Literal["stuck_repeat"]
 ToolName = Literal["goto", "read", "click", "type", "done", "fail"]
 _CLICK_SUCCESS_OUTCOMES: frozenset[str] = frozenset({"ok", "nav"})
 _IRRECOVERABLE_REASONS: frozenset[str] = frozenset({"login wall", "captcha", "blocked"})
@@ -222,7 +223,7 @@ class RunResult:
     result: Any
     evidence: dict | None
     verifier: dict | None = None
-    reason: str | None = None
+    reason: RunResultReason | None = None
     steps: int = 0
     prompt_tokens: int = 0
     completion_tokens: int = 0
@@ -960,7 +961,8 @@ def loop(
             if supervisor.total_attempts() > _sup_calls_before:
                 _stuck_buf.clear()
             _stuck_buf.append(f"{tool_call.name}:{json.dumps(args, sort_keys=True)}")
-            _stuck_buf[:] = _stuck_buf[-_STUCK_REPEAT_K:]
+            if len(_stuck_buf) > _STUCK_REPEAT_K:
+                _stuck_buf.pop(0)
             if len(_stuck_buf) == _STUCK_REPEAT_K and len(set(_stuck_buf)) == 1:
                 _record_step(
                     step_num,
