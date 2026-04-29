@@ -37,9 +37,8 @@ def test_step_breakdown_per_step_llm_dominance_in_run_json():
     assert case["reason"] == "seconds_budget"
     assert len(step_breakdown) == 13
 
-    for i, step in enumerate(step_breakdown):
-        if i >= 1:
-            lb = step["latency_breakdown_ms"]
-            assert lb["llm_ms"] / lb["dispatch_ms"] > 5
+    for step in step_breakdown[1:]:
+        lb = step["latency_breakdown_ms"]
+        assert lb["llm_ms"] / lb["dispatch_ms"] > 5
 
     assert step_breakdown[-1]["prompt_tokens"] >= 10 * step_breakdown[0]["prompt_tokens"]
