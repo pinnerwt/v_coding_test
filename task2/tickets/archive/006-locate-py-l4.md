@@ -15,7 +15,7 @@ related: []
 filed_pr: null
 merged_pr: 10
 archived_at: '2026-04-25'
-trigger: 'migrated from task2/plan.md on 2026-04-29 (ticket #76)'
+trigger: '`locate.py` L4'
 ---
 
 6. **`locate.py` L4** — fixture where target has no accessible metadata; vision LLM mock returns a bbox; click hits expected coords.

@@ -1,6 +1,6 @@
 ---
-id: 1
-slug: llm-py
+id: 18
+slug: dockerfile-zeabur
 status: archived
 tier: 5
 urgency: P3
@@ -13,9 +13,9 @@ pre_flight_gates: []
 evidence: []
 related: []
 filed_pr: null
-merged_pr: 10
+merged_pr: null
 archived_at: '2026-04-25'
-trigger: '`llm.py`'
+trigger: Dockerfile + Zeabur
 ---
 
-1. **`llm.py`** — mocked HTTP; assert OpenAI chat-completions request shape and `LLM_BASE_URL` honored.
+18. **Dockerfile + Zeabur** — `docker run` + `curl POST /tasks` completes a fixture task end-to-end.

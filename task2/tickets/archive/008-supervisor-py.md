@@ -15,7 +15,7 @@ related: []
 filed_pr: null
 merged_pr: 10
 archived_at: '2026-04-25'
-trigger: 'migrated from task2/plan.md on 2026-04-29 (ticket #76)'
+trigger: '`supervisor.py`'
 ---
 
 8. **`supervisor.py`** — synthetic "0 matches" error → `LocatorMiss` → escalate to L2.

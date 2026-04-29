@@ -15,7 +15,7 @@ related: []
 filed_pr: null
 merged_pr: 3
 archived_at: '2026-04-25'
-trigger: 'migrated from task2/plan.md on 2026-04-29 (ticket #76)'
+trigger: '`locate.py` L1'
 ---
 
 3. **`locate.py` L1** — fixture with a real `<button>` and a `role=button` spoofer; "Submit button" must resolve the real one.

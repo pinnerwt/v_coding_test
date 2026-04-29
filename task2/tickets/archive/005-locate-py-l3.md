@@ -15,7 +15,7 @@ related: []
 filed_pr: null
 merged_pr: 10
 archived_at: '2026-04-25'
-trigger: 'migrated from task2/plan.md on 2026-04-29 (ticket #76)'
+trigger: '`locate.py` L3'
 ---
 
 5. **`locate.py` L3** — fixture with three buttons sharing text "Save"; LLM rerank (mocked) picks the right section.

@@ -15,7 +15,7 @@ related: []
 filed_pr: null
 merged_pr: 18
 archived_at: '2026-04-25'
-trigger: 'migrated from task2/plan.md on 2026-04-29 (ticket #76)'
+trigger: '`trace.py` schema + writer'
 ---
 
 12. **`trace.py` schema + writer** — round-trip a `Run` + each `Event` variant through JSON; `seq` strictly increasing; redaction of secret-typed fields verified.

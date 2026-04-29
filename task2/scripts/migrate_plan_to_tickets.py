@@ -149,18 +149,29 @@ def _get_pr_for_archive_dir(change_name: str, repo_root: Path) -> int | None:
     return None
 
 
-def _extract_merged_ticket_map(repo_root: Path) -> dict[int, int | None]:
+_DATE_PREFIX_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})-")
+
+MIGRATION_DATE = "2026-04-29"
+
+
+def _extract_merged_ticket_map(
+    repo_root: Path,
+) -> tuple[dict[int, int | None], dict[int, str]]:
     merged: dict[int, int | None] = {}
+    archived_at: dict[int, str] = {}
     for proposal in (repo_root / "openspec" / "changes" / "archive").glob("*/proposal.md"):
         text = proposal.read_text()
         ticket_ids = [int(m) for m in re.findall(r"ticket #(\d+)", text)]
         change_name = proposal.parent.name
         archive_pr = _get_pr_for_archive_dir(change_name, repo_root)
+        date_m = _DATE_PREFIX_RE.match(change_name)
+        date_iso = date_m.group(1) if date_m else MIGRATION_DATE
         for tid in ticket_ids:
             pr_num = archive_pr or _git_filed_pr(tid, repo_root)
             if tid not in merged or (merged[tid] is None and pr_num is not None):
                 merged[tid] = pr_num
-    return merged
+                archived_at[tid] = date_iso
+    return merged, archived_at
 
 
 def _git_filed_pr(ticket_id: int, repo_root: Path) -> int | None:
@@ -226,11 +237,11 @@ def _extract_related(body: str, ticket_id: int, deps: list[int]) -> list[int]:
     return list(dict.fromkeys(r for r in all_refs if r not in deps))
 
 
-def _extract_trigger(body: str) -> str:
+def _extract_trigger(body: str, title: str) -> str:
     m = _TRIGGER_RE.search(body)
     if m:
         return m.group(1).strip()
-    return ""
+    return title.strip()
 
 
 def _build_frontmatter(
@@ -246,7 +257,7 @@ def _build_frontmatter(
     gates = _extract_pre_flight_gates(body)
     evidence = _extract_evidence(body)
     related = _extract_related(body, ticket["id"], deps)
-    trigger = _extract_trigger(body)
+    trigger = _extract_trigger(body, ticket["title"])
     tier = _assign_tier(ticket["title"], body)
     slug = _slug(ticket["title"])
 
@@ -275,7 +286,7 @@ def migrate(plan_path: Path, out_dir: Path, repo_root: Path) -> None:
     pre_count = len(tickets)
 
     urgency_map = _extract_urgency_map(plan_text)
-    merged_map = _extract_merged_ticket_map(repo_root)
+    merged_map, merged_archived_at = _extract_merged_ticket_map(repo_root)
 
     active_dir = out_dir / "active"
     archive_dir = out_dir / "archive"
@@ -287,12 +298,10 @@ def migrate(plan_path: Path, out_dir: Path, repo_root: Path) -> None:
         tid = ticket["id"]
         merged_pr = merged_map.get(tid)
         filed_pr = _git_filed_pr(tid, repo_root)
-        status = "archived" if merged_pr is not None else "active"
-        archived_at = None
+        is_undone = tid in urgency_map
+        status = "active" if is_undone else "archived"
+        archived_at = None if is_undone else merged_archived_at.get(tid, MIGRATION_DATE)
         urgency = urgency_map.get(tid, "P3")
-
-        if status == "active" and tid not in urgency_map:
-            urgency = "P3"
 
         fm_text = _build_frontmatter(ticket, urgency, merged_pr, filed_pr, status, archived_at)
         slug = _slug(ticket["title"])

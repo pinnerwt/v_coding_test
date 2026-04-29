@@ -15,7 +15,7 @@ related: []
 filed_pr: null
 merged_pr: 18
 archived_at: '2026-04-25'
-trigger: 'migrated from task2/plan.md on 2026-04-29 (ticket #76)'
+trigger: '`loop.py` self-correction'
 ---
 
 10. **`loop.py` self-correction** — fixture where L1 fails by design; run still succeeds via L2.

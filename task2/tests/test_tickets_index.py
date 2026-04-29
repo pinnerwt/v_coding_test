@@ -196,11 +196,12 @@ def test_index_mirrors_frontmatter():
 _ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
-def test_archive_tickets_have_non_null_archived_at_and_merged_pr():
+def test_archive_tickets_have_non_null_archived_at():
     for path in sorted(ARCHIVE_DIR.glob("*.md")):
         fm = _parse_frontmatter(path)
-        assert fm.get("merged_pr") is not None and isinstance(fm["merged_pr"], int), (
-            f"{path.name}: archive ticket must have non-null int merged_pr"
+        merged_pr = fm.get("merged_pr")
+        assert merged_pr is None or isinstance(merged_pr, int), (
+            f"{path.name}: merged_pr must be null or int, got {merged_pr!r}"
         )
         archived_at = fm.get("archived_at")
         assert archived_at is not None, (

@@ -15,7 +15,7 @@ related: []
 filed_pr: null
 merged_pr: 3
 archived_at: '2026-04-25'
-trigger: 'migrated from task2/plan.md on 2026-04-29 (ticket #76)'
+trigger: Locator cache
 ---
 
 7. **Locator cache** — second resolve of same intent hits cache; AX-fingerprint mismatch invalidates.
