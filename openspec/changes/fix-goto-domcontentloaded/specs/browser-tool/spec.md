@@ -16,8 +16,7 @@ When the underlying `PlaywrightError` message matches the transient-error patter
 
 - **GIVEN** a fixture HTTP server that holds the HTML response itself for 20 seconds before any byte is sent
 - **WHEN** a caller invokes `b.goto(url)` against that server
-- **THEN** the call SHALL raise `NavigationError` within 15.5 seconds on first attempt
-- **AND** the call SHALL raise `NavigationError` within 30.5 seconds when the underlying error matches the transient-retry pattern (15s timeout × 2 attempts + 250ms retry sleep)
+- **THEN** the call SHALL raise `NavigationError` within 30.5 seconds (Playwright's timeout message matches the transient-retry pattern, so the call retries once: 15s timeout × 2 attempts + 250ms retry sleep)
 
 #### Scenario: Underlying Page.goto receives wait_until=domcontentloaded and timeout=15000
 
