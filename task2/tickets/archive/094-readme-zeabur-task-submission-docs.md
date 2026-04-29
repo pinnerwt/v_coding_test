@@ -1,7 +1,7 @@
 ---
 id: 94
 slug: readme-zeabur-task-submission-docs
-status: active
+status: archived
 tier: 0
 urgency: P0
 axes:
@@ -11,13 +11,20 @@ axes:
 dependencies: []
 pre_flight_gates: []
 evidence:
-  - "task2/README.md ### Zeabur section currently only documents env-var setup; nothing tells reviewers how to submit a task to the deployed URL."
-  - "AI-Coding-Test-EN.md Task 2 acceptance: reviewer-facing URL must be exercisable via documented interface. Without submission docs, reviewers can't use the URL even after the user fills it in."
-related: [18]
+- 'task2/README.md ### Zeabur section currently only documents env-var setup; nothing
+  tells reviewers how to submit a task to the deployed URL.'
+- 'AI-Coding-Test-EN.md Task 2 acceptance: reviewer-facing URL must be exercisable
+  via documented interface. Without submission docs, reviewers can''t use the URL
+  even after the user fills it in.'
+related:
+- 18
 filed_pr: null
-merged_pr: null
-archived_at: null
-trigger: "2026-04-29 — `/full_task2` Tier 0 deliverable-gap check: README's `### Zeabur` section has `<TBD>` URL placeholder AND no `Submitting a task` subsection; closing the docs half of bar #3 is workflow-only and unblocks reviewer use the moment the user fills the URL in."
+merged_pr: 140
+archived_at: '2026-04-29'
+trigger: '2026-04-29 — `/full_task2` Tier 0 deliverable-gap check: README''s `###
+  Zeabur` section has `<TBD>` URL placeholder AND no `Submitting a task` subsection;
+  closing the docs half of bar #3 is workflow-only and unblocks reviewer use the moment
+  the user fills the URL in.'
 ---
 
 # Document task-submission user-flow in README's `### Zeabur` section
