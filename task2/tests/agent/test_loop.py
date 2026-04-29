@@ -3579,3 +3579,4 @@ def test_no_tool_call_repeat_resets_on_tool_call():
         result = loop("task", browser=stub_browser, llm_client=stub_llm, max_steps=20)
     assert result.status == "timeout"
     assert result.steps == 20
+    assert result.reason is None
