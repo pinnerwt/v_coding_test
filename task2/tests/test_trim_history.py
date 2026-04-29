@@ -154,3 +154,77 @@ def test_trim_history_respects_env_var(monkeypatch: pytest.MonkeyPatch):
     for cid in dropped_ids:
         assert cid not in result_tool_call_ids
         assert cid not in result_tool_result_ids
+
+
+def test_trim_history_does_not_mutate_input():
+    import copy
+
+    messages = _build_messages()
+    snapshot = copy.deepcopy(messages)
+    _ = trim_history(messages, keep_steps=2)
+    assert messages == snapshot
+
+
+def test_trim_history_handles_empty_list():
+    result = trim_history([], keep_steps=4)
+    assert result == []
+
+
+def test_trim_history_handles_only_system_message():
+    messages = [{"role": "system", "content": "sys"}]
+    result = trim_history(messages, keep_steps=4)
+    assert result == messages
+
+
+def test_trim_history_handles_no_tool_groups():
+    messages = [{"role": "system", "content": "sys"}, {"role": "user", "content": "hi"}]
+    result = trim_history(messages, keep_steps=4)
+    assert result == messages
+
+
+def test_trim_history_handles_assistant_with_tool_calls_no_results():
+    messages = [
+        {"role": "system", "content": "sys"},
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": "tc-orphan",
+                    "type": "function",
+                    "function": {"name": "f", "arguments": "{}"},
+                }
+            ],
+        },
+    ]
+    result = trim_history(messages, keep_steps=1)
+    result_asst_call_ids = {
+        tc["id"]
+        for m in result
+        if m["role"] == "assistant" and m.get("tool_calls")
+        for tc in m["tool_calls"]
+    }
+    assert "tc-orphan" in result_asst_call_ids
+
+
+def test_trim_history_unparseable_env_var_falls_back_to_default(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("HISTORY_TRIM_KEEP_STEPS", "not-an-int")
+    messages = _build_messages()
+    result = trim_history(messages)
+
+    kept_ids = {f"tc-{i}" for i in range(3, 7)}
+    dropped_ids = {f"tc-{i}" for i in range(1, 3)}
+
+    result_tool_call_ids = {
+        tc["id"]
+        for m in result
+        if m["role"] == "assistant" and m.get("tool_calls")
+        for tc in m["tool_calls"]
+    }
+
+    for cid in kept_ids:
+        assert cid in result_tool_call_ids
+    for cid in dropped_ids:
+        assert cid not in result_tool_call_ids

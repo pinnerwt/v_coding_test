@@ -12,7 +12,7 @@ The agent loop accumulates every tool-call/tool-result pair in `messages` across
 
 **Non-Goals:**
 - Trimming the system prompt or the initial user state message (step 1).
-- Replacing or removing `_compact_messages` — both strategies compose (trim runs first, compact is the safety net).
+- Replacing or removing `_compact_messages` — both strategies compose (`_compact_messages` enforces the absolute token-budget cap first, and `trim_history` then applies the per-step structured cap for surgical reduction).
 - Trimming planning LLM calls in `plan_module.plan` or `plan_module.replan`.
 
 ## Decisions

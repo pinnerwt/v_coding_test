@@ -12,7 +12,7 @@ The loop SHALL expose a module-level function `trim_history(messages: list[dict]
 - The function SHALL be a pure function: it SHALL NOT mutate the input list or any of its message dicts.
 - `keep_steps` SHALL default to the value of the `HISTORY_TRIM_KEEP_STEPS` environment variable parsed as an integer, falling back to `4` if the variable is absent or unparseable.
 
-The loop function SHALL call `trim_history` on the accumulated `messages` list after appending the current step's state message and before passing `messages` to `llm_client.chat()`. This call SHALL occur after `_compact_messages` is applied (trim is the primary reduction; compact is the safety net for extreme cases).
+The loop function SHALL call `trim_history` on the accumulated `messages` list after appending the current step's state message and before passing `messages` to `llm_client.chat()`. This call SHALL occur after `_compact_messages` is applied: `_compact_messages` enforces the absolute token-budget cap first, and `trim_history` then applies the per-step structured cap for surgical reduction.
 
 #### Scenario: Tool results outside the window are dropped
 
