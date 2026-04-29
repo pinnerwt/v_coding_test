@@ -91,19 +91,34 @@ def generate_diff_markdown(master: dict, branch: dict) -> str:
     n_added = len(branch_ids - master_ids)
     n_dropped = len(master_ids - branch_ids)
 
-    sign_usd = "+" if delta_usd >= 0 else "-"
-    lines.append(f"Δ pass-rate: {_fmt_signed(b_pct - m_pct)}%")
-    lines.append(f"Δ total USD: {sign_usd}${abs(delta_usd):.4f}")
-    if common_ids:
-        lines.append(
-            f"Δ p50 latency: {_fmt_signed(_percentile(b_lat, 50) - _percentile(m_lat, 50))}ms"
-        )
-        lines.append(
-            f"Δ p95 latency: {_fmt_signed(_percentile(b_lat, 95) - _percentile(m_lat, 95))}ms"
-        )
+    if m_ran == 0 and b_ran == 0:
+        _empty_reason: str | None = "both sides had 0 ran cases"
+    elif m_ran == 0:
+        _empty_reason = "master had 0 ran cases"
+    elif b_ran == 0:
+        _empty_reason = "branch had 0 ran cases"
     else:
-        lines.append("Δ p50 latency: —")
-        lines.append("Δ p95 latency: —")
+        _empty_reason = None
+
+    if _empty_reason is not None:
+        lines.append(f"Δ pass-rate: n/a ({_empty_reason})")
+        lines.append(f"Δ total USD: n/a ({_empty_reason})")
+        lines.append(f"Δ p50 latency: n/a ({_empty_reason})")
+        lines.append(f"Δ p95 latency: n/a ({_empty_reason})")
+    else:
+        sign_usd = "+" if delta_usd >= 0 else "-"
+        lines.append(f"Δ pass-rate: {_fmt_signed(b_pct - m_pct)}%")
+        lines.append(f"Δ total USD: {sign_usd}${abs(delta_usd):.4f}")
+        if common_ids:
+            lines.append(
+                f"Δ p50 latency: {_fmt_signed(_percentile(b_lat, 50) - _percentile(m_lat, 50))}ms"
+            )
+            lines.append(
+                f"Δ p95 latency: {_fmt_signed(_percentile(b_lat, 95) - _percentile(m_lat, 95))}ms"
+            )
+        else:
+            lines.append("Δ p50 latency: —")
+            lines.append("Δ p95 latency: —")
     lines.append(f"Cases: {n_common} common, +{n_added} added, -{n_dropped} dropped")
     lines.append("")
 

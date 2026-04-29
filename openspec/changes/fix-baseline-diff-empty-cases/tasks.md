@@ -10,9 +10,9 @@
 
 ## 2. Green — minimal implementation
 
-- [ ] 2.1 In `task2/scripts/baseline_diff.py::generate_diff_markdown`, after computing `m_ran` and `b_ran`, derive an `_empty_reason` string: `"master had 0 ran cases"` if only `m_ran == 0`, `"branch had 0 ran cases"` if only `b_ran == 0`, `"both sides had 0 ran cases"` if both are zero, and `None` otherwise.
-- [ ] 2.2 When `_empty_reason` is not `None`, replace the four aggregate lines (`Δ pass-rate`, `Δ total USD`, `Δ p50 latency`, `Δ p95 latency`) with `n/a (<_empty_reason>)` variants; still emit the `Cases:` annotation line using the existing logic.
-- [ ] 2.3 Run `uv run pytest task2/tests/test_baseline_diff.py -x` from `task2/` and confirm all tests pass (new and existing).
+- [x] 2.1 In `task2/scripts/baseline_diff.py::generate_diff_markdown`, after computing `m_ran` and `b_ran`, derive an `_empty_reason` string: `"master had 0 ran cases"` if only `m_ran == 0`, `"branch had 0 ran cases"` if only `b_ran == 0`, `"both sides had 0 ran cases"` if both are zero, and `None` otherwise.
+- [x] 2.2 When `_empty_reason` is not `None`, replace the four aggregate lines (`Δ pass-rate`, `Δ total USD`, `Δ p50 latency`, `Δ p95 latency`) with `n/a (<_empty_reason>)` variants; still emit the `Cases:` annotation line using the existing logic.
+- [x] 2.3 Run `uv run pytest task2/tests/test_baseline_diff.py -x` from `task2/` and confirm all tests pass (new and existing).
 
 ## 3. Full suite
 
