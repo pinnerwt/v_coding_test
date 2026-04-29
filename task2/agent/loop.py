@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from agent.locator_cache import LocatorCache
 
 RunStatus = Literal["succeeded", "unverified", "failed", "timeout"]
+RunResultReason = Literal["stuck_repeat"]
 ToolName = Literal["goto", "read", "click", "type", "done", "fail"]
 _CLICK_SUCCESS_OUTCOMES: frozenset[str] = frozenset({"ok", "nav"})
 _IRRECOVERABLE_REASONS: frozenset[str] = frozenset({"login wall", "captcha", "blocked"})
@@ -166,6 +167,7 @@ TOOLS: list[dict] = [
 _DEFAULT_CONTEXT_CHAR_BUDGET: int = 80_000
 _ELIDED_STATE_CONTENT = "Current state: <elided>"
 _ELIDED_TOOL_CONTENT = "<read tool result elided>"
+_STUCK_REPEAT_K: int = 3
 
 
 def _compact_messages(messages: list[dict], budget_chars: int) -> list[dict]:
@@ -221,6 +223,7 @@ class RunResult:
     result: Any
     evidence: dict | None
     verifier: dict | None = None
+    reason: RunResultReason | None = None
     steps: int = 0
     prompt_tokens: int = 0
     completion_tokens: int = 0
@@ -778,6 +781,7 @@ def loop(
     last_actions: list[dict] = []
     active_plan: plan_module.Plan | None = None
     _prior_act_outcomes: list[str] = []
+    _stuck_buf: list[str] = []
     _budget = int(os.environ.get("LLM_CONTEXT_CHAR_BUDGET", _DEFAULT_CONTEXT_CHAR_BUDGET))
 
     for _ in range(max_steps):
@@ -943,6 +947,7 @@ def loop(
                     step_breakdown=step_breakdown,
                 )
 
+            _sup_calls_before = supervisor.total_attempts()
             tool_result = _dispatch(
                 tool_call.name,
                 args,
@@ -953,6 +958,34 @@ def loop(
                 run_id=run_id,
                 step_id=_step_id,
             )
+            if supervisor.total_attempts() > _sup_calls_before:
+                _stuck_buf.clear()
+            _stuck_buf.append(f"{tool_call.name}:{json.dumps(args, sort_keys=True)}")
+            if len(_stuck_buf) > _STUCK_REPEAT_K:
+                _stuck_buf.pop(0)
+            if len(_stuck_buf) == _STUCK_REPEAT_K and len(set(_stuck_buf)) == 1:
+                _record_step(
+                    step_num,
+                    t0,
+                    response,
+                    dispatched_tool_names,
+                    latency_ms_per_step,
+                    step_breakdown,
+                )
+                return RunResult(
+                    status="failed",
+                    reason="stuck_repeat",
+                    result=None,
+                    evidence=None,
+                    verifier=None,
+                    steps=step_num,
+                    prompt_tokens=cum_prompt_tokens,
+                    completion_tokens=cum_completion_tokens,
+                    usd=cum_usd,
+                    latency_ms_total=sum(latency_ms_per_step),
+                    latency_ms_per_step=latency_ms_per_step,
+                    step_breakdown=step_breakdown,
+                )
 
             is_error = tool_result.startswith("Error:")
             if tool_call.name in {"click", "type"} and not is_error:
