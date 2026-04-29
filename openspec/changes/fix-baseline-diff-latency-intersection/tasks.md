@@ -23,12 +23,12 @@
 
 ## 5. Existing test hygiene — review and align
 
-- [ ] 5.1 Read `test_aggregate_latency_delta_negative` (lines 115–134 of `task2/tests/test_baseline_diff.py`): master `{c1: 1000ms, c2: 2000ms}` + branch `{c1: 500ms, c2: 1500ms}` — case ids match, so intersection == whole-population; the test continues to pass unchanged. Confirm by running it.
-- [ ] 5.2 Scan the rest of `task2/tests/test_baseline_diff.py` for any other latency delta assertions that implicitly assumed whole-population semantics with differing case sets. If found, update them to match intersection semantics or add a comment marking them as intersection-equal-to-whole-population cases.
-- [ ] 5.3 Run the full test suite: `uv run pytest task2/tests/test_baseline_diff.py` — all tests must pass.
+- [x] 5.1 Read `test_aggregate_latency_delta_negative` (lines 115–134 of `task2/tests/test_baseline_diff.py`): master `{c1: 1000ms, c2: 2000ms}` + branch `{c1: 500ms, c2: 1500ms}` — case ids match, so intersection == whole-population; the test continues to pass unchanged. Confirm by running it.
+- [x] 5.2 Scan the rest of `task2/tests/test_baseline_diff.py` for any other latency delta assertions that implicitly assumed whole-population semantics with differing case sets. If found, update them to match intersection semantics or add a comment marking them as intersection-equal-to-whole-population cases.
+- [x] 5.3 Run the full test suite: `uv run pytest task2/tests/test_baseline_diff.py` — all tests must pass.
 
 ## 6. Linting and final check
 
-- [ ] 6.1 Run `uv run ruff check .` from `task2/` — must be clean (no errors or warnings).
-- [ ] 6.2 Run `uv run ruff format .` from `task2/` and commit any formatting-only changes.
-- [ ] 6.3 Run the full `task2/` test suite one final time: `uv run pytest` — green bar required before marking this change done.
+- [x] 6.1 Run `uv run ruff check .` from `task2/` — must be clean (no errors or warnings).
+- [x] 6.2 Run `uv run ruff format .` from `task2/` and commit any formatting-only changes.
+- [x] 6.3 Run the full `task2/` test suite one final time: `uv run pytest` — green bar required before marking this change done.
