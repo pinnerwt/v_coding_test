@@ -3490,3 +3490,90 @@ def test_loop_stuck_repeat_does_not_preempt_supervisor_halt():
         result = loop("task", browser=stub_browser, llm_client=fake_llm, max_steps=10)
     assert result.reason != "stuck_repeat"
     assert result.steps >= 4
+
+
+# ---------------------------------------------------------------------------
+# No-tool-call-repeat detection tests
+# ---------------------------------------------------------------------------
+
+
+class _AlwaysNoToolCallClient:
+    def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
+        if tools is None:
+            return ChatResponse(
+                content='{"steps": ["do the task"], "expected_end_state": "done"}',
+                tool_calls=[],
+                finish_reason="stop",
+                model="fake",
+                usage=Usage(prompt_tokens=0, completion_tokens=0, total_tokens=0),
+                raw={},
+                usd=0.0,
+            )
+        return ChatResponse(
+            content="thinking...",
+            tool_calls=[],
+            finish_reason="stop",
+            model="fake",
+            usage=_DUMMY_USAGE,
+            raw={},
+        )
+
+
+def test_no_tool_call_repeat_exits_at_k():
+    stub_browser = _StubBrowserForCompaction()
+    stub_llm = _AlwaysNoToolCallClient()
+    with patch("agent.loop.observe.build_observation", return_value="state: ok"):
+        result = loop("task", browser=stub_browser, llm_client=stub_llm, max_steps=20)
+    assert result.status == "failed"
+    assert result.reason == "no_tool_call_repeat"
+    assert result.steps == 3
+
+
+class _NoToolCallThenGotoClient:
+    def __init__(self):
+        self._step = 0
+
+    def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
+        if tools is None:
+            return ChatResponse(
+                content='{"steps": ["do the task"], "expected_end_state": "done"}',
+                tool_calls=[],
+                finish_reason="stop",
+                model="fake",
+                usage=Usage(prompt_tokens=0, completion_tokens=0, total_tokens=0),
+                raw={},
+                usd=0.0,
+            )
+        self._step += 1
+        if self._step == 3:
+            return ChatResponse(
+                content=None,
+                tool_calls=[
+                    ToolCall(
+                        id="tc-goto",
+                        name="goto",
+                        arguments=json.dumps({"url": "http://example.com"}),
+                    )
+                ],
+                finish_reason="tool_calls",
+                model="fake",
+                usage=_DUMMY_USAGE,
+                raw={},
+            )
+        return ChatResponse(
+            content="thinking...",
+            tool_calls=[],
+            finish_reason="stop",
+            model="fake",
+            usage=_DUMMY_USAGE,
+            raw={},
+        )
+
+
+def test_no_tool_call_repeat_resets_on_tool_call():
+    stub_browser = _StubBrowserForCompaction()
+    stub_llm = _NoToolCallThenGotoClient()
+    with patch("agent.loop.observe.build_observation", return_value="state: ok"):
+        result = loop("task", browser=stub_browser, llm_client=stub_llm, max_steps=20)
+    assert result.status == "timeout"
+    assert result.steps == 20
