@@ -1,0 +1,31 @@
+signature:
+  tier: 5
+  primary_axis: n/a
+  first_touched_file_pattern: task2/agent/*.py
+version: 1
+description: >
+  Tier-5 benchmark-impact ticket adding a new module or extending one module
+  under task2/agent/ — typically a new tool branch in loop.py, a new helper
+  module (observe, supervisor, locator-cache), or a self-contained behavioral
+  feature (stuck-repeat, CDP session reuse). Single-module scope, single
+  capability touched, with TDD red/green tests in task2/tests/agent/.
+when_to_use: >
+  Ticket frontmatter has tier=5 and the body's first inline-backticked file
+  path is under task2/agent/ (e.g. task2/agent/loop.py, task2/agent/observe.py,
+  task2/agent/supervisor.py). Typical pattern: TOOLS list addition + _dispatch
+  branch; or a new agent.<module> exposing a single public function called
+  from loop.py. Before writing the spec.md, grep openspec/specs/<capability>/
+  spec.md to determine ADDED vs MODIFIED — if the requirement title (e.g.
+  "LLM tool surface exposed by the loop") already exists, flip the spec
+  delta header from "## ADDED Requirements" to "## MODIFIED Requirements".
+when_not_to_use: >
+  Skip this template when the change touches multiple unrelated modules
+  under task2/agent/ in a single ticket (cluster B-shape — e.g. a refactor
+  spanning loop.py + locate.py + supervisor.py with no single dominant
+  module). Skip for pure agent loop refactors with no new behavior or new
+  symbols (those are tier-6 hygiene, not tier-5). Skip when the ticket adds
+  a new top-level capability that doesn't fit "extends agent module"
+  (e.g. a new trace event kind that requires schema changes across
+  trace.py + writer + reader — needs richer scaffolding). Skip when the
+  first-touched file is task2/agent/__init__.py (package-level concerns are
+  out of cluster).
