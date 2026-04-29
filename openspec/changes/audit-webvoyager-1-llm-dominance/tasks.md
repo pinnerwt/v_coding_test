@@ -12,8 +12,8 @@
 
 ## 3. Follow-up ticket — file the winning lever
 
-- [ ] 3.1 Create `task2/tickets/active/097-prompt-trim-webvoyager-1.md` as a tier-5 ticket targeting prompt-trim: trim stale tool-result messages and AX-tree noise from the conversation history to reduce per-step `prompt_tokens` by ~30%, saving ~28s on webvoyager-1 and bringing total wall-clock from 127s to ~100s. The ticket SHOULD reference ticket #96 as its diagnostic source and cite the `test_step_breakdown_per_step_llm_dominance_in_run_json` docstring as evidence.
+- [x] 3.1 Create `task2/tickets/active/097-prompt-trim-webvoyager-1.md` as a tier-5 ticket targeting prompt-trim: trim stale tool-result messages and AX-tree noise from the conversation history to reduce per-step `prompt_tokens` by ~30%, saving ~28s on webvoyager-1 and bringing total wall-clock from 127s to ~100s. The ticket SHOULD reference ticket #96 as its diagnostic source and cite the `test_step_breakdown_per_step_llm_dominance_in_run_json` docstring as evidence.
 
 ## 4. Commit
 
-- [ ] 4.1 Stage `task2/tests/test_benchmark_analysis.py` and `task2/tickets/active/097-prompt-trim-webvoyager-1.md`. Commit with message `test(task2): diagnose webvoyager-1 LLM dominance; file prompt-trim follow-up (#96)`.
+- [x] 4.1 Stage `task2/tests/test_benchmark_analysis.py` and `task2/tickets/active/097-prompt-trim-webvoyager-1.md`. Commit with message `test(task2): diagnose webvoyager-1 LLM dominance; file prompt-trim follow-up (#96)`.
