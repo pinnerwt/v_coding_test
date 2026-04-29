@@ -752,11 +752,15 @@ def test_aggregate_repeats_mixed_pass_and_skip_classifies_as_partial():
 def test_aggregate_repeats_usd_is_sum_across_runs():
     from scripts.benchmark import aggregate_repeats
 
-    side_effects = [_make_case_result("succeeded", usd=0.01) for _ in range(3)]
+    side_effects = [
+        _make_case_result("succeeded", usd=0.01),
+        _make_case_result("succeeded", usd=0.02),
+        _make_case_result("succeeded", usd=0.04),
+    ]
     with patch("scripts.benchmark._run_case", side_effect=side_effects):
         result = aggregate_repeats(_SAMPLE_CASE, repeats=3, llm_client=None, browser=None)
 
-    assert result.usd == pytest.approx(0.03)
+    assert result.usd == pytest.approx(0.07)
 
 
 def test_scoreboard_latency_percentiles_with_repeats():
