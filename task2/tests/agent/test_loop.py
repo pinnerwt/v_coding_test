@@ -3351,3 +3351,84 @@ def test_loop_preserves_most_recent_observation_after_compaction():
     assert last_user_state_msg["content"] != "Current state: <elided>"
     assert last_messages[0]["role"] == "system"
     assert last_messages[0]["content"] == _build_system_prompt("dummy task")
+
+
+# ---------------------------------------------------------------------------
+# Stuck-repeat detection tests
+# ---------------------------------------------------------------------------
+
+
+class _AlwaysGotoClient:
+    def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
+        if tools is None:
+            return ChatResponse(
+                content='{"steps": ["do the task"], "expected_end_state": "done"}',
+                tool_calls=[],
+                finish_reason="stop",
+                model="fake",
+                usage=Usage(prompt_tokens=0, completion_tokens=0, total_tokens=0),
+                raw={},
+                usd=0.0,
+            )
+        return ChatResponse(
+            content=None,
+            tool_calls=[
+                ToolCall(id="tc-stuck", name="goto", arguments=json.dumps({"url": "about:blank"}))
+            ],
+            finish_reason="tool_calls",
+            model="fake",
+            usage=_DUMMY_USAGE,
+            raw={},
+        )
+
+
+def test_loop_stuck_repeat_exits_early():
+    stub_browser = _StubBrowserForCompaction()
+    stub_llm = _AlwaysGotoClient()
+    with patch("agent.loop.observe.build_observation", return_value=_LARGE_OBSERVATION):
+        result = loop("task", browser=stub_browser, llm_client=stub_llm, max_steps=20)
+    assert result.status == "failed"
+    assert result.reason == "stuck_repeat"
+    assert result.steps == 3
+
+
+class _AlternatingGotoClient:
+    def __init__(self):
+        self._urls = ["http://a", "http://b", "http://a"]
+        self._step = 0
+
+    def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
+        if tools is None:
+            return ChatResponse(
+                content='{"steps": ["do the task"], "expected_end_state": "done"}',
+                tool_calls=[],
+                finish_reason="stop",
+                model="fake",
+                usage=Usage(prompt_tokens=0, completion_tokens=0, total_tokens=0),
+                raw={},
+                usd=0.0,
+            )
+        if self._step < len(self._urls):
+            url = self._urls[self._step]
+            self._step += 1
+            return ChatResponse(
+                content=None,
+                tool_calls=[
+                    ToolCall(id=f"tc-{self._step}", name="goto", arguments=json.dumps({"url": url}))
+                ],
+                finish_reason="tool_calls",
+                model="fake",
+                usage=_DUMMY_USAGE,
+                raw={},
+            )
+        return _response_no_tool_call()
+
+
+def test_loop_stuck_repeat_no_false_positive_on_alternation():
+    """Alternating goto(a), goto(b), goto(a) must NOT trigger stuck detection; loop exits via timeout."""
+    stub_browser = _StubBrowserForCompaction()
+    stub_llm = _AlternatingGotoClient()
+    with patch("agent.loop.observe.build_observation", return_value=_LARGE_OBSERVATION):
+        result = loop("task", browser=stub_browser, llm_client=stub_llm, max_steps=20)
+    assert result.status == "timeout"
+    assert result.reason is None

@@ -1,7 +1,7 @@
 ## 1. Red — write failing stuck-detection unit test
 
-- [ ] 1.1 In `task2/tests/agent/test_loop.py`, add `test_loop_stuck_repeat_exits_early`: use `_StubBrowserForCompaction`-style stub browser (with `patch("agent.loop.observe.build_observation", return_value=_LARGE_OBSERVATION)`) and a new `_AlwaysGotoClient` stub LLM that always returns `goto(url="about:blank")`. Call `loop("task", stub_browser, stub_llm, max_steps=20)` and assert `result.status == "failed"`, `result.reason == "stuck_repeat"`, and `result.steps == 3`.
-- [ ] 1.2 Run `uv run pytest task2/tests/agent/test_loop.py::test_loop_stuck_repeat_exits_early -x` from the repo root and confirm it fails with `AttributeError: 'RunResult' object has no attribute 'reason'` or `AssertionError` (not an import error).
+- [x] 1.1 In `task2/tests/agent/test_loop.py`, add `test_loop_stuck_repeat_exits_early`: use `_StubBrowserForCompaction`-style stub browser (with `patch("agent.loop.observe.build_observation", return_value=_LARGE_OBSERVATION)`) and a new `_AlwaysGotoClient` stub LLM that always returns `goto(url="about:blank")`. Call `loop("task", stub_browser, stub_llm, max_steps=20)` and assert `result.status == "failed"`, `result.reason == "stuck_repeat"`, and `result.steps == 3`.
+- [x] 1.2 Run `uv run pytest task2/tests/agent/test_loop.py::test_loop_stuck_repeat_exits_early -x` from the repo root and confirm it fails with `AttributeError: 'RunResult' object has no attribute 'reason'` or `AssertionError` (not an import error).
 
 ## 2. Green — implement RunResult.reason field
 
