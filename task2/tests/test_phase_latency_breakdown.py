@@ -119,7 +119,7 @@ class _NoToolCallThenDoneLLMClient:
         )
 
 
-def _make_stub_browser(obs_sleep: float = 0.0) -> MagicMock:
+def _make_stub_browser() -> MagicMock:
     browser = MagicMock()
     browser._page = None
     return browser

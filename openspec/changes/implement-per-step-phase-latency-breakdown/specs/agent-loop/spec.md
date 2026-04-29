@@ -108,7 +108,3 @@ The system SHALL provide `agent.loop.loop(task, browser, llm_client, *, max_step
 - **THEN** `writer.iter_events(run_id)` SHALL yield a `LocateEvent(tier="L1_ax", outcome="miss")`
 - **AND** a `SupervisorEvent(policy="next_tier", classified_as="LocatorMiss")` whose `trigger_event_seq` equals the L1 miss event's `seq`
 
-#### Scenario: signature exposes latency_breakdown_ms via _record_step
-
-- **WHEN** `_record_step` is called from any exit path inside `loop()`
-- **THEN** the resulting `step_breakdown` entry SHALL contain `latency_breakdown_ms` with keys `observation_ms`, `llm_ms`, and `dispatch_ms` as integers
