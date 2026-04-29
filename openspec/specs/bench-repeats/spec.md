@@ -52,7 +52,7 @@ _VALID_REPEAT_STATUSES: frozenset[str] = frozenset(get_args(RepeatStatus))
 - `avg_mechanism_firings: float` — mean of total mechanism firing counts (`len(escalations) + replans`) across all N runs.
 - `status: str` — derived: `"succeeded"` when `repeat_status == "all_pass"`, `"failed"` when `repeat_status in {"partial", "all_fail"}`, `"skipped"` when `repeat_status == "skipped"`.
 - `steps: int` — median steps across all N runs (integer).
-- `usd: float` — mean USD across all N runs.
+- `usd: float` — **sum** of `usd` values across all N runs (aligned with the sum convention already used by `prompt_tokens`, `completion_tokens`, and `latency_ms_total`).
 - `prompt_tokens: int` — sum of `prompt_tokens` across all N runs.
 - `completion_tokens: int` — sum of `completion_tokens` across all N runs.
 - `latency_ms_total: int` — sum of `latency_ms_total` values across all N runs.
@@ -83,6 +83,18 @@ Statistics SHALL be computed using Python's stdlib `statistics` module (`statist
 
 - **WHEN** `AggregatedCaseResult` is constructed with `repeat_status="partial"`
 - **THEN** `result.status` SHALL equal `"failed"`
+
+#### Scenario: AggregatedCaseResult.usd is the sum of per-run usd values
+
+- **GIVEN** `aggregate_repeats` is called with `repeats=3` and `_run_case` returning `usd` values of `0.01`, `0.02`, and `0.04` across the three runs
+- **WHEN** `aggregate_repeats` returns the `AggregatedCaseResult`
+- **THEN** `result.usd` SHALL equal `0.07` (sum: `0.01 + 0.02 + 0.04`), distinguishing the sum convention from any implementation that returns a mean of distinct per-run values
+
+#### Scenario: generate_scoreboard total_usd correctly sums usd fields under repeats=3
+
+- **GIVEN** a results file with two non-skipped cases each having `usd=0.03` (sum of 3 runs) and `repeats=3`
+- **WHEN** `generate_scoreboard(data)` is called
+- **THEN** the output SHALL contain `Total USD: $0.0600`
 
 ### Requirement: Per-case repeat aggregation loop
 
