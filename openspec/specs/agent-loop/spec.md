@@ -41,7 +41,7 @@ The system SHALL provide `agent.loop.RunResult` — a frozen dataclass represent
 
 ### Requirement: loop function
 
-The system SHALL provide `agent.loop.loop(task, browser, llm_client, *, max_steps=20, events=None, run_id=None, trace_writer=None, locator_cache=None)` — a synchronous function that drives the observe → decide → act cycle and returns a `RunResult` with all metric fields populated.
+The system SHALL provide `agent.loop.loop(task, browser, llm_client, *, max_steps=20, events=None, run_id=None, trace_writer=None, locator_cache=None, expect=None)` — a synchronous function that drives the observe → decide → act cycle and returns a `RunResult` with all metric fields populated.
 
 - `steps` SHALL equal the number of completed observe→decide→act iterations.
 - `prompt_tokens`, `completion_tokens`, `usd` SHALL be cumulated from each `llm_client.chat()` call, **including the planner LLM call(s)**.
@@ -57,6 +57,7 @@ The system SHALL provide `agent.loop.loop(task, browser, llm_client, *, max_step
   - `cache_action="write"` + `outcome="hit"` + `tier=<resolved ladder tier>` whenever `cache.put(...)` is called after a fresh ladder resolve.
   - The loop SHALL NOT emit a `LocateEvent` when `locator_cache is None` or when the ladder resolves without any cache interaction.
 - When `trace_writer` and `run_id` are provided (regardless of `locator_cache`), the loop SHALL emit trace events for locator ladder outcomes via `_locate_via_ladder`: a `LocateEvent(tier="L1_ax", outcome="miss")` when L1 raises `LocatorMiss(reason="zero_matches")`, a `SupervisorEvent` immediately after the supervisor decision, and a `LocateEvent(tier="L2_dom", outcome="hit"/"miss")` on the L2 attempt result. This applies whenever the ladder is actually reached; when a `locator_cache` is provided and a fresh fingerprint match short-circuits the ladder, no L1/L2 ladder events are emitted for that step.
+- The new `expect: dict | None = None` kwarg SHALL be accepted and forwarded as `expect=expect` into `_build_system_prompt(task, expect=expect)` when building the initial system message. When `None` (the default), `_build_system_prompt` receives no `expect` argument and behaves identically to before this change.
 
 #### Scenario: loop returns RunResult
 
@@ -116,6 +117,19 @@ The system SHALL provide `agent.loop.loop(task, browser, llm_client, *, max_step
 - **THEN** `escalations` SHALL contain at least one entry
 - **AND** that entry SHALL have `from_tier="L1_ax"` (L1 misses because the element has no accessible role) and `to_tier` set to `"L2_dom"` or `None` (L2 may or may not match, depending on fixture)
 - **AND** this assertion SHALL fail if `_emit_supervisor_event` is removed from `_locate_via_ladder` (regression guard)
+
+#### Scenario: expect=None leaves system prompt byte-identical to pre-change output
+
+- **WHEN** `loop(task, browser, llm_client)` is called without the `expect` argument (default `None`)
+- **THEN** the system message constructed by the loop SHALL be byte-identical to the system message produced before this change was introduced
+- **AND** the system message SHALL NOT contain the substring `"MUST"`
+
+#### Scenario: expect with schema causes system message to include MUST line
+
+- **GIVEN** `loop()` is called with `expect={"schema": {"answer": "str"}, "validators": ["answer.nonempty"]}` and a stub `LLMClient` that records the messages list and immediately returns a terminal `done` tool call
+- **WHEN** the loop starts and sends the first `chat()` call
+- **THEN** the system message (first element of the messages list, `role="system"`) SHALL contain the substring `"MUST"`
+- **AND** SHALL contain the substring `"answer"`
 
 ### Requirement: locator_cache kwarg accepted by loop with None default
 
@@ -869,3 +883,41 @@ The plan step at step 0 (where `plan_module.plan()` is called directly and the L
 - **THEN** `RunResult.steps` SHALL be less than `20`
 - **AND** `RunResult.status` SHALL equal `"failed"`
 - **AND** `RunResult.reason` SHALL equal `"no_tool_call_repeat"`
+
+### Requirement: System prompt includes expect schema when present
+
+When `_build_system_prompt(task, expect=...)` is called with an `expect` dict that contains a non-empty `schema` sub-dict, the returned string SHALL include all of the following:
+
+- The literal substring `MUST`.
+- The JSON-serialized schema (e.g. `{"answer": "str"}`).
+- The sorted list of required keys as a comma-separated string (e.g. `answer`).
+
+The injected line SHALL follow the format: `Your done.result MUST be a JSON object matching this schema: <json.dumps(schema)>. Required fields: <sorted keys>.`
+
+When `expect` is `None`, or when `expect.get("schema")` is absent or an empty dict, the returned string SHALL be byte-identical to the output of `_build_system_prompt(task)` with no `expect` argument — the new parameter MUST NOT alter the default-path output.
+
+#### Scenario: schema present injects MUST line
+
+- **WHEN** `_build_system_prompt("find the price", expect={"schema": {"answer": "str"}, "validators": ["answer.nonempty"]})` is called
+- **THEN** the returned string SHALL contain the substring `"MUST"`
+- **AND** the returned string SHALL contain the substring `"answer"`
+- **AND** the returned string SHALL contain the JSON-serialized schema `'{"answer": "str"}'`
+
+#### Scenario: schema absent leaves prompt byte-identical
+
+- **WHEN** `_build_system_prompt("find the price")` is called with no `expect` argument
+- **AND** `_build_system_prompt("find the price", expect=None)` is called
+- **THEN** both calls SHALL return strings that are byte-identical to each other
+- **AND** neither string SHALL contain the substring `"MUST"`
+
+#### Scenario: required keys appear sorted
+
+- **WHEN** `_build_system_prompt("task", expect={"schema": {"title": "str", "answer": "str"}, "validators": []})` is called
+- **THEN** the returned string SHALL contain the substring `"answer, title"` (alphabetical order)
+- **AND** the substring `"title, answer"` SHALL NOT appear
+
+#### Scenario: empty schema dict leaves prompt byte-identical
+
+- **WHEN** `_build_system_prompt("find the price", expect={"schema": {}, "validators": []})` is called
+- **THEN** the returned string SHALL NOT contain the substring `"MUST"`
+- **AND** the returned string SHALL be byte-identical to `_build_system_prompt("find the price")`

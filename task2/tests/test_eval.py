@@ -1931,3 +1931,25 @@ def test_fixture_count_with_listitem_intent_stub_llm(playwright_chromium):
         f"Expected status in PASS_STATUSES, got {result.status!r} "
         f"(failure_class={result.failure_class!r}, failure_detail={result.failure_detail!r})"
     )
+
+
+def test_run_case_passes_expect_to_loop():
+    captured: dict = {}
+
+    def _stub_loop(*args, **kwargs):
+        captured.update(kwargs)
+        return _CANNED_RESULT
+
+    case = {
+        "id": "x",
+        "task": "t",
+        "expect": {"schema": {"answer": "str"}, "validators": ["answer.nonempty"]},
+        "budget": {"steps": 1},
+    }
+    with patch("scripts.eval.loop", side_effect=_stub_loop):
+        _run_case(case, llm_client=MagicMock(), browser=MagicMock())
+
+    assert captured.get("expect") == {
+        "schema": {"answer": "str"},
+        "validators": ["answer.nonempty"],
+    }

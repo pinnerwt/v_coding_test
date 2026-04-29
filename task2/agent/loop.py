@@ -277,8 +277,8 @@ def _check_evidence(evidence: dict | None) -> dict:
     return {"ok": len(reasons) == 0, "reasons": reasons}
 
 
-def _build_system_prompt(task: str) -> str:
-    return (
+def _build_system_prompt(task: str, *, expect: dict | None = None) -> str:
+    base = (
         "You are a browser automation agent. "
         f"Your task is: {task}\n\n"
         "Use the tools provided to navigate the web and gather information. "
@@ -290,6 +290,14 @@ def _build_system_prompt(task: str) -> str:
         "attempt `click`/`type` with a natural-language `intent` first; "
         "the locator pipeline will resolve it."
     )
+    if expect and expect.get("schema"):
+        schema = expect["schema"]
+        keys = ", ".join(sorted(schema.keys()))
+        base += (
+            f"\n\nYour `done.result` MUST be a JSON object matching this schema: "
+            f"{json.dumps(schema)}. Required fields: {keys}."
+        )
+    return base
 
 
 def _body_text(page: Page) -> str:
@@ -767,10 +775,13 @@ def loop(
     run_id: str | None = None,
     trace_writer: TraceWriter | None = None,
     locator_cache: LocatorCache | None = None,
+    expect: dict | None = None,
 ) -> RunResult:
     if trace_writer is not None and run_id is None:
         raise ValueError("run_id is required when trace_writer is provided")
-    messages: list[dict] = [{"role": "system", "content": _build_system_prompt(task)}]
+    messages: list[dict] = [
+        {"role": "system", "content": _build_system_prompt(task, expect=expect)}
+    ]
     supervisor = Supervisor()
 
     cum_prompt_tokens = 0

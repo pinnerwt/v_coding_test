@@ -3580,3 +3580,32 @@ def test_no_tool_call_repeat_resets_on_tool_call():
     assert result.status == "timeout"
     assert result.steps == 20
     assert result.reason is None
+
+
+# ---------------------------------------------------------------------------
+# expect threading into system prompt
+# ---------------------------------------------------------------------------
+
+
+def test_loop_threads_expect_to_system_prompt():
+    done_call = _tool_call(
+        "done",
+        {
+            "result": {"answer": "X"},
+            "evidence": {"url": "http://x", "text_snippet": "X"},
+        },
+        call_id="tc-done",
+    )
+    stub_llm = _CapturingLLMClient([_response_with_tool_call(done_call)])
+    with patch("agent.loop.observe.build_observation", return_value="state: ok"):
+        loop(
+            "find the price",
+            _StubBrowserForCompaction(),
+            stub_llm,
+            expect={"schema": {"answer": "str"}, "validators": ["answer.nonempty"]},
+        )
+    assert stub_llm.captured_messages is not None
+    system_msg = stub_llm.captured_messages[0]
+    assert system_msg["role"] == "system"
+    assert "MUST" in system_msg["content"]
+    assert "answer" in system_msg["content"]

@@ -24,3 +24,41 @@ def test_system_prompt_names_irrecoverable_conditions():
     assert "captchas" in prompt
     assert "pages that don't exist" in prompt
     assert "required information genuinely absent from the page" in prompt
+
+
+def test_build_system_prompt_schema_present():
+    prompt = _build_system_prompt(
+        "find the price",
+        expect={"schema": {"answer": "str"}, "validators": ["answer.nonempty"]},
+    )
+    assert "MUST" in prompt
+    assert "answer" in prompt
+
+
+def test_build_system_prompt_schema_absent():
+    prompt = _build_system_prompt("find the price")
+    assert "browser automation agent" in prompt
+    assert "find the price" in prompt
+    assert "ONLY for irrecoverable conditions" in prompt
+    assert "MUST" not in prompt
+    assert _build_system_prompt("find the price") == _build_system_prompt(
+        "find the price", expect=None
+    )
+
+
+def test_build_system_prompt_empty_schema_leaves_no_must():
+    prompt = _build_system_prompt(
+        "find the price",
+        expect={"schema": {}, "validators": []},
+    )
+    assert "MUST" not in prompt
+    assert prompt == _build_system_prompt("find the price")
+
+
+def test_build_system_prompt_required_keys_appear_sorted():
+    prompt = _build_system_prompt(
+        "task",
+        expect={"schema": {"title": "str", "answer": "str"}, "validators": []},
+    )
+    assert "answer, title" in prompt
+    assert "title, answer" not in prompt
