@@ -1,7 +1,7 @@
 ## 1. Red — Failing Unit Test
 
-- [ ] 1.1 Create `task2/tests/test_trim_history.py` with a test that constructs a synthetic `messages` list containing a system message, multiple interleaved user-state messages, and 6 complete assistant-tool-call / tool-result groups (each group: one `role="assistant"` with `tool_calls`, followed by one `role="tool"`). Call `from agent.loop import trim_history` (which does not yet exist) and assert that when `keep_steps=4`, the 2 oldest tool-result groups and their paired assistant messages are absent from the returned list while all user-state messages and the system prompt are retained.
-- [ ] 1.2 Run `uv run pytest task2/tests/test_trim_history.py -x` from `task2/` and confirm it fails with `ImportError` (function not yet implemented). Record the exact failure line.
+- [x] 1.1 Create `task2/tests/test_trim_history.py` with a test that constructs a synthetic `messages` list containing a system message, multiple interleaved user-state messages, and 6 complete assistant-tool-call / tool-result groups (each group: one `role="assistant"` with `tool_calls`, followed by one `role="tool"`). Call `from agent.loop import trim_history` (which does not yet exist) and assert that when `keep_steps=4`, the 2 oldest tool-result groups and their paired assistant messages are absent from the returned list while all user-state messages and the system prompt are retained.
+- [x] 1.2 Run `uv run pytest task2/tests/test_trim_history.py -x` from `task2/` and confirm it fails with `ImportError` (function not yet implemented). Record the exact failure line.
 
 ## 2. Green — Implement `trim_history`
 
