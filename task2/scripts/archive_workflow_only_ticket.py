@@ -62,10 +62,17 @@ def archive_workflow_only_ticket(
         + "---\n"
         + body
     )
-    active_path.write_text(new_text)
 
     subprocess.run(
         ["git", "mv", str(active_path), str(archive_path)],
+        cwd=str(repo_root),
+        check=True,
+    )
+
+    archive_path.write_text(new_text)
+
+    subprocess.run(
+        ["git", "add", str(archive_path)],
         cwd=str(repo_root),
         check=True,
     )
