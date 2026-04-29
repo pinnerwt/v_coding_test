@@ -3310,12 +3310,10 @@ def test_loop_compacts_message_history_under_token_budget():
     last_messages = stub_llm.all_messages[-1]
     total_chars = sum(len(json.dumps(m)) for m in last_messages)
     assert total_chars < 80_000
-    elided = [
-        m
-        for m in last_messages
-        if m.get("role") == "user" and m.get("content") == "Current state: <elided>"
-    ]
-    assert len(elided) >= 1
+    for m in last_messages:
+        content = m.get("content", "") or ""
+        assert "<elided>" not in content
+        assert "<read tool result elided>" not in content
     assert last_messages[0]["role"] == "system"
 
 
@@ -3349,8 +3347,92 @@ def test_loop_preserves_most_recent_observation_after_compaction():
     assert len(state_msgs) >= 1
     last_user_state_msg = state_msgs[-1]
     assert last_user_state_msg["content"] != "Current state: <elided>"
+    assert "<elided>" not in last_user_state_msg["content"]
     assert last_messages[0]["role"] == "system"
     assert last_messages[0]["content"] == _build_system_prompt("dummy task")
+
+
+def test_compact_messages_kept_tail_byte_identical():
+    from agent.loop import _compact_messages
+
+    messages: list[dict] = [{"role": "system", "content": "S" * 200}]
+    for i in range(40):
+        messages.append({"role": "user", "content": f"Current state: payload-{i}-" + ("x" * 500)})
+        messages.append(
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [{"id": f"tc-{i}", "name": "goto", "arguments": "{}"}],
+            }
+        )
+        messages.append({"role": "tool", "tool_call_id": f"tc-{i}", "content": "T" * 500})
+
+    input_ids = {id(m) for m in messages}
+    snapshot = [dict(m) for m in messages]
+
+    out = _compact_messages(messages, budget_chars=10_000)
+    total = sum(len(json.dumps(m)) for m in out)
+    assert total <= 10_000 or len(out) <= 2
+
+    for m in out:
+        assert id(m) in input_ids
+        content = m.get("content", "") or ""
+        assert "<elided>" not in content
+        assert "<read tool result elided>" not in content
+
+    assert messages == snapshot or all(
+        m == snapshot[i] for i, m in enumerate(messages[: len(snapshot)])
+    )
+
+
+def test_compact_messages_prefix_stability_across_consecutive_calls():
+    from agent.loop import _compact_messages
+
+    L1: list[dict] = [{"role": "system", "content": "S" * 200}]
+    for i in range(30):
+        L1.append({"role": "user", "content": f"Current state: payload-{i}-" + ("x" * 500)})
+        L1.append({"role": "tool", "tool_call_id": f"tc-{i}", "content": "T" * 500})
+
+    R1 = list(_compact_messages([dict(m) for m in L1], budget_chars=10_000))
+
+    L2 = [dict(m) for m in L1]
+    L2.append({"role": "user", "content": "Current state: payload-30-" + ("x" * 500)})
+    L2.append({"role": "tool", "tool_call_id": "tc-30", "content": "T" * 500})
+
+    R2 = list(_compact_messages(L2, budget_chars=10_000))
+
+    def _is_new(m: dict) -> bool:
+        if m.get("role") == "user" and "payload-30" in (m.get("content") or ""):
+            return True
+        if m.get("role") == "tool" and m.get("tool_call_id") == "tc-30":
+            return True
+        return False
+
+    overlap_R2 = [m for m in R2 if not _is_new(m)]
+    if overlap_R2 and overlap_R2[0].get("role") == "system":
+        overlap_R2 = overlap_R2[1:]
+    R1_tail = R1[1:]
+
+    assert len(overlap_R2) <= len(R1_tail)
+    if overlap_R2:
+        k = len(R1_tail) - len(overlap_R2)
+        assert R1_tail[k:] == overlap_R2
+
+
+def test_compact_messages_preserves_system_and_last_state():
+    from agent.loop import _compact_messages
+
+    sys_msg = {"role": "system", "content": "SYS"}
+    last_state = {"role": "user", "content": "Current state: NEWEST"}
+    messages: list[dict] = [sys_msg]
+    for i in range(50):
+        messages.append({"role": "user", "content": f"Current state: old-{i}-" + ("x" * 800)})
+        messages.append({"role": "tool", "tool_call_id": f"tc-{i}", "content": "T" * 800})
+    messages.append(last_state)
+
+    out = _compact_messages(messages, budget_chars=5_000)
+    assert out[0] is sys_msg
+    assert last_state in out
 
 
 # ---------------------------------------------------------------------------
