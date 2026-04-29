@@ -1,7 +1,7 @@
 ## 1. Red — Failing Unit Test
 
-- [ ] 1.1 In `task2/tests/test_trim_history.py`, add `test_trim_history_preserves_first_tool_group_when_window_smaller`. Build a messages list using `_build_messages()` (6 groups, tc-1 through tc-6). Call `trim_history(messages, keep_steps=2)`. Assert that `tc-1` is present in both the assistant tool_calls and the tool result_ids of the returned list (in addition to tc-5 and tc-6). Do not change any existing test in this commit.
-- [ ] 1.2 Run `uv run pytest task2/tests/test_trim_history.py::test_trim_history_preserves_first_tool_group_when_window_smaller -x` from `task2/` and confirm it fails (AssertionError: tc-1 is absent). Record the failure line.
+- [x] 1.1 In `task2/tests/test_trim_history.py`, add `test_trim_history_preserves_first_tool_group_when_window_smaller`. Build a messages list using `_build_messages()` (6 groups, tc-1 through tc-6). Call `trim_history(messages, keep_steps=2)`. Assert that `tc-1` is present in both the assistant tool_calls and the tool result_ids of the returned list (in addition to tc-5 and tc-6). Do not change any existing test in this commit.
+- [x] 1.2 Run `uv run pytest task2/tests/test_trim_history.py::test_trim_history_preserves_first_tool_group_when_window_smaller -x` from `task2/` and confirm it fails (AssertionError: tc-1 is absent). Record the failure line.
 
 ## 2. Green — Minimal Fix
 

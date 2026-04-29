@@ -207,6 +207,28 @@ def test_trim_history_handles_assistant_with_tool_calls_no_results():
     assert "tc-orphan" in result_asst_call_ids
 
 
+def test_trim_history_preserves_first_tool_group_when_window_smaller():
+    """First tool-result group (group 0) must survive even when keep_steps < total groups."""
+    messages = _build_messages()
+    result = trim_history(messages, keep_steps=2)
+
+    result_tool_call_ids = {
+        tc["id"]
+        for m in result
+        if m["role"] == "assistant" and m.get("tool_calls")
+        for tc in m["tool_calls"]
+    }
+    result_tool_result_ids = {m["tool_call_id"] for m in result if m["role"] == "tool"}
+
+    for cid in ("tc-1", "tc-5", "tc-6"):
+        assert cid in result_tool_call_ids, f"anchor/kept group {cid} assistant missing"
+        assert cid in result_tool_result_ids, f"anchor/kept group {cid} tool result missing"
+
+    for cid in ("tc-2", "tc-3", "tc-4"):
+        assert cid not in result_tool_call_ids, f"dropped group {cid} assistant still present"
+        assert cid not in result_tool_result_ids, f"dropped group {cid} tool result still present"
+
+
 def test_trim_history_unparseable_env_var_falls_back_to_default(
     monkeypatch: pytest.MonkeyPatch,
 ):
