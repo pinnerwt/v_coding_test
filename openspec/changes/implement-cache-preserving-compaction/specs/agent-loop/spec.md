@@ -7,7 +7,7 @@ The system SHALL provide a private function `_compact_messages(messages: list[di
 Rules:
 1. `messages[0]` (the system prompt, `role == "system"`) SHALL never be modified or removed.
 2. The most recent state turn SHALL be kept verbatim. The "most recent state" is defined as the last `user`-role message whose `content` contains the substring `"Current state: "`. This message and any messages after it (e.g. the most recent `tool` results corresponding to the upcoming decision) SHALL never be dropped.
-3. To bring `total <= budget_chars`, the function SHALL drop messages from index `1` upward (i.e. oldest first), advancing past `last_state_idx` is forbidden.
+3. To bring `total <= budget_chars`, the function SHALL drop messages from index `1` upward (i.e. oldest first); the drop boundary `drop_idx` SHALL NOT exceed `last_state_idx`.
 4. The function SHALL drop *whole messages*; it SHALL NOT mutate any kept message's content. A kept message in the result SHALL satisfy `kept_message is input_message_at_some_index_j` for some `j` in the original list.
 5. The kept tail SHALL begin at a turn boundary — after the size-based drop completes, the function SHALL advance the drop boundary forward (without exceeding `last_state_idx`, which is itself a state message and thus a valid stop) until the next kept non-system message is a user-role state message. This prevents orphaning a `tool` message whose corresponding `assistant` `tool_calls` parent has been dropped, which OpenAI-compatible LLM APIs reject.
 6. When `total <= budget_chars` on entry, the function SHALL return `messages` unchanged.

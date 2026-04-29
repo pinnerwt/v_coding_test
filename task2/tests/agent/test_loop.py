@@ -3350,18 +3350,22 @@ def test_loop_preserves_most_recent_observation_after_compaction():
     assert "ax_tree_digest" in last_user_state_msg["content"]
     assert _LARGE_AX_TREE[:64] in last_user_state_msg["content"]
 
-    if len(state_msgs) >= 2 and len(stub_llm.all_messages) >= 2:
-        prev_call = stub_llm.all_messages[-2]
-        prev_state_msgs = [
-            m
-            for m in prev_call
-            if m.get("role") == "user" and "Current state: " in m.get("content", "")
-        ]
-        if prev_state_msgs:
-            assert any(m is state_msgs[-2] for m in prev_state_msgs), (
-                "state msg from the prior step should be the same object across "
-                "chat calls (compaction must not copy/mutate kept messages)"
-            )
+    assert len(state_msgs) >= 2, (
+        "compaction is expected to keep multiple state msgs in the final call "
+        "under this stub setup; 25 steps should produce a multi-state tail"
+    )
+    assert len(stub_llm.all_messages) >= 2
+    prev_call = stub_llm.all_messages[-2]
+    prev_state_msgs = [
+        m
+        for m in prev_call
+        if m.get("role") == "user" and "Current state: " in m.get("content", "")
+    ]
+    assert prev_state_msgs, "prior chat call must have at least one state msg"
+    assert any(m is state_msgs[-2] for m in prev_state_msgs), (
+        "state msg from the prior step should be the same object across "
+        "chat calls (compaction must not copy/mutate kept messages)"
+    )
 
     assert last_messages[0]["role"] == "system"
     assert last_messages[0]["content"] == _build_system_prompt("dummy task")
@@ -3407,16 +3411,31 @@ def test_compact_messages_kept_tail_byte_identical():
 def test_compact_messages_prefix_stability_across_consecutive_calls():
     from agent.loop import _compact_messages
 
+    def _turn(i: int) -> list[dict]:
+        return [
+            {"role": "user", "content": f"Current state: payload-{i}-" + ("x" * 500)},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": f"tc-{i}",
+                        "type": "function",
+                        "function": {"name": "goto", "arguments": "{}"},
+                    }
+                ],
+            },
+            {"role": "tool", "tool_call_id": f"tc-{i}", "content": "T" * 500},
+        ]
+
     L1: list[dict] = [{"role": "system", "content": "S" * 200}]
     for i in range(30):
-        L1.append({"role": "user", "content": f"Current state: payload-{i}-" + ("x" * 500)})
-        L1.append({"role": "tool", "tool_call_id": f"tc-{i}", "content": "T" * 500})
+        L1.extend(_turn(i))
 
     R1 = list(_compact_messages([dict(m) for m in L1], budget_chars=10_000))
 
     L2 = [dict(m) for m in L1]
-    L2.append({"role": "user", "content": "Current state: payload-30-" + ("x" * 500)})
-    L2.append({"role": "tool", "tool_call_id": "tc-30", "content": "T" * 500})
+    L2.extend(_turn(30))
 
     R2 = list(_compact_messages(L2, budget_chars=10_000))
 
@@ -3425,6 +3444,10 @@ def test_compact_messages_prefix_stability_across_consecutive_calls():
             return True
         if m.get("role") == "tool" and m.get("tool_call_id") == "tc-30":
             return True
+        if m.get("role") == "assistant":
+            for tc in m.get("tool_calls") or []:
+                if tc.get("id") == "tc-30":
+                    return True
         return False
 
     overlap_R2 = [m for m in R2 if not _is_new(m)]
@@ -3469,6 +3492,47 @@ def test_compact_messages_minimum_keep_set_when_over_budget():
     assert out == [sys_msg, last_state]
     assert out[0] is sys_msg
     assert out[1] is last_state
+
+
+def test_compact_messages_advances_past_orphan_tool_after_mid_turn_split():
+    from agent.loop import _compact_messages
+
+    sys_msg = {"role": "system", "content": "S" * 100}
+    last_state = {"role": "user", "content": "Current state: NEWEST"}
+
+    messages: list[dict] = [sys_msg]
+    messages.append({"role": "user", "content": "Current state: turn-0-" + ("x" * 200)})
+    messages.append(
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": "tc-0",
+                    "type": "function",
+                    "function": {"name": "goto", "arguments": "{}"},
+                }
+            ],
+        }
+    )
+    messages.append({"role": "tool", "tool_call_id": "tc-0", "content": "T" * 4_000})
+    messages.append(last_state)
+
+    out = _compact_messages(messages, budget_chars=300)
+
+    assert out[0] is sys_msg
+    assert out[-1] is last_state
+
+    kept_assistant_tc_ids: set[str] = set()
+    for m in out:
+        if m.get("role") == "assistant":
+            for tc in m.get("tool_calls") or []:
+                kept_assistant_tc_ids.add(tc["id"])
+    for m in out:
+        if m.get("role") == "tool":
+            assert m["tool_call_id"] in kept_assistant_tc_ids, (
+                "kept tool message has no kept assistant parent — orphan tool"
+            )
 
 
 def test_compact_messages_no_op_when_no_state_message_present():
