@@ -37,6 +37,17 @@ def _build_messages() -> list[dict]:
     return msgs
 
 
+def _collect_ids(result: list[dict]) -> tuple[set[str], set[str]]:
+    asst_ids = {
+        tc["id"]
+        for m in result
+        if m["role"] == "assistant" and m.get("tool_calls")
+        for tc in m["tool_calls"]
+    }
+    tool_ids = {m["tool_call_id"] for m in result if m["role"] == "tool"}
+    return asst_ids, tool_ids
+
+
 def test_trim_history_drops_oldest_groups_outside_window():
     messages = _build_messages()
     result = trim_history(messages, keep_steps=4)
@@ -52,13 +63,7 @@ def test_trim_history_drops_oldest_groups_outside_window():
     kept_ids = {"tc-1", "tc-3", "tc-4", "tc-5", "tc-6"}
     dropped_ids = {"tc-2"}
 
-    result_tool_call_ids = {
-        tc["id"]
-        for m in result
-        if m["role"] == "assistant" and m.get("tool_calls")
-        for tc in m["tool_calls"]
-    }
-    result_tool_result_ids = {m["tool_call_id"] for m in result if m["role"] == "tool"}
+    result_tool_call_ids, result_tool_result_ids = _collect_ids(result)
 
     for cid in kept_ids:
         assert cid in result_tool_call_ids, f"kept group {cid} assistant missing"
@@ -133,13 +138,7 @@ def test_trim_history_drops_multi_tool_call_group_atomically():
     ]
     result = trim_history(messages, keep_steps=1)
 
-    result_tool_ids = {m["tool_call_id"] for m in result if m["role"] == "tool"}
-    result_asst_call_ids = {
-        tc["id"]
-        for m in result
-        if m["role"] == "assistant" and m.get("tool_calls")
-        for tc in m["tool_calls"]
-    }
+    result_asst_call_ids, result_tool_ids = _collect_ids(result)
 
     assert "tc-multi-a" not in result_tool_ids
     assert "tc-multi-b" not in result_tool_ids
@@ -159,13 +158,7 @@ def test_trim_history_respects_env_var(monkeypatch: pytest.MonkeyPatch):
     kept_ids = {"tc-1", "tc-5", "tc-6"}
     dropped_ids = {"tc-2", "tc-3", "tc-4"}
 
-    result_tool_call_ids = {
-        tc["id"]
-        for m in result
-        if m["role"] == "assistant" and m.get("tool_calls")
-        for tc in m["tool_calls"]
-    }
-    result_tool_result_ids = {m["tool_call_id"] for m in result if m["role"] == "tool"}
+    result_tool_call_ids, result_tool_result_ids = _collect_ids(result)
 
     for cid in kept_ids:
         assert cid in result_tool_call_ids
@@ -218,27 +211,15 @@ def test_trim_history_handles_assistant_with_tool_calls_no_results():
         },
     ]
     result = trim_history(messages, keep_steps=1)
-    result_asst_call_ids = {
-        tc["id"]
-        for m in result
-        if m["role"] == "assistant" and m.get("tool_calls")
-        for tc in m["tool_calls"]
-    }
+    result_asst_call_ids, _ = _collect_ids(result)
     assert "tc-orphan" in result_asst_call_ids
 
 
 def test_trim_history_preserves_first_tool_group_when_window_smaller():
-    """First tool-result group (group 0) must survive even when keep_steps < total groups."""
     messages = _build_messages()
     result = trim_history(messages, keep_steps=2)
 
-    result_tool_call_ids = {
-        tc["id"]
-        for m in result
-        if m["role"] == "assistant" and m.get("tool_calls")
-        for tc in m["tool_calls"]
-    }
-    result_tool_result_ids = {m["tool_call_id"] for m in result if m["role"] == "tool"}
+    result_tool_call_ids, result_tool_result_ids = _collect_ids(result)
 
     for cid in ("tc-1", "tc-5", "tc-6"):
         assert cid in result_tool_call_ids, f"anchor/kept group {cid} assistant missing"
@@ -259,12 +240,7 @@ def test_trim_history_unparseable_env_var_falls_back_to_default(
     kept_ids = {"tc-1", "tc-3", "tc-4", "tc-5", "tc-6"}
     dropped_ids = {"tc-2"}
 
-    result_tool_call_ids = {
-        tc["id"]
-        for m in result
-        if m["role"] == "assistant" and m.get("tool_calls")
-        for tc in m["tool_calls"]
-    }
+    result_tool_call_ids, _ = _collect_ids(result)
 
     for cid in kept_ids:
         assert cid in result_tool_call_ids
