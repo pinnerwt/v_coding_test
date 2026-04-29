@@ -147,26 +147,7 @@ def test_archives_ticket_idempotently(tmp_path):
 
     regen_target = "scripts.archive_workflow_only_ticket.subprocess.run"
 
-    def fake_run(args, **kwargs):
-        if args[:2] == ["git", "mv"]:
-            src = Path(args[2])
-            dst = Path(args[3])
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            src.rename(dst)
-
-            class R:
-                returncode = 0
-
-            return R()
-        if "regen_tickets_index" in str(args):
-
-            class R:
-                returncode = 0
-
-            return R()
-        raise AssertionError(f"Unexpected subprocess.run call: {args}")
-
-    with patch(regen_target, side_effect=fake_run) as mock_run:
+    with patch(regen_target, side_effect=_make_fake_run()) as mock_run:
         archive_workflow_only_ticket(
             slug="fast-path-ticket-archival-hygiene",
             ticket_number=82,
@@ -191,7 +172,7 @@ def test_archives_ticket_idempotently(tmp_path):
         assert len(git_mv_calls) == 1
         assert len(regen_calls) == 1
 
-    with patch(regen_target, side_effect=fake_run) as mock_run2:
+    with patch(regen_target, side_effect=_make_fake_run()) as mock_run2:
         archive_workflow_only_ticket(
             slug="fast-path-ticket-archival-hygiene",
             ticket_number=82,

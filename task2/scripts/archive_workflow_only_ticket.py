@@ -21,21 +21,27 @@ def archive_workflow_only_ticket(
         text = archive_path.read_text()
         end = text.index("---", 3)
         fm = yaml.safe_load(text[3:end])
-        if fm.get("merged_pr") is not None:
+        stored_pr = fm.get("merged_pr")
+        if stored_pr is not None:
+            if stored_pr != pr_number or fm.get("archived_at") != iso_date:
+                raise ValueError(
+                    f"Ticket already archived with merged_pr={stored_pr}, "
+                    f"archived_at={fm.get('archived_at')!r}; refusing to overwrite "
+                    f"with pr_number={pr_number}, iso_date={iso_date!r}"
+                )
             return
 
     slug_pattern = f"*-{slug}.md"
-    active_matches = list((tickets_dir / "active").glob(slug_pattern))
-    archive_matches = list((tickets_dir / "archive").glob(slug_pattern))
-
-    if not active_matches and not archive_matches:
+    matches = list((tickets_dir / "active").glob(slug_pattern)) + list(
+        (tickets_dir / "archive").glob(slug_pattern)
+    )
+    if not matches:
         raise FileNotFoundError(f"Ticket file not found in active/ or archive/ for slug: {slug}")
 
-    candidate = (active_matches + archive_matches)[0]
-    leading = candidate.stem.split("-")[0]
-    if int(leading) != ticket_number:
+    leading_int = int(matches[0].stem.split("-")[0])
+    if leading_int != ticket_number:
         raise ValueError(
-            f"Filename leading number {int(leading)} does not match ticket_number={ticket_number}"
+            f"Filename leading number {leading_int} does not match ticket_number={ticket_number}"
         )
 
     if not active_path.exists():
@@ -44,13 +50,18 @@ def archive_workflow_only_ticket(
     text = active_path.read_text()
     end = text.index("---", 3)
     fm = yaml.safe_load(text[3:end])
-    body = text[end + 3 :]
+    body = text[end + 4 :] if text[end + 3 : end + 4] == "\n" else text[end + 3 :]
 
     fm["status"] = "archived"
     fm["merged_pr"] = pr_number
     fm["archived_at"] = iso_date
 
-    new_text = "---\n" + yaml.dump(fm, allow_unicode=True, sort_keys=False) + "---\n" + body
+    new_text = (
+        "---\n"
+        + yaml.dump(fm, default_flow_style=False, sort_keys=False, allow_unicode=True)
+        + "---\n"
+        + body
+    )
     active_path.write_text(new_text)
 
     subprocess.run(
