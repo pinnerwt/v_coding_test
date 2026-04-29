@@ -24,6 +24,16 @@ git status --porcelain
 
 Save the HEAD SHA and the porcelain output as `before_sha` / `before_status` for this iteration.
 
+**Unchanged-diff hard early-exit (mandatory, not advisory).** Compute a digest of the effective review surface at the start of each iteration:
+
+```bash
+git diff master | sha256sum | cut -d' ' -f1
+```
+
+Persist this as `iter_diff_digest_<N>`. On iteration N >= 2, if `iter_diff_digest_N == iter_diff_digest_{N-1}`, the diff has not moved since the prior iteration's reviewer pass — the reviewer subagent will surface the same findings (and after orchestrator cross-checks they will resolve to the same (b)/(c) categories). Skip steps 2-6 entirely for this iteration: print one line `review_task2 iter N: diff digest unchanged from iter N-1, skipping reviewer dispatch and /simplify` and proceed straight to the **stop condition** (step 7), which will exit the loop because `before_sha == HEAD` and no edits were made.
+
+Why this is hard, not advisory: the existing step-6 note already calls out redundant `/simplify` dispatches as wasteful; ticket #77 lever 3 (filed 2026-04-29) generalizes it — the reviewer dispatch is the dominant Opus token cost in this skill, and dispatching it on a byte-identical diff is pure waste with no signal upside. The thrash guard (abort at iteration 5) still applies; this rule short-circuits *before* the guard fires when the natural-convergence point is reached. How to apply: only the very first iteration *must* dispatch the reviewer. Iteration 2 only dispatches if iteration 1 produced edits (which by definition changes the digest). The "diff is empty" trivial case is also covered — `iter_diff_digest_1` of an empty diff is the digest of an empty input, and iteration 2 will match it.
+
 ### 2. Spawn the reviewer subagent
 
 Write the diff to a file the subagent can read, then dispatch an Opus subagent scoped to **review only**. The reviewer must see only the diff — not OpenSpec docs, not prior iterations' decisions, not this conversation. That preserves the "independent second opinion" property; the orchestrator (you) cross-checks against the change docs in step 3.
@@ -111,7 +121,13 @@ If those tests pass on the baseline, the subagent caused the regression and the 
 
 Invoke the **simplify** skill on the working tree. This may further modify files. After it returns, note whether anything changed since the start of step 6.
 
-**Avoid redundant /simplify dispatches.** If this iteration produced no new working-tree changes since the last `/simplify` pass (i.e. step 5 was skipped or made no edits, and the diff is identical to what `/simplify` already reviewed last iteration), don't re-dispatch the three parallel review agents — `/simplify`'s findings on the same diff will recur and waste tokens. Instead, do a quick self-review of any doc-only deltas and confirm clean. Re-dispatch the full skill when production code or tests changed.
+**Hard digest gate on /simplify dispatch (mandatory, not advisory).** Compute a diff digest at the start of step 6 and persist it as `simplify_diff_digest_<N>`:
+
+```bash
+git diff master | sha256sum | cut -d' ' -f1
+```
+
+On iteration N >= 2, if `simplify_diff_digest_N == simplify_diff_digest_{N-1}`, skip the `/simplify` invocation entirely — print one line `review_task2 iter N step 6: diff digest unchanged, skipping /simplify dispatch` and proceed to step 7. Why hard, not advisory: ticket #77 lever 5 (filed 2026-04-29) — the prior advisory note was routinely ignored when the orchestrator misjudged "did the diff change," producing redundant three-agent fan-outs. Digest comparison is unambiguous and cheap. How to apply: only the very first iteration *must* dispatch `/simplify`. After step 5 produces no edits AND the iteration didn't otherwise change the working tree, the digest is byte-identical and the skip fires automatically. This complements the step-1 reviewer-skip rule: in a typical "iteration 2 is no-op" pattern, both the reviewer dispatch (step 2) and the `/simplify` dispatch (step 6) are skipped, and the loop converges without burning a single subagent call on the no-op iteration.
 
 ### 7. Stop condition
 
