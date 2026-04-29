@@ -33,14 +33,14 @@ Artifacts land at `task2/benchmark/<sanitized-branch>/webvoyager/<timestamp>.jso
 
 Each branch contributes its most recent WebVoyager run (`benchmark/<branch>/webvoyager/<timestamp>.json`). Pass-rate, latency, and cost are split into passed vs. failed cases; failure-class counts come from the `failure_class` field on each non-passed case.
 
-#### Latest run — `task2-fix-trim-history-preserve-first-group` (2026-04-29 22:58 UTC)
+#### Latest run — `task2-surface-tool-error-exception-detail` (2026-04-29 23:28 UTC)
 
 | Case | Status | Steps | Latency | Tokens | USD |
 |---|---|---:|---:|---:|---:|
-| `webvoyager-1` | timeout | 11 | 125.2 s | 96,703 | $0.0983 |
-| `webvoyager-2` | failed | 5 | 54.0 s | 42,582 | $0.0433 |
-| `webvoyager-3` | succeeded | 5 | 52.0 s | 35,793 | $0.0367 |
-| **Total (3 cases, 1 passed)** | | 21 | 231.2 s | 175,078 | $0.1782 |
+| `webvoyager-1` | timeout | 11 | 126.9 s | 96,628 | $0.0982 |
+| `webvoyager-2` | timeout | 11 | 142.4 s | 136,152 | $0.1375 |
+| `webvoyager-3` | succeeded | 5 | 47.2 s | 35,683 | $0.0365 |
+| **Total (3 cases, 1 passed)** | | 27 | 316.5 s | 268,463 | $0.2721 |
 <!-- WEBVOYAGER_TRENDS:END -->
 
 #### Tier-0 baseline (3 tasks, 2026-04-28)
