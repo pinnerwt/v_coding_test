@@ -946,7 +946,7 @@ def loop(
                     step_breakdown=step_breakdown,
                 )
 
-            _sup_calls_before = sum(supervisor._attempts.values())
+            _sup_calls_before = supervisor.total_attempts()
             tool_result = _dispatch(
                 tool_call.name,
                 args,
@@ -957,7 +957,7 @@ def loop(
                 run_id=run_id,
                 step_id=_step_id,
             )
-            if sum(supervisor._attempts.values()) > _sup_calls_before:
+            if supervisor.total_attempts() > _sup_calls_before:
                 _stuck_buf.clear()
             _stuck_buf.append(f"{tool_call.name}:{json.dumps(args, sort_keys=True)}")
             _stuck_buf[:] = _stuck_buf[-_STUCK_REPEAT_K:]

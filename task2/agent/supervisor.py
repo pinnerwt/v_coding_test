@@ -26,6 +26,9 @@ class Supervisor:
         self.last_policy: EscalationPolicy | None = None
         self.replan_used: bool = False
 
+    def total_attempts(self) -> int:
+        return sum(self._attempts.values())
+
     def handle(self, miss: LocatorMiss, *, current_tier: str) -> EscalationDecision:
         key = (current_tier, miss.reason)
         attempt = self._attempts.get(key, 0) + 1
