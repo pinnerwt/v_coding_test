@@ -3908,6 +3908,9 @@ def test_loop_terminates_on_budget_seconds():
     assert 2 <= result.steps <= 4, f"expected 2..4 steps, got {result.steps}"
     assert len(result.latency_ms_per_step) == result.steps
     assert result.latency_ms_total == sum(result.latency_ms_per_step)
+    assert result.prompt_tokens >= 10 * result.steps
+    assert result.completion_tokens == 5 * result.steps
+    assert len(result.step_breakdown) == result.steps
 
 
 def test_loop_no_budget_seconds_default_unchanged():

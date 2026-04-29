@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from agent.locator_cache import LocatorCache
 
 RunStatus = Literal["succeeded", "unverified", "failed", "timeout"]
-RunResultReason = Literal["stuck_repeat", "no_tool_call_repeat"]
+RunResultReason = Literal["stuck_repeat", "no_tool_call_repeat", "seconds_budget"]
 ToolName = Literal["goto", "read", "click", "type", "done", "fail"]
 _CLICK_SUCCESS_OUTCOMES: frozenset[str] = frozenset({"ok", "nav"})
 _IRRECOVERABLE_REASONS: frozenset[str] = frozenset({"login wall", "captcha", "blocked"})
