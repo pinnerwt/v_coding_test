@@ -1,7 +1,7 @@
 ---
 id: 98
 slug: webvoyager-2-no-progress-regression-from-prompt-trim
-status: active
+status: archived
 tier: 5
 urgency: P1
 axes:
@@ -16,9 +16,10 @@ evidence:
 - task2/agent/loop.py
 related:
 - 97
-filed_pr: null
-merged_pr: null
-archived_at: null
+- 99
+filed_pr: 155
+merged_pr: 155
+archived_at: "2026-04-29"
 trigger: "2026-04-29 — /done_pr aggregate-regression check on PR #154 (ticket #97 prompt-trim) found webvoyager-2 flipped from succeeded (10 steps, 115s) on baseline task2-audit-webvoyager-1-llm-dominance to failed (tool_error/no_progress, 8 steps, 105s); pass_rate 2/3 → 1/3"
 ---
 
