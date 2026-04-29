@@ -135,7 +135,7 @@ def aggregate_repeats(
     avg_firings = sum(firings) / len(firings)
     mean_replans = sum(r.replans for r in runs) / len(runs)
     median_steps = int(statistics.median(steps_values))
-    mean_usd = sum(usd_values) / len(usd_values)
+    total_usd = sum(usd_values)
 
     failing_runs = [r for r in runs if r.status not in PASS_STATUSES and r.status != _SKIP_STATUS]
     rep_run = failing_runs[-1] if failing_runs else runs[-1]
@@ -151,7 +151,7 @@ def aggregate_repeats(
         avg_mechanism_firings=avg_firings,
         status=derived_status,
         steps=median_steps,
-        usd=mean_usd,
+        usd=total_usd,
         prompt_tokens=sum(r.prompt_tokens for r in runs),
         completion_tokens=sum(r.completion_tokens for r in runs),
         latency_ms_total=sum(latencies),

@@ -218,7 +218,7 @@ def generate_scoreboard(data: dict, *, detail: bool = False) -> str:
     lines.append(f"**{passed}/{total} succeeded ({pct}%)**")
     lines.append("")
 
-    latencies = [c.get("latency_ms_total", 0) for c in non_skipped]
+    latencies = [c.get("median_latency_ms", c.get("latency_ms_total", 0)) for c in non_skipped]
     p50 = _percentile(latencies, 50)
     p95 = _percentile(latencies, 95)
     lines.append(f"p50: {p50}ms  p95: {p95}ms")
