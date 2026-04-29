@@ -9,7 +9,7 @@ The test module `task2/tests/test_benchmark_analysis.py` SHALL contain a functio
 - For every step with zero-based index >= 1 (step 2 onward, indices 1-12), `latency_breakdown_ms.llm_ms` SHALL be greater than `5 * latency_breakdown_ms.dispatch_ms`. The multiplicative form is required to avoid `ZeroDivisionError` on any future cached step where `dispatch_ms == 0`.
 - `step_breakdown[-1]["prompt_tokens"]` (final step) SHALL be at least 10× `step_breakdown[0]["prompt_tokens"]` (step 1), documenting prompt-token accumulation as lever (a).
 
-The test docstring SHALL encode the lever ranking: (a) prompt-trim saves ~28s (30% of ~94s LLM total, largest ROI), (b) path-shorten saves ~20s (remove 3 steps × 6.5s), (c) observation-trim saves ~6s (step-1 only); and SHALL name prompt-trim as the winning lever.
+The test docstring SHALL encode the lever ranking: (a) prompt-trim saves ~31s (30% of ~105s LLM total, largest ROI), (b) path-shorten saves ~20s (remove 3 steps × 6.5s), (c) observation-trim saves ~6s (step-1 only); and SHALL name prompt-trim as the winning lever.
 
 The test SHALL use only the Python standard library (`json`, `pathlib`) — no fixtures, no mocking, no network access.
 

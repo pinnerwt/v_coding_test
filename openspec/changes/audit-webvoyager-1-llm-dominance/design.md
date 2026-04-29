@@ -28,8 +28,8 @@ Decision: **prompt-trim is the winning lever** because (a) it is the largest sin
 **Decision: one test file, one test function.**
 The ticket names exactly one test. Creating a dedicated `test_benchmark_analysis.py` avoids coupling with `test_benchmark.py` (which tests script behavior) and `test_bench.py` (runner integration). The file is static — it reads the vendored artifact by absolute path relative to the repo root.
 
-**Decision: assert on `llm_ms / dispatch_ms > 5` on the median step, not per-step.**
-The ticket spec says "median step." Steps 2-12 have `llm_ms` in the range 4,619–9,409ms and `dispatch_ms` in 45–639ms, giving ratios from 10× to 145×. A threshold of 5 is well below the minimum observed ratio, making the test robust to minor model speed changes while still documenting the dominance.
+**Decision: assert `llm_ms > 5 * dispatch_ms` on every step from index 1 onward (multiplicative form), not just the median.**
+The ticket spec says "median step," but a per-step assertion is strictly stronger and was free to write. Steps 2-13 have `llm_ms` in the range 4,619–29,931ms (step 13 is the 29.9s spike) and `dispatch_ms` in 45–639ms, giving ratios from 10× to 145×. A threshold of 5 is well below the minimum observed ratio, making the test robust to minor model speed changes while still documenting the dominance. The multiplicative form (`llm_ms > 5 * dispatch_ms`) avoids `ZeroDivisionError` if a future cached step records `dispatch_ms == 0`.
 
 **Decision: also assert `prompt_tokens` growth to document lever (a).**
 The docstring needs to justify the prompt-trim lever. Adding an assertion that `prompt_tokens` at the final step is at least 10× the prompt_tokens at step 1 is a lightweight invariant that encodes the growth pattern without being fragile.
