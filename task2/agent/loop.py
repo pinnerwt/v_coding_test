@@ -819,6 +819,7 @@ def loop(
         t0 = time.monotonic()
         _step_id = f"{run_id}:step-{step_num}" if run_id is not None else None
         any_action_succeeded_this_step: bool = False
+        replanned_this_step: bool = False
 
         observation = observe.build_observation(browser, last_actions)
         last_actions = []
@@ -1083,6 +1084,7 @@ def loop(
                     supervisor.replan_used = True
                     active_plan = new_plan
                     _no_progress_buf.clear()
+                    replanned_this_step = True
                     _emit_plan_event(
                         events,
                         "replan",
@@ -1117,41 +1119,42 @@ def loop(
                         step_breakdown=step_breakdown,
                     )
 
-        _post_obs = observe.build_observation(browser, [])
-        post_fp = _post_obs.get("ax_fingerprint") if isinstance(_post_obs, dict) else None
-        _no_progress_buf.append((post_fp, any_action_succeeded_this_step))
-        if len(_no_progress_buf) > _NO_PROGRESS_K:
-            _no_progress_buf.pop(0)
-        fps = {fp for fp, _ in _no_progress_buf}
-        if (
-            len(_no_progress_buf) == _NO_PROGRESS_K
-            and len(fps) == 1
-            and None not in fps
-            and all(not ok for _, ok in _no_progress_buf)
-        ):
-            _record_step(
-                step_num,
-                t0,
-                response,
-                dispatched_tool_names,
-                latency_ms_per_step,
-                step_breakdown,
-                latency_breakdown=_phase_breakdown(t0, t_llm_start, t_dispatch_start),
-            )
-            return RunResult(
-                status="failed",
-                reason="no_progress",
-                result=None,
-                evidence=None,
-                verifier=None,
-                steps=step_num,
-                prompt_tokens=cum_prompt_tokens,
-                completion_tokens=cum_completion_tokens,
-                usd=cum_usd,
-                latency_ms_total=sum(latency_ms_per_step),
-                latency_ms_per_step=latency_ms_per_step,
-                step_breakdown=step_breakdown,
-            )
+        if not replanned_this_step:
+            _post_obs = observe.build_observation(browser, [])
+            post_fp = _post_obs.get("ax_fingerprint") if isinstance(_post_obs, dict) else None
+            _no_progress_buf.append((post_fp, any_action_succeeded_this_step))
+            if len(_no_progress_buf) > _NO_PROGRESS_K:
+                _no_progress_buf.pop(0)
+            fps = {fp for fp, _ in _no_progress_buf}
+            if (
+                len(_no_progress_buf) == _NO_PROGRESS_K
+                and len(fps) == 1
+                and None not in fps
+                and all(not ok for _, ok in _no_progress_buf)
+            ):
+                _record_step(
+                    step_num,
+                    t0,
+                    response,
+                    dispatched_tool_names,
+                    latency_ms_per_step,
+                    step_breakdown,
+                    latency_breakdown=_phase_breakdown(t0, t_llm_start, t_dispatch_start),
+                )
+                return RunResult(
+                    status="failed",
+                    reason="no_progress",
+                    result=None,
+                    evidence=None,
+                    verifier=None,
+                    steps=step_num,
+                    prompt_tokens=cum_prompt_tokens,
+                    completion_tokens=cum_completion_tokens,
+                    usd=cum_usd,
+                    latency_ms_total=sum(latency_ms_per_step),
+                    latency_ms_per_step=latency_ms_per_step,
+                    step_breakdown=step_breakdown,
+                )
 
         _record_step(
             step_num,

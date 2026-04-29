@@ -267,3 +267,83 @@ def test_goto_followed_by_body_reads_does_not_bail_no_progress():
         f"goto+body-reads incorrectly classified as no_progress; "
         f"status={result.status} steps={result.steps}"
     )
+
+
+_HALT_INTENT = "halt_trigger"
+
+
+class _ReplanThenClickNoSuccessClient:
+    """LLM stub for the replan-clears-buffer regression: every step emits a click
+    that the dispatcher errors out on (so any_action_succeeded stays False), and
+    only step 3's intent triggers supervisor.last_policy='halt' to cause replan.
+    """
+
+    def __init__(self):
+        self._step = 0
+
+    def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
+        if tools is None:
+            return _plan_stub()
+        self._step += 1
+        if self._step <= 2:
+            tc = ToolCall(
+                id=f"tc-pre-{self._step}",
+                name="click",
+                arguments=json.dumps({"intent": f"erring{self._step}"}),
+            )
+        elif self._step == 3:
+            tc = ToolCall(
+                id="tc-halt",
+                name="click",
+                arguments=json.dumps({"intent": _HALT_INTENT}),
+            )
+        else:
+            tc = ToolCall(
+                id=f"tc-post-{self._step}",
+                name="click",
+                arguments=json.dumps({"intent": f"erring_post{self._step}"}),
+            )
+        return ChatResponse(
+            content=None,
+            tool_calls=[tc],
+            finish_reason="tool_calls",
+            model="fake",
+            usage=_DUMMY_USAGE,
+            raw={},
+        )
+
+
+def test_replan_clears_no_progress_buffer():
+    """Spec: scenario 'replan clears the no_progress buffer'.
+
+    After a supervisor halt+replan, _no_progress_buf must be empty so the
+    no_progress bail counter starts fresh from zero. Implementation must NOT
+    leave the replan-step's own post-dispatch entry in the buffer.
+    """
+    stub_browser = _StubBrowser()
+    stub_llm = _ReplanThenClickNoSuccessClient()
+
+    def _patched_dispatch(tool_name, args, browser, supervisor, **kwargs):
+        intent = args.get("intent", "")
+        if intent == _HALT_INTENT:
+            supervisor.last_policy = "halt"
+            return "Error: element not found after escalation"
+        return f"Error: could not find {intent}"
+
+    with (
+        patch("agent.loop.observe.build_observation", return_value=_CONSTANT_OBS),
+        patch("agent.loop._dispatch", side_effect=_patched_dispatch),
+    ):
+        result = loop(
+            "task",
+            browser=stub_browser,
+            llm_client=stub_llm,
+            max_steps=8,
+        )
+
+    assert result.steps >= 7, (
+        f"Loop bailed at step {result.steps} with reason={result.reason!r}. "
+        f"After replan at step 3, the no_progress window must reset to zero "
+        f"so bail cannot fire until step 7 (steps 4+5+6+7 = 4 entries). "
+        f"The replan-step's post-dispatch entry must NOT count toward K=4."
+    )
