@@ -174,6 +174,11 @@ def test_no_progress_bail_after_4_unchanged_fingerprint_steps_no_successful_acti
     assert result.reason == "no_progress"
     assert result.steps == 4
     assert len(result.step_breakdown) == 4
+    for entry in result.step_breakdown:
+        bd = entry["latency_breakdown_ms"]
+        assert isinstance(bd["observation_ms"], int)
+        assert isinstance(bd["llm_ms"], int)
+        assert isinstance(bd["dispatch_ms"], int)
 
 
 def test_no_progress_alternating_fingerprint_does_not_bail():
