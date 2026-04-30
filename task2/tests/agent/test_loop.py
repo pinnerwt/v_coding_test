@@ -4263,3 +4263,152 @@ def test_loop_budget_seconds_signature_accepts_kwarg():
     p = sig.parameters["budget_seconds"]
     assert p.default is None
     assert p.kind == inspect.Parameter.KEYWORD_ONLY
+
+
+# ---------------------------------------------------------------------------
+# ask_user tool: lets the agent ask the human a clarifying question mid-run
+# ---------------------------------------------------------------------------
+
+
+def test_tools_list_includes_ask_user():
+    """ask_user MUST appear in TOOLS with a required `question: string` parameter."""
+    from agent.loop import TOOLS
+
+    entry = next((t for t in TOOLS if t["function"]["name"] == "ask_user"), None)
+    assert entry is not None, "TOOLS must contain an entry with function.name == 'ask_user'"
+    props = entry["function"]["parameters"]["properties"]
+    assert "question" in props, "ask_user entry must have 'question' in parameters.properties"
+    assert props["question"]["type"] == "string", "ask_user 'question' must be type 'string'"
+    required = entry["function"]["parameters"]["required"]
+    assert "question" in required, "'question' must appear in ask_user's parameters.required"
+
+
+def test_loop_ask_user_callback_signature_kwarg():
+    """loop() MUST accept ask_user_callback as a keyword-only param defaulting to None."""
+    import inspect
+
+    from agent import loop as loop_mod
+
+    sig = inspect.signature(loop_mod.loop)
+    assert "ask_user_callback" in sig.parameters, "loop must accept ask_user_callback keyword param"
+    p = sig.parameters["ask_user_callback"]
+    assert p.default is None
+    assert p.kind == inspect.Parameter.KEYWORD_ONLY
+
+
+def test_loop_ask_user_invokes_callback_and_feeds_answer_back(fixture_server, playwright_chromium):
+    """When the LLM calls ask_user, the loop SHALL invoke the callback synchronously
+    and feed the answer back as the tool result so the LLM's next call sees it."""
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+
+    captured_questions: list[str] = []
+    captured_messages_at_step2: list[dict] = []
+
+    def _callback(question: str) -> str:
+        captured_questions.append(question)
+        return "Tianmu"
+
+    responses = [
+        _response_with_tool_call(
+            _tool_call(
+                "ask_user",
+                {"question": "Which 旭集 location?"},
+                call_id="tc-ask",
+            )
+        ),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"location": "Tianmu"},
+                    "evidence": {"url": fixture_url, "text_snippet": "Tianmu"},
+                },
+                call_id="tc-done",
+            )
+        ),
+    ]
+
+    class _CapturingLLM:
+        def __init__(self):
+            self._responses = list(responses)
+            self._idx = 0
+            self._tool_calls = 0
+
+        def chat(self, messages, *, tools=None, **_kw):
+            if tools is None:
+                return _plan_stub_response()
+            self._tool_calls += 1
+            if self._tool_calls == 2:
+                captured_messages_at_step2.extend(messages)
+            if self._idx < len(self._responses):
+                resp = self._responses[self._idx]
+                self._idx += 1
+                return resp
+            return _response_no_tool_call()
+
+    fake_llm = _CapturingLLM()
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        browser.goto(fixture_url)
+        result = loop(
+            "book a table at 旭集",
+            browser,
+            fake_llm,
+            max_steps=4,
+            ask_user_callback=_callback,
+        )
+
+    assert captured_questions == ["Which 旭集 location?"], (
+        f"callback must be invoked once with the question, got {captured_questions!r}"
+    )
+    assert result.status == "succeeded"
+    assert result.result == {"location": "Tianmu"}
+
+    tool_msgs = [
+        m
+        for m in captured_messages_at_step2
+        if m.get("role") == "tool" and m.get("tool_call_id") == "tc-ask"
+    ]
+    assert len(tool_msgs) == 1, (
+        f"ask_user must produce one tool-result message in history, got {len(tool_msgs)}"
+    )
+    assert "Tianmu" in tool_msgs[0]["content"], (
+        f"answer 'Tianmu' must appear in ask_user tool-result content, got {tool_msgs[0]!r}"
+    )
+
+
+def test_loop_ask_user_without_callback_returns_error_and_loop_continues(
+    fixture_server, playwright_chromium
+):
+    """If the LLM calls ask_user but no callback was provided, the loop SHALL return an
+    error tool-result (not crash) so the agent can continue with another tool."""
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+
+    responses = [
+        _response_with_tool_call(
+            _tool_call(
+                "ask_user",
+                {"question": "Which one?"},
+                call_id="tc-ask",
+            )
+        ),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"answer": "fallback"},
+                    "evidence": {"url": fixture_url, "text_snippet": "Hello, loop"},
+                },
+                call_id="tc-done",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        browser.goto(fixture_url)
+        result = loop("task", browser, fake_llm, max_steps=4)
+
+    assert result.status == "succeeded", (
+        f"loop should not crash without callback, got status={result.status!r}"
+    )

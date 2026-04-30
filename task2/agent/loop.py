@@ -4,6 +4,7 @@ import json
 import os
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Literal
@@ -32,7 +33,7 @@ if TYPE_CHECKING:
 
 RunStatus = Literal["succeeded", "unverified", "failed", "timeout"]
 RunResultReason = Literal["stuck_repeat", "no_tool_call_repeat", "seconds_budget", "no_progress"]
-ToolName = Literal["goto", "read", "click", "type", "done", "fail"]
+ToolName = Literal["goto", "read", "click", "type", "done", "fail", "ask_user"]
 _CLICK_SUCCESS_OUTCOMES: frozenset[str] = frozenset({"ok", "nav"})
 _IRRECOVERABLE_REASONS: frozenset[str] = frozenset({"login wall", "captcha", "blocked"})
 
@@ -166,6 +167,29 @@ TOOLS: list[dict] = [
                 "type": "object",
                 "properties": {"reason": {"type": "string"}},
                 "required": ["reason"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ask_user",
+            "description": (
+                "Ask the human a clarifying question and get their answer back as the "
+                "tool result. Use only when the task is genuinely ambiguous (e.g. a "
+                "named entity has multiple matching locations and there is no way to "
+                "infer the intended one from the task text). Do NOT use for things you "
+                "can resolve by reading the page."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "question": {
+                        "type": "string",
+                        "description": "A concise question for the user.",
+                    }
+                },
+                "required": ["question"],
             },
         },
     },
@@ -347,7 +371,17 @@ def _build_system_prompt(task: str, *, expect: dict | None = None) -> str:
         "If a Search/Submit button is not locatable after typing into a search "
         "box, retry the `type` call with `submit=true` to press Enter instead "
         "of clicking a button — do not give up on the search just because the "
-        "button can't be found."
+        "button can't be found. "
+        "AMBIGUITY → ASK, do not guess and do not give up. If the task targets a "
+        "named entity (restaurant, store, person, product) and the page reveals "
+        "MULTIPLE plausible matches (e.g. several branches/locations of the same "
+        "brand) and the task text does not say which one, you MUST call "
+        "`ask_user` with a concise clarifying question listing the options. Do "
+        "NOT call `done` with a 'cannot determine' answer in this case — that is "
+        "a wrong call; `ask_user` is the right call. Do NOT call `fail` either. "
+        "After the user answers, continue the task with their choice. Use "
+        "`ask_user` sparingly — only for genuine ambiguity you cannot resolve "
+        "by reading more of the page."
     )
     if expect and expect.get("schema"):
         schema = expect["schema"]
@@ -850,6 +884,7 @@ def loop(
     locator_cache: LocatorCache | None = None,
     expect: dict | None = None,
     budget_seconds: float | None = None,
+    ask_user_callback: Callable[[str], str] | None = None,
 ) -> RunResult:
     if trace_writer is not None and run_id is None:
         raise ValueError("run_id is required when trace_writer is provided")
@@ -1104,6 +1139,50 @@ def loop(
                     latency_ms_per_step=latency_ms_per_step,
                     step_breakdown=step_breakdown,
                 )
+
+            if tool_call.name == "ask_user":
+                question = args.get("question")
+                if not isinstance(question, str) or not question.strip():
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "content": ("Error: ask_user requires a non-empty 'question' string."),
+                        }
+                    )
+                    continue
+                if ask_user_callback is None:
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "content": (
+                                "Error: ask_user is not available in this run "
+                                "(no callback wired). Resolve the ambiguity from "
+                                "page content or call `done`/`fail`."
+                            ),
+                        }
+                    )
+                    continue
+                try:
+                    answer = ask_user_callback(question)
+                except Exception as exc:  # noqa: BLE001
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "content": f"Error: ask_user callback raised: {exc}",
+                        }
+                    )
+                    continue
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": str(answer),
+                    }
+                )
+                continue
 
             _sup_calls_before = supervisor.total_attempts()
             tool_result = _dispatch(
