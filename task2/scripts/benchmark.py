@@ -258,6 +258,8 @@ def main(argv: list[str] | None = None) -> int:
         print("--repeats must be >= 1", file=sys.stderr)
         return 1
 
+    os.environ.setdefault("LLM_TEMPERATURE", "0.0")
+
     branch = resolve_branch(args.branch)
 
     if args.verify:

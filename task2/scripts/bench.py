@@ -26,6 +26,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--tier", type=int, choices=[0, 1], default=0)
     args = parser.parse_args(argv)
 
+    os.environ.setdefault("LLM_TEMPERATURE", "0.0")
+
     results_dir = Path(os.environ.get("EVAL_RESULTS_DIR", "eval/results"))
     tasks_path = os.environ.get(
         _TASK_PATH_ENV_VARS[args.suite],
