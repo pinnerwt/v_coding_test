@@ -78,6 +78,13 @@ def _invoke_loop(
     ask_user_callback,
 ) -> RunResult:
     """Real loop entrypoint. Tests monkeypatch this seam to avoid Browser/LLM."""
+    if os.environ.get("SESSIONS_FAKE_LOOP") == "1":
+        answer = ask_user_callback("Which destination?")
+        return RunResult(
+            status="succeeded",
+            result={"task": task, "answer": answer},
+            evidence={"url": "fake://smoke", "text_snippet": "fake-loop"},
+        )
     base_url = os.environ.get("LLM_BASE_URL", "http://localhost:8090")
     model = os.environ.get("LLM_MODEL", _DEFAULT_LLM_MODEL)
     writer = TraceWriter(get_db_path())

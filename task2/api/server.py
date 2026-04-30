@@ -213,6 +213,79 @@ def root() -> HTMLResponse:
     return HTMLResponse(_HTML)
 
 
+_CHAT_HTML = """<!DOCTYPE html>
+<html>
+<head><title>Agent Chat</title></head>
+<body>
+<h1>Agent Chat</h1>
+<form id="task-form">
+  <label>Task: <input id="task-input" name="task" type="text" size="60" /></label>
+  <button id="task-submit" type="submit">Run</button>
+</form>
+<div id="status" data-status="idle"></div>
+<div id="pending" hidden>
+  <p id="pending-question"></p>
+  <form id="answer-form">
+    <input id="answer-input" type="text" size="60" />
+    <button id="answer-submit" type="submit">Send</button>
+  </form>
+</div>
+<pre id="result" hidden></pre>
+<script>
+let runId = null;
+let pollTimer = null;
+
+document.getElementById('task-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const task = document.getElementById('task-input').value;
+  const r = await fetch('/sessions', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({task})
+  });
+  const data = await r.json();
+  runId = data.id;
+  document.getElementById('status').dataset.status = 'running';
+  pollTimer = setInterval(poll, 500);
+});
+
+document.getElementById('answer-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const answer = document.getElementById('answer-input').value;
+  await fetch(`/sessions/${runId}/answer`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({answer})
+  });
+  document.getElementById('pending').hidden = true;
+  document.getElementById('answer-input').value = '';
+});
+
+async function poll() {
+  if (!runId) return;
+  const r = await fetch(`/sessions/${runId}`);
+  const body = await r.json();
+  document.getElementById('status').dataset.status = body.status;
+  if (body.status === 'awaiting_user') {
+    document.getElementById('pending-question').textContent = body.pending_question || '';
+    document.getElementById('pending').hidden = false;
+  } else if (body.status === 'done' || body.status === 'failed') {
+    clearInterval(pollTimer);
+    const pre = document.getElementById('result');
+    pre.textContent = JSON.stringify(body.result, null, 2);
+    pre.hidden = false;
+  }
+}
+</script>
+</body>
+</html>"""
+
+
+@app.get("/chat")
+def chat() -> HTMLResponse:
+    return HTMLResponse(_CHAT_HTML)
+
+
 class AnswerRequest(BaseModel):
     answer: str
 
