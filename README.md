@@ -130,7 +130,8 @@ Preserved from earlier dev notes; the per-skill prompts themselves live in [`pro
 5. As the time went by, letting claude to open tickets itself, and review with other sub agents (codex out of quota during the developement). Adjusting the priority in different directions as well to avoid over engineering.
 6. Found that it's too slow with openspec + TDD + ticket resolving despite the stability and testability, so create a new research branch which focuses only on the successful rate + latency + token usage.
 7. Once the agent has basic functionalities, use webvoyager benchmark to test the agent. Review the tests along with the AI and try to reach more successful rate without being too specific for certain edge cases.
-8. Try out special cases for
+8. Add basic UI/backend for agent interaction/visualization.
+9. Try out special cases for
   - vision click (like what claude MCP do)
   - Cloudflare bypass
   - Caching test
@@ -141,8 +142,7 @@ Preserved from earlier dev notes; the per-skill prompts themselves live in [`pro
 2. While saying defining the spec very clearly, it should include the whole pipeline from "accepting users intent" to "output result", e.g. "planning" -> "loop" -> "planning"/"results" process, with different components. Cut the spec into different stages.
 3. If maintenance is important, I think we can cut "Planning" -> "Tests" -> "Developement" -> "PR" -> "Review"/"Refactor" -> "Merge" into different subagents, and use a topological sort of tickets according to their dependencies. In this case, we can maximize the efficiency of developement in time. The token usage is not 
 3. By-ticket implementation is still necessary. I still don't trust in long context coding skills in AI so far.
-4. Avoid openspec. If the spec 
-
+4. Avoid openspec. The spec can be maintained with "plan.md"s.
 
 ### Optimization findings
 
