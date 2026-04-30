@@ -13,6 +13,7 @@ _DEFAULT_LLM_MODEL = "qwen3-5-27b"
 _CHAT_PATH = "/v1/chat/completions"
 _MAX_ERROR_BODY = 2048
 _DEFAULT_TEMPERATURE = 0.0
+_DEFAULT_TIMEOUT = 180.0
 
 
 def _resolve_temperature(explicit: float | None) -> float:
@@ -25,6 +26,18 @@ def _resolve_temperature(explicit: float | None) -> float:
         return float(raw)
     except ValueError:
         return _DEFAULT_TEMPERATURE
+
+
+def _resolve_timeout(explicit: float | None) -> float:
+    if explicit is not None:
+        return explicit
+    raw = os.environ.get("LLM_TIMEOUT")
+    if raw is None:
+        return _DEFAULT_TIMEOUT
+    try:
+        return float(raw)
+    except ValueError:
+        return _DEFAULT_TIMEOUT
 
 
 LLMErrorKind = Literal["config", "transport", "http", "decode"]
@@ -79,14 +92,14 @@ class LLMClient:
         base_url: str | None = None,
         model: str | None = None,
         api_key: str | None = None,
-        timeout: float = 60.0,
+        timeout: float | None = None,
         price_table: dict | None = None,
     ):
         resolved_base = base_url or os.environ.get("LLM_BASE_URL") or _DEFAULT_BASE_URL
         self._base_url = resolved_base.rstrip("/")
         self._api_key = api_key or os.environ.get("LLM_API_KEY")
         self._model_default = model
-        self._client = httpx.Client(timeout=timeout)
+        self._client = httpx.Client(timeout=_resolve_timeout(timeout))
         self._price_table: dict | None = price_table
 
     def _get_price_table(self) -> dict:
@@ -232,7 +245,7 @@ def chat(
     seed: int | None = None,
     base_url: str | None = None,
     api_key: str | None = None,
-    timeout: float = 60.0,
+    timeout: float | None = None,
 ) -> ChatResponse:
     with LLMClient(
         base_url=base_url,

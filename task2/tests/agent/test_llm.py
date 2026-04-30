@@ -275,6 +275,38 @@ def test_error_body_truncated_to_2048():
     assert len(ei.value.body) <= 2048
 
 
+def test_llmclient_default_timeout_is_180s():
+    """Default httpx timeout was 60s — too tight for slow Qwen planner generations.
+
+    Why: webvoyager benchmark hit ReadTimeout('timed out') at exactly 60s on
+    planner calls that legitimately take 30-50s, surfacing as opaque
+    LLMError(kind='transport', body=''). 180s gives headroom without masking
+    a truly stuck endpoint.
+    """
+    client = LLMClient()
+    timeout = client._client.timeout
+    assert timeout.read == 180.0
+    assert timeout.connect == 180.0
+
+
+def test_llmclient_timeout_env_var_honored(monkeypatch):
+    monkeypatch.setenv("LLM_TIMEOUT", "240")
+    client = LLMClient()
+    assert client._client.timeout.read == 240.0
+
+
+def test_llmclient_explicit_timeout_overrides_env(monkeypatch):
+    monkeypatch.setenv("LLM_TIMEOUT", "240")
+    client = LLMClient(timeout=30.0)
+    assert client._client.timeout.read == 30.0
+
+
+def test_llmclient_invalid_timeout_env_falls_back_to_default(monkeypatch):
+    monkeypatch.setenv("LLM_TIMEOUT", "not-a-number")
+    client = LLMClient()
+    assert client._client.timeout.read == 180.0
+
+
 @respx.mock
 def test_llmclient_reuses_config():
     route = respx.post(f"https://x.example.com{CHAT_PATH}").mock(

@@ -1864,6 +1864,39 @@ def test_run_case_failure_detail_includes_llm_error_body():
     assert result.validators[0]["error"] == result.failure_detail
 
 
+def test_run_case_failure_detail_includes_transport_error_message():
+    """Transport errors have body=None — the useful info is in the message/cause.
+
+    Why: webvoyager runs surfaced LLMError(kind='transport', body='') with no
+    indication of what went wrong (ReadTimeout vs ConnectError vs ReadError).
+    The message string ('transport error: timed out') and the original httpx
+    exception type carry that signal.
+    """
+    import httpx
+
+    from agent.llm import LLMError
+
+    cause = httpx.ReadTimeout("timed out")
+
+    def _raise_transport(*args, **kwargs):
+        raise LLMError("transport error: timed out", kind="transport", cause=cause)
+
+    case = {
+        "id": "transport-case",
+        "task": "dummy",
+        "budget": {"steps": 1, "usd": 1.0, "seconds": 30},
+        "expect": {},
+    }
+    with patch("scripts.eval.loop", side_effect=_raise_transport):
+        result = _run_case(case, llm_client=MagicMock(), browser=MagicMock())
+
+    assert "transport" in result.failure_detail
+    assert "timed out" in result.failure_detail, (
+        f"underlying error message dropped from failure_detail: {result.failure_detail!r}"
+    )
+    assert result.failure_class == "tool_error"
+
+
 def test_fixture_count_with_listitem_intent_stub_llm(playwright_chromium):
     from agent.browser import Browser
     from agent.llm import ChatResponse, ToolCall, Usage
