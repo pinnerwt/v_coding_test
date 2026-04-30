@@ -1,0 +1,72 @@
+name: task2 deploy
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'task2/**'
+      - '.github/workflows/task2-deploy.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: task2-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-smoke:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: task2
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build image
+        run: docker build -t task2-agent:${{ github.sha }} .
+
+      - name: Start container
+        run: |
+          docker run -d --name task2-smoke -p 8000:8000 \
+            -e LLM_BASE_URL=http://stub.invalid \
+            -e LLM_MODEL=stub \
+            -e LLM_API_KEY=stub \
+            -e DB_PATH=/tmp/runs.db \
+            task2-agent:${{ github.sha }}
+
+      - name: Wait for / to respond
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8000/ > /dev/null 2>&1; then
+              echo "Server up after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Server did not respond on / within 30s"
+          exit 1
+
+      - name: Container logs (always)
+        if: always()
+        run: docker logs task2-smoke || true
+
+      - name: Stop container
+        if: always()
+        run: docker stop task2-smoke || true
+
+  deploy:
+    needs: build-and-smoke
+    runs-on: ubuntu-latest
+    if: ${{ vars.ZEABUR_DEPLOY_ENABLED == 'true' }}
+    steps:
+      - name: Trigger Zeabur deploy
+        env:
+          ZEABUR_TOKEN: ${{ secrets.ZEABUR_TOKEN }}
+          ZEABUR_SERVICE_ID: ${{ vars.ZEABUR_SERVICE_ID }}
+        run: |
+          echo "Zeabur deploy step — not yet implemented."
+          echo "When the account is provisioned: set vars.ZEABUR_DEPLOY_ENABLED=true,"
+          echo "secrets.ZEABUR_TOKEN, vars.ZEABUR_SERVICE_ID and replace this echo with"
+          echo "the Zeabur deploy CLI / API call."
