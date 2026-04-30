@@ -1,7 +1,7 @@
 ---
 id: 99
 slug: webvoyager-2-still-fails-after-anchor-preservation
-status: archived
+status: active
 tier: 5
 urgency: P1
 axes:
@@ -16,9 +16,9 @@ evidence:
 related:
 - 98
 - 97
-filed_pr: 156
-merged_pr: 156
-archived_at: "2026-04-29"
+filed_pr: null
+merged_pr: null
+archived_at: null
 trigger: "2026-04-29 — /done_pr post-merge benchmark capture for ticket #98 (anchor-preservation fix); webvoyager-2 still fails after the fix shipped, with failure mode shifted from `tool_error/no_progress` (8 steps, 105s) to `tool_error 'unknown error'` (5 steps, 54s); pass_rate stays at 1/3"
 ---
 

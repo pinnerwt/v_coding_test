@@ -473,7 +473,6 @@ def _emit_act_event(
     outcome: Literal["ok", "no_effect", "nav", "timeout", "error"],
     ms: int,
     step_id: str | None = None,
-    diff: dict[str, Any] | None = None,
 ) -> None:
     if trace_writer is None or run_id is None:
         return
@@ -486,7 +485,7 @@ def _emit_act_event(
         tool=tool,
         args=args,
         outcome=outcome,
-        diff=diff if diff is not None else {},
+        diff={},
         ms=ms,
     )
     trace_writer.append_event(event)
@@ -698,15 +697,12 @@ def _dispatch(
         from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
         outcome: Literal["ok", "no_effect", "nav", "timeout", "error"]
-        act_diff: dict[str, Any] = {}
         try:
             page.locator(locate_result.selector).click(timeout=5000)
-        except PlaywrightTimeoutError as exc:
+        except PlaywrightTimeoutError:
             outcome = "timeout"
-            act_diff = {"error": f"{exc.__class__.__name__}: {exc}"}
-        except PlaywrightError as exc:
+        except PlaywrightError:
             outcome = "error"
-            act_diff = {"error": f"{exc.__class__.__name__}: {exc}"}
         else:
             try:
                 page.wait_for_load_state("load", timeout=3000)
@@ -722,7 +718,6 @@ def _dispatch(
             outcome=outcome,
             ms=elapsed_ms,
             step_id=step_id,
-            diff=act_diff,
         )
         if outcome in _CLICK_SUCCESS_OUTCOMES:
             return f"Clicked {intent_val!r} ({outcome})"
@@ -752,15 +747,12 @@ def _dispatch(
         from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
         fill_outcome: Literal["ok", "timeout", "error"]
-        fill_diff: dict[str, Any] = {}
         try:
             page.locator(locate_result.selector).fill(text_val, timeout=5000)
-        except PlaywrightTimeoutError as exc:
+        except PlaywrightTimeoutError:
             fill_outcome = "timeout"
-            fill_diff = {"error": f"{exc.__class__.__name__}: {exc}"}
-        except PlaywrightError as exc:
+        except PlaywrightError:
             fill_outcome = "error"
-            fill_diff = {"error": f"{exc.__class__.__name__}: {exc}"}
         else:
             fill_outcome = "ok"
         elapsed_ms = int((time.monotonic() - t_fill) * 1000)
@@ -772,7 +764,6 @@ def _dispatch(
             outcome=fill_outcome,
             ms=elapsed_ms,
             step_id=step_id,
-            diff=fill_diff,
         )
         if fill_outcome == "ok":
             return f"Typed into {intent_val!r} (ok)"
