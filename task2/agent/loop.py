@@ -237,7 +237,7 @@ def trim_history(messages: list[dict], keep_steps: int | None = None) -> list[di
     if len(groups) <= keep_steps:
         return list(messages)
 
-    drop_groups = groups[1 : len(groups) - keep_steps]
+    drop_groups = groups[: len(groups) - keep_steps]
     drop_indices: set[int] = set()
     for asst_idx, tool_idxs in drop_groups:
         drop_indices.add(asst_idx)
