@@ -18,6 +18,7 @@ from agent.llm import _DEFAULT_LLM_MODEL, LLMClient
 from agent.loop import RunResult, loop
 from agent.trace import Run, RunBudget, RunLLM, TraceWriter
 from api.db import get_db_path
+from api.sessions import get_session, start_session, submit_answer
 
 logger = logging.getLogger(__name__)
 
@@ -210,3 +211,46 @@ document.getElementById('task-form').addEventListener('submit', async function(e
 @app.get("/")
 def root() -> HTMLResponse:
     return HTMLResponse(_HTML)
+
+
+class AnswerRequest(BaseModel):
+    answer: str
+
+    @field_validator("answer")
+    @classmethod
+    def answer_not_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("answer must not be empty")
+        return v
+
+
+@app.post("/sessions")
+def create_session(task_req: TaskRequest) -> dict[str, Any]:
+    run_id = start_session(task_req.task, expect_schema=task_req.expect_schema)
+    return {"id": run_id}
+
+
+@app.get("/sessions/{run_id}")
+def get_session_status(run_id: str) -> dict[str, Any]:
+    session = get_session(run_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="not found")
+    result_payload = session.result.result if session.result is not None else None
+    return {
+        "run_id": session.run_id,
+        "status": session.status,
+        "pending_question": session.pending_question,
+        "result": result_payload,
+    }
+
+
+@app.post("/sessions/{run_id}/answer")
+def post_session_answer(run_id: str, body: AnswerRequest) -> dict[str, Any]:
+    session = get_session(run_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="not found")
+    try:
+        submit_answer(session, body.answer)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+    return {"ok": True}
