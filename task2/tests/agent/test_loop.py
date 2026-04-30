@@ -4547,3 +4547,173 @@ def test_loop_goto_navigation_error_returns_tool_error_loop_continues(
     assert result.status == "succeeded", (
         f"loop should not crash on bad goto URL, got status={result.status!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# ActEvent emission for goto/read/done/fail (parity with click/type)
+# ---------------------------------------------------------------------------
+
+
+def test_dispatch_goto_emits_act_event(fixture_server, playwright_chromium):
+    from agent.loop import _dispatch
+    from agent.supervisor import Supervisor
+
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+    run_id = "unit-goto-ok"
+    writer = _open_click_writer(run_id)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        _dispatch(
+            "goto",
+            {"url": fixture_url},
+            browser,
+            Supervisor(),
+            trace_writer=writer,
+            run_id=run_id,
+            step_id=f"{run_id}:step-1",
+        )
+
+    events = [e for e in writer.iter_events(run_id) if isinstance(e, ActEvent)]
+    assert len(events) == 1
+    assert events[0].tool == "goto"
+    assert events[0].outcome == "ok"
+    assert events[0].args == {"url": fixture_url}
+    writer.close()
+
+
+def test_dispatch_goto_failure_emits_act_event(playwright_chromium):
+    from agent.loop import _dispatch
+    from agent.supervisor import Supervisor
+
+    bad_url = "http://127.0.0.1:1/"
+    run_id = "unit-goto-err"
+    writer = _open_click_writer(run_id)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = _dispatch(
+            "goto",
+            {"url": bad_url},
+            browser,
+            Supervisor(),
+            trace_writer=writer,
+            run_id=run_id,
+            step_id=f"{run_id}:step-1",
+        )
+
+    assert result.startswith("Error:")
+    events = [e for e in writer.iter_events(run_id) if isinstance(e, ActEvent)]
+    assert len(events) == 1
+    assert events[0].tool == "goto"
+    assert events[0].outcome == "error"
+    writer.close()
+
+
+def test_dispatch_read_emits_act_event(fixture_server, playwright_chromium):
+    from agent.loop import _dispatch
+    from agent.supervisor import Supervisor
+
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+    run_id = "unit-read-ok"
+    writer = _open_click_writer(run_id)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        browser.goto(fixture_url)
+        _dispatch(
+            "read",
+            {},
+            browser,
+            Supervisor(),
+            trace_writer=writer,
+            run_id=run_id,
+            step_id=f"{run_id}:step-1",
+        )
+
+    events = [e for e in writer.iter_events(run_id) if isinstance(e, ActEvent)]
+    read_events = [e for e in events if e.tool == "read"]
+    assert len(read_events) == 1
+    assert read_events[0].outcome == "ok"
+    writer.close()
+
+
+def test_dispatch_read_find_miss_emits_error_act_event(fixture_server, playwright_chromium):
+    from agent.loop import _dispatch
+    from agent.supervisor import Supervisor
+
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+    run_id = "unit-read-find-miss"
+    writer = _open_click_writer(run_id)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        browser.goto(fixture_url)
+        result = _dispatch(
+            "read",
+            {"find": "DEFINITELY_NOT_ON_PAGE_XYZ"},
+            browser,
+            Supervisor(),
+            trace_writer=writer,
+            run_id=run_id,
+            step_id=f"{run_id}:step-1",
+        )
+
+    assert result.startswith("Error:")
+    events = [e for e in writer.iter_events(run_id) if isinstance(e, ActEvent)]
+    read_events = [e for e in events if e.tool == "read"]
+    assert len(read_events) == 1
+    assert read_events[0].outcome == "error"
+    writer.close()
+
+
+def test_loop_done_emits_act_event(fixture_server, playwright_chromium):
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"heading": "Hello, loop"},
+                    "evidence": {"url": fixture_url, "text_snippet": "Hello"},
+                },
+                call_id="tc-2",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+
+    run_id = "test-done-act"
+    writer = _make_writer_with_run(run_id)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop("t", browser, fake_llm, trace_writer=writer, run_id=run_id)
+
+    assert result.status == "succeeded"
+    events = [e for e in writer.iter_events(run_id) if isinstance(e, ActEvent)]
+    done_events = [e for e in events if e.tool == "done"]
+    assert len(done_events) == 1
+    assert done_events[0].outcome == "ok"
+    writer.close()
+
+
+def test_loop_fail_emits_act_event(fixture_server, playwright_chromium):
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+        _response_with_tool_call(_tool_call("read", {}, call_id="tc-2")),
+        _response_with_tool_call(
+            _tool_call("fail", {"reason": "captcha blocked the page"}, call_id="tc-3")
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+
+    run_id = "test-fail-act"
+    writer = _make_writer_with_run(run_id)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop("t", browser, fake_llm, trace_writer=writer, run_id=run_id)
+
+    assert result.status == "failed"
+    events = [e for e in writer.iter_events(run_id) if isinstance(e, ActEvent)]
+    fail_events = [e for e in events if e.tool == "fail"]
+    assert len(fail_events) == 1
+    assert fail_events[0].outcome == "ok"
+    writer.close()

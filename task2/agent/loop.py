@@ -738,24 +738,59 @@ def _dispatch(
             return "Error: goto requires a non-empty 'url' string argument"
         from agent.browser import NavigationError
 
+        t_goto = time.monotonic()
         try:
             browser.goto(url)
         except NavigationError as e:
+            _emit_act_event(
+                trace_writer=trace_writer,
+                run_id=run_id,
+                tool="goto",
+                args={"url": url},
+                outcome="error",
+                ms=int((time.monotonic() - t_goto) * 1000),
+                step_id=step_id,
+            )
             return f"Error: navigation failed for {url}: {e}"
+        _emit_act_event(
+            trace_writer=trace_writer,
+            run_id=run_id,
+            tool="goto",
+            args={"url": url},
+            outcome="ok",
+            ms=int((time.monotonic() - t_goto) * 1000),
+            step_id=step_id,
+        )
         return f"Navigated to {url}"
     if tool_name == "read":
         intent: str | None = args.get("intent")
         find: str | None = args.get("find")
         page = browser._page
+        t_read = time.monotonic()
+
+        def _emit_read(outcome: Literal["ok", "error"], read_args: dict) -> None:
+            _emit_act_event(
+                trace_writer=trace_writer,
+                run_id=run_id,
+                tool="read",
+                args=read_args,
+                outcome=outcome,
+                ms=int((time.monotonic() - t_read) * 1000),
+                step_id=step_id,
+            )
+
         if intent and find:
             return "Error: read accepts either 'intent' or 'find', not both"
         if find is not None:
             if not isinstance(find, str) or not find.strip():
+                _emit_read("error", {"find": find})
                 return "Error: read 'find' must be a non-empty string"
             full = page.evaluate(_BODY_TEXT_JS)
             window = _window_around(full, find)
             if window is None:
+                _emit_read("error", {"find": find})
                 return f"Error: 'find' query {find!r} not found in page text"
+            _emit_read("ok", {"find": find})
             return window
         if intent:
             located = _locate_or_error_msg(
@@ -768,14 +803,20 @@ def _dispatch(
                 step_id=step_id,
             )
             if isinstance(located, str):
+                _emit_read("error", {"intent": intent})
                 return located
             from agent.browser import ElementNotFound
 
             try:
-                return browser.read(located.selector)
+                result = browser.read(located.selector)
             except ElementNotFound as exc:
+                _emit_read("error", {"intent": intent})
                 return f"Error: located element vanished before read for intent {intent!r} ({exc})"
-        return _body_text(page)
+            _emit_read("ok", {"intent": intent})
+            return result
+        body = _body_text(page)
+        _emit_read("ok", {})
+        return body
     if tool_name == "click":
         intent_val: str | None = args.get("intent")
         if not isinstance(intent_val, str) or not intent_val:
@@ -1114,6 +1155,15 @@ def loop(
                 evidence = args.get("evidence")
                 verifier = _check_evidence(evidence)
                 status: RunStatus = "succeeded" if verifier["ok"] else "unverified"
+                _emit_act_event(
+                    trace_writer=trace_writer,
+                    run_id=run_id,
+                    tool="done",
+                    args=args,
+                    outcome="ok",
+                    ms=0,
+                    step_id=_step_id,
+                )
                 _record_step(
                     step_num,
                     t0,
@@ -1165,6 +1215,15 @@ def loop(
                         {"role": "tool", "tool_call_id": tool_call.id, "content": nudge}
                     )
                     continue
+                _emit_act_event(
+                    trace_writer=trace_writer,
+                    run_id=run_id,
+                    tool="fail",
+                    args=args,
+                    outcome="ok",
+                    ms=0,
+                    step_id=_step_id,
+                )
                 _record_step(
                     step_num,
                     t0,
