@@ -97,3 +97,5 @@ Update task2/plan.md format to have a INDEX.md + a folder of tickets. This helps
 5. Drop /simplify re-dispatches on unchanged diffs (already noted in review_task2 step 6 but worth enforcing harder).
 
 Let's discuss on the workflow. The demo is in 4 hours and I need to 1. get 100% successful rate 2. optimize latency and token usages. However, current workflow (/new_task2) requires creating new specs first, which costs a lots of time on spec synchronization. I'm wondering if we can have a fast research branch first on features exploring, do the benchmark and check if total successful rate can reach 100% first, and we can focus on webvoyager-1 only for now. Once the branch is proved to be useful, we create a ticket to replay what we have explored to master.
+
+I also need a "ask user question" functionality. For example, when the user asks 禮拜六的旭集有沒有位置？ The agent should ask which store it is before continuing. The planner should acknowledge what is needed before starting the loop, where ask user question is needed at this phase.
