@@ -142,6 +142,14 @@ TOOLS: list[dict] = [
                         "type": "string",
                         "description": "The text to fill into the textbox.",
                     },
+                    "submit": {
+                        "type": "boolean",
+                        "description": (
+                            "If true, press Enter after filling. Use only as a "
+                            "fallback when a Search/Submit button cannot be "
+                            "located via `click`."
+                        ),
+                    },
                 },
                 "required": ["intent", "text"],
             },
@@ -335,7 +343,11 @@ def _build_system_prompt(task: str, *, expect: dict | None = None) -> str:
         "captchas, pages that don't exist, or info genuinely absent from the page. "
         "If a target element exists on the page but you don't know how to act on it, "
         "attempt `click`/`type` with a natural-language `intent` first; "
-        "the locator pipeline will resolve it."
+        "the locator pipeline will resolve it. "
+        "If a Search/Submit button is not locatable after typing into a search "
+        "box, retry the `type` call with `submit=true` to press Enter instead "
+        "of clicking a button — do not give up on the search just because the "
+        "button can't be found."
     )
     if expect and expect.get("schema"):
         schema = expect["schema"]
@@ -733,6 +745,7 @@ def _dispatch(
     if tool_name == "type":
         intent_val = args.get("intent")
         text_val = args.get("text")
+        submit_val = bool(args.get("submit", False))
         if not isinstance(intent_val, str) or not intent_val:
             return "Error: type requires a non-empty 'intent' string argument"
         if not isinstance(text_val, str) or not text_val:
@@ -755,20 +768,33 @@ def _dispatch(
         from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
         fill_outcome: Literal["ok", "timeout", "error"]
+        locator = page.locator(locate_result.selector)
         try:
-            page.locator(locate_result.selector).fill(text_val, timeout=5000)
+            locator.fill(text_val, timeout=5000)
         except PlaywrightTimeoutError:
             fill_outcome = "timeout"
         except PlaywrightError:
             fill_outcome = "error"
         else:
             fill_outcome = "ok"
+            if submit_val:
+                try:
+                    locator.press("Enter", timeout=5000)
+                    try:
+                        page.wait_for_load_state("load", timeout=3000)
+                    except PlaywrightTimeoutError:
+                        pass
+                except (PlaywrightTimeoutError, PlaywrightError):
+                    pass
         elapsed_ms = int((time.monotonic() - t_fill) * 1000)
+        emit_args: dict = {"intent": intent_val, "text": text_val}
+        if submit_val:
+            emit_args["submit"] = True
         _emit_act_event(
             trace_writer=trace_writer,
             run_id=run_id,
             tool="type",
-            args={"intent": intent_val, "text": text_val},
+            args=emit_args,
             outcome=fill_outcome,
             ms=elapsed_ms,
             step_id=step_id,

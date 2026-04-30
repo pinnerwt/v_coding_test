@@ -3248,6 +3248,120 @@ def test_loop_type_dispatch_ok_returns_typed_into_string(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# Type tool: submit=True presses Enter after fill (search-form pattern)
+# ---------------------------------------------------------------------------
+
+
+def _make_fake_browser_for_type_with_press(selector: str):
+    import types
+
+    from agent.locate import LocateResult
+
+    locate_result = LocateResult(
+        tier="L1_ax",
+        role="searchbox",
+        name="Search",
+        selector=selector,
+        ax_fingerprint="fp-stub",
+        confidence=1.0,
+        coords=None,
+    )
+
+    class _StubLocator:
+        def __init__(self):
+            self.calls: list[tuple[str, dict]] = []
+
+        def fill(self, text, *, timeout):
+            self.calls.append(("fill", {"text": text, "timeout": timeout}))
+
+        def press(self, key, *, timeout=5000):
+            self.calls.append(("press", {"key": key, "timeout": timeout}))
+
+    stub_locator = _StubLocator()
+
+    class _StubPage:
+        @property
+        def url(self):
+            return "http://example.com/"
+
+        def locator(self, sel):
+            assert sel == locate_result.selector
+            return stub_locator
+
+        def wait_for_load_state(self, *_a, **_kw):
+            pass
+
+    fake_page = _StubPage()
+    fake_browser = types.SimpleNamespace(_page=fake_page)
+    return fake_browser, locate_result, stub_locator
+
+
+def test_loop_type_with_submit_true_presses_enter_after_fill(monkeypatch):
+    from agent.loop import _dispatch
+    from agent.supervisor import Supervisor
+
+    fake_browser, locate_result, stub_locator = _make_fake_browser_for_type_with_press("input#q")
+
+    monkeypatch.setattr("agent.loop._locate_or_error_msg", lambda *_a, **_kw: locate_result)
+
+    run_id = "unit-type-submit"
+    writer = _open_click_writer(run_id)
+
+    result_str = _dispatch(
+        "type",
+        {"intent": "search box", "text": "ephemeral", "submit": True},
+        fake_browser,
+        Supervisor(),
+        trace_writer=writer,
+        run_id=run_id,
+        step_id=f"{run_id}:step-1",
+    )
+    writer.close()
+
+    ops = [c[0] for c in stub_locator.calls]
+    assert ops == ["fill", "press"], f"submit=True must press Enter after fill, got {ops}"
+    assert stub_locator.calls[1][1]["key"] == "Enter"
+    assert "ok" in result_str.lower() or result_str.startswith("Typed"), result_str
+
+
+def test_loop_type_without_submit_does_not_press(monkeypatch):
+    from agent.loop import _dispatch
+    from agent.supervisor import Supervisor
+
+    fake_browser, locate_result, stub_locator = _make_fake_browser_for_type_with_press("input#q")
+
+    monkeypatch.setattr("agent.loop._locate_or_error_msg", lambda *_a, **_kw: locate_result)
+
+    run_id = "unit-type-no-submit"
+    writer = _open_click_writer(run_id)
+
+    _dispatch(
+        "type",
+        {"intent": "search box", "text": "ephemeral"},
+        fake_browser,
+        Supervisor(),
+        trace_writer=writer,
+        run_id=run_id,
+        step_id=f"{run_id}:step-1",
+    )
+    writer.close()
+
+    ops = [c[0] for c in stub_locator.calls]
+    assert ops == ["fill"], f"default submit=False must NOT press Enter, got {ops}"
+
+
+def test_tools_list_type_has_submit_param():
+    from agent.loop import TOOLS
+
+    type_entry = next(t for t in TOOLS if t["function"]["name"] == "type")
+    props = type_entry["function"]["parameters"]["properties"]
+    assert "submit" in props, "type entry must have 'submit' parameter"
+    assert props["submit"]["type"] == "boolean"
+    required = type_entry["function"]["parameters"]["required"]
+    assert "submit" not in required, "'submit' must be optional"
+
+
+# ---------------------------------------------------------------------------
 # Compaction tests (fix-qwen-http-400)
 # ---------------------------------------------------------------------------
 
