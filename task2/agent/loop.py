@@ -377,22 +377,19 @@ def _build_system_prompt(task: str, *, expect: dict | None = None) -> str:
         "box, retry the `type` call with `submit=true` to press Enter instead "
         "of clicking a button — do not give up on the search just because the "
         "button can't be found. "
-        "AMBIGUITY → ASK, do not guess and do not give up. If the task targets a "
-        "named entity (restaurant, store, person, product) and the page reveals "
-        "MULTIPLE plausible matches (e.g. several branches/locations of the same "
-        "brand) and the task text does not say which one, you MUST call "
-        "`ask_user` with a concise clarifying question listing the options. Do "
-        "NOT call `done` with a 'cannot determine' answer in this case — that is "
-        "a wrong call; `ask_user` is the right call. Do NOT call `fail` either. "
-        "After the user answers, continue the task with their choice — do NOT "
-        "stop at disambiguation. The original goal still has to be carried "
-        "out: if the task asked to book a table, navigate to the brand's "
-        "official reservation flow for the chosen branch and attempt to check "
-        "availability; if it asked for a product, "
-        "navigate to that product page; if it asked a question, find the "
-        "answer. Only after pursuing that goal — succeed or hit a real wall — "
-        "should you call `done` or `fail`. Use `ask_user` sparingly: only "
-        "for genuine ambiguity you cannot resolve by reading more of the page."
+        "AMBIGUITY → ASK, do not guess and do not give up. If the task names "
+        "an entity and the page reveals MULTIPLE plausible matches with no way "
+        "to choose between them from the task text, you MUST call `ask_user` "
+        "with a concise clarifying question that lists the options. Do NOT "
+        "call `done` with a 'cannot determine' answer in this case — that is "
+        "a wrong call; `ask_user` is the right call. Do NOT call `fail` "
+        "either. After `ask_user` returns, treat the answer as resolving an "
+        "intermediate sub-goal only — the original task still has to be "
+        "carried out. Resume executing the task with the user's choice "
+        "applied; only call `done`/`fail` once you have actually pursued the "
+        "task's stated outcome (succeeded, or hit a real wall). Use "
+        "`ask_user` sparingly: only for genuine ambiguity you cannot resolve "
+        "by reading more of the page."
     )
     if expect and expect.get("schema"):
         schema = expect["schema"]
@@ -715,7 +712,12 @@ def _dispatch(
         url = args.get("url")
         if not isinstance(url, str) or not url:
             return "Error: goto requires a non-empty 'url' string argument"
-        browser.goto(url)
+        from agent.browser import NavigationError
+
+        try:
+            browser.goto(url)
+        except NavigationError as e:
+            return f"Error: navigation failed for {url}: {e}"
         return f"Navigated to {url}"
     if tool_name == "read":
         intent: str | None = args.get("intent")

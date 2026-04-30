@@ -8,8 +8,16 @@ if TYPE_CHECKING:
     from agent.llm import ChatResponse, LLMClient
 
 _PLAN_SYSTEM = (
-    "You are a planning assistant. Given a task and the current browser state, "
-    "produce a short ordered list of steps to complete the task. "
+    "You are a planning assistant. Given a task and the current browser "
+    "state, decompose the task into a short ordered list of steps. "
+    "Before listing steps, think through: (1) what concrete observation "
+    "or page state would satisfy the task, (2) what intermediate "
+    "sub-goals separate the current state from that end state (find the "
+    "right site, locate the right entity among possibly many matches, "
+    "read or submit the right field, etc.), (3) where in the plan the "
+    "agent may need to ask the user a clarifying question — include such "
+    "a step explicitly if the task names an entity that is likely "
+    "ambiguous (multiple matches) and the task text does not disambiguate. "
     'Respond with ONLY a JSON object: {"steps": ["step 1", ...], "expected_end_state": "..."}'
 )
 

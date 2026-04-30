@@ -4412,3 +4412,41 @@ def test_loop_ask_user_without_callback_returns_error_and_loop_continues(
     assert result.status == "succeeded", (
         f"loop should not crash without callback, got status={result.status!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# goto: a NavigationError (DNS, refused, etc.) must not crash the run.
+# ---------------------------------------------------------------------------
+
+
+def test_loop_goto_navigation_error_returns_tool_error_loop_continues(
+    fixture_server, playwright_chromium
+):
+    """If browser.goto() raises NavigationError (e.g. ERR_NAME_NOT_RESOLVED on
+    a hallucinated URL), the loop SHALL return the error as a tool-result
+    message so the agent can try a different URL — not crash the run."""
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+
+    bad_url = "https://this-domain-does-not-exist.invalid/"
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": bad_url}, call_id="tc-bad")),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"recovered": True},
+                    "evidence": {"url": fixture_url, "text_snippet": "Hello, loop"},
+                },
+                call_id="tc-done",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        browser.goto(fixture_url)
+        result = loop("task", browser, fake_llm, max_steps=4)
+
+    assert result.status == "succeeded", (
+        f"loop should not crash on bad goto URL, got status={result.status!r}"
+    )
