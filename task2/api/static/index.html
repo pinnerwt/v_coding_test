@@ -29,8 +29,8 @@
   .msg { margin: 0.5rem 0; padding: 0.5rem 0.75rem; border-radius: 6px; max-width: 80%; }
   .msg.user { background: #dbeafe; margin-left: auto; }
   .msg.agent { background: #f3f4f6; }
-  .msg.error { background: #fee2e2; color: #991b1b; }
-  .msg.done { background: #d1fae5; color: #065f46; }
+  .msg.error { background: #fee2e2; color: #991b1b; white-space: pre-wrap; }
+  .msg.done { background: #d1fae5; color: #065f46; white-space: pre-wrap; font-family: ui-monospace, monospace; font-size: 0.82rem; }
   .ev {
     margin: 0.25rem 0;
     padding: 0.4rem 0.6rem;
@@ -47,6 +47,7 @@
   .ev.terminal { border-left-color: #16a34a; font-weight: 600; }
   .ev .ev-detail { color: #6b7280; word-break: break-word; }
   form { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+  form[hidden] { display: none; }
   input[type=text] {
     flex: 1;
     padding: 0.5rem;
@@ -120,11 +121,20 @@ function addEvent(ev) {
   let detail = '';
   if (ev.type === 'trace') {
     if (ev.kind === 'act') {
-      label = `act: ${ev.tool}`;
-      detail = JSON.stringify(ev.args || {});
+      label = `act: ${ev.tool} (${ev.outcome || 'ok'})`;
+      if (ev.tool === 'done' || ev.tool === 'fail') {
+        detail = '';
+      } else {
+        detail = JSON.stringify(ev.args || {});
+      }
     } else if (ev.kind === 'plan') {
       label = `plan (${ev.reason || 'initial'})`;
       detail = (ev.steps || []).join(' → ');
+    } else if (ev.kind === 'locate') {
+      label = `locate: ${ev.tier || '?'} (${ev.outcome || '?'})`;
+      detail = ev.intent || '';
+    } else if (ev.kind === 'supervisor') {
+      label = `supervisor: ${ev.classified_as || '?'} → ${ev.policy || '?'}`;
     } else {
       label = ev.kind;
     }
@@ -179,11 +189,19 @@ taskForm.addEventListener('submit', async (e) => {
     } else if (ev.type === 'terminal') {
       const cls = ev.status === 'done' ? 'done' : 'error';
       const text = ev.status === 'done'
-        ? `done: ${JSON.stringify(ev.result || {})}`
+        ? `done:\n${JSON.stringify(ev.result || {}, null, 2)}`
         : `failed: ${ev.error || 'unknown'}`;
       addMessage(text, cls);
       setStatus(ev.status);
       evtSource.close();
+      answerForm.hidden = true;
+      answerInput.disabled = true;
+      const taskInput = document.getElementById('task-input');
+      const taskSubmit = document.getElementById('task-submit');
+      taskInput.disabled = false;
+      taskSubmit.disabled = false;
+      taskInput.value = '';
+      taskInput.focus();
     }
   };
   evtSource.onerror = () => {
