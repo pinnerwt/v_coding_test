@@ -677,9 +677,9 @@ The loop SHALL handle `tool_call.name == "click"` in `_dispatch`. The dispatch c
 2. Record `url_before = page.url`.
 3. Call `page.locator(result.selector).click(timeout=5000)`.
 4. If click succeeds: compare `page.url` to `url_before`. If changed → `outcome="nav"`, else → `outcome="ok"`.
-5. If `playwright.sync_api.TimeoutError` raised (capture as `exc`) → `outcome="timeout"`.
-6. If any other `playwright.sync_api.Error` raised (capture as `exc`) → `outcome="error"`.
-7. Emit `ActEvent(tool="click", args={"intent": intent}, outcome=<outcome>, diff=<diff>, ms=<elapsed_ms>)`. The `diff` SHALL be `{}` when `outcome` is `"ok"` or `"nav"`, and `{"error": f"{exc.__class__.__name__}: {exc}"}` when `outcome` is `"timeout"` or `"error"`.
+5. If `playwright.sync_api.TimeoutError` raised → `outcome="timeout"`.
+6. If any other `playwright.sync_api.Error` raised → `outcome="error"`.
+7. Emit `ActEvent(tool="click", args={"intent": intent}, outcome=<outcome>, diff={}, ms=<elapsed_ms>)`.
 8. Return a string summarising the outcome to the LLM (e.g. `"Clicked 'Submit button' (ok)"` or `"Error: click timeout for intent 'Submit button'"`).
 9. On `LocatorMiss` from `_locate_with_supervisor` (all tiers exhausted): return an error string and continue (do NOT terminate the run).
 
@@ -690,7 +690,7 @@ The `ToolName` literal in `loop.py` SHALL be updated to include `"click"`.
 - **GIVEN** a page with a `<button>Submit</button>` element that L1 locates successfully
 - **WHEN** `_dispatch("click", {"intent": "Submit button"}, browser, supervisor, ...)` is called
 - **THEN** it SHALL return a non-error string (not starting with `"Error:"`)
-- **AND** an `ActEvent` with `outcome="ok"` and `diff={}` SHALL be emitted
+- **AND** an `ActEvent` with `outcome="ok"` SHALL be emitted
 
 #### Scenario: click dispatch returns error string on LocatorMiss — loop continues
 
@@ -698,20 +698,6 @@ The `ToolName` literal in `loop.py` SHALL be updated to include `"click"`.
 - **WHEN** `_dispatch("click", {"intent": "Nonexistent button"}, browser, supervisor, ...)` is called
 - **THEN** it SHALL return a string starting with `"Error:"`
 - **AND** the loop SHALL NOT terminate; it SHALL append the error string as a tool result and continue to the next iteration
-
-#### Scenario: click dispatch surfaces playwright exception class+message in ActEvent.diff on timeout
-
-- **GIVEN** a page where the located element raises `playwright.sync_api.TimeoutError("Locator.click: Timeout 5000ms exceeded.")` when clicked
-- **WHEN** `_dispatch("click", {"intent": "Submit button"}, browser, supervisor, ...)` is called
-- **THEN** the emitted `ActEvent` SHALL have `outcome="timeout"`
-- **AND** `ActEvent.diff` SHALL equal `{"error": "TimeoutError: Locator.click: Timeout 5000ms exceeded."}` (the exception class name followed by `": "` followed by the exception's `str()` form)
-
-#### Scenario: click dispatch surfaces playwright exception class+message in ActEvent.diff on error
-
-- **GIVEN** a page where the located element raises `playwright.sync_api.Error("Element is not attached to the DOM")` when clicked
-- **WHEN** `_dispatch("click", {"intent": "Submit button"}, browser, supervisor, ...)` is called
-- **THEN** the emitted `ActEvent` SHALL have `outcome="error"`
-- **AND** `ActEvent.diff["error"]` SHALL be a non-empty string of the form `"<exception_class_name>: <message>"` where `<exception_class_name>` equals the raised exception's `__class__.__name__` and `<message>` contains `"Element is not attached to the DOM"`
 
 ### Requirement: type tool dispatch in loop
 
@@ -722,10 +708,10 @@ The loop SHALL handle `tool_call.name == "type"` in `_dispatch`. The dispatch co
 3. Record `t_fill = time.monotonic()`.
 4. Call `page.locator(result.selector).fill(text, timeout=5000)`.
 5. If fill succeeds → `outcome="ok"`.
-6. If `playwright.sync_api.TimeoutError` raised (capture as `exc`) → `outcome="timeout"`.
-7. If any other `playwright.sync_api.Error` raised (capture as `exc`) → `outcome="error"`.
+6. If `playwright.sync_api.TimeoutError` raised → `outcome="timeout"`.
+7. If any other `playwright.sync_api.Error` raised → `outcome="error"`.
 8. Compute `elapsed_ms = int((time.monotonic() - t_fill) * 1000)`.
-9. Emit `ActEvent(tool="type", args={"intent": intent, "text": text}, outcome=outcome, diff=<diff>, ms=elapsed_ms)`. The `diff` SHALL be `{}` when `outcome` is `"ok"`, and `{"error": f"{exc.__class__.__name__}: {exc}"}` when `outcome` is `"timeout"` or `"error"`.
+9. Emit `ActEvent(tool="type", args={"intent": intent, "text": text}, outcome=outcome, diff={}, ms=elapsed_ms)`.
 10. Return `f"Typed into {intent!r} (ok)"` on success or `f"Error: type {outcome} for intent {intent!r}"` on failure.
 
 The `ToolName` literal in `loop.py` SHALL be updated to include `"type"`.
@@ -737,7 +723,7 @@ Note: `ActEvent.tool` is typed as `str` in `agent/trace.py` — no schema change
 - **GIVEN** a page with `<input type="text" placeholder="Email">` that `_locate_with_supervisor` resolves at L1 or L2
 - **WHEN** `_dispatch("type", {"intent": "Email textbox", "text": "hello@example.com"}, browser, supervisor, ...)` is called
 - **THEN** it SHALL return a non-error string (not starting with `"Error:"`)
-- **AND** an `ActEvent` with `outcome="ok"`, `tool="type"`, and `diff={}` SHALL be emitted
+- **AND** an `ActEvent` with `outcome="ok"` and `tool="type"` SHALL be emitted
 
 #### Scenario: type dispatch returns error string on LocatorMiss — loop continues
 
@@ -745,13 +731,6 @@ Note: `ActEvent.tool` is typed as `str` in `agent/trace.py` — no schema change
 - **WHEN** `_dispatch("type", {"intent": "Nonexistent textbox", "text": "foo"}, browser, supervisor, ...)` is called
 - **THEN** it SHALL return a string starting with `"Error:"`
 - **AND** the loop SHALL NOT terminate; it SHALL append the error string as a tool result and continue to the next iteration
-
-#### Scenario: type dispatch surfaces playwright exception class+message in ActEvent.diff on timeout
-
-- **GIVEN** a page where the located textbox raises `playwright.sync_api.TimeoutError("Locator.fill: Timeout 5000ms exceeded.")` when filled
-- **WHEN** `_dispatch("type", {"intent": "Email textbox", "text": "hello@example.com"}, browser, supervisor, ...)` is called
-- **THEN** the emitted `ActEvent` SHALL have `outcome="timeout"`
-- **AND** `ActEvent.diff` SHALL equal `{"error": "TimeoutError: Locator.fill: Timeout 5000ms exceeded."}`
 
 ### Requirement: System prompt fail guidance content
 
@@ -1129,52 +1108,3 @@ The `latency_breakdown_ms` dict MUST be present on the bailing step's record (th
 - **WHEN** the loop runs
 - **THEN** `RunResult.reason` SHALL equal `"stuck_repeat"` (fires at step 3 via `_stuck_buf`, before `_no_progress_buf` can accumulate 4 entries)
 - **AND** `RunResult.steps` SHALL equal `3`
-
-### Requirement: Conversation-history trimming
-
-The loop SHALL expose a module-level function `trim_history(messages: list[dict], keep_steps: int) -> list[dict]` that returns a new message list with stale tool-result entries pruned.
-
-- The function SHALL keep the first message (index 0, the system prompt) unconditionally.
-- A "tool-result group" is defined as the set of one or more consecutive `role="tool"` messages that follow a single `role="assistant"` message that contains a `tool_calls` list.
-- The function SHALL count tool-result groups from the most recent backwards. Groups within the most recent `keep_steps` groups SHALL be retained. Groups older than `keep_steps` SHALL be dropped, along with their paired `role="assistant"` message.
-- The first tool-result group (the chronologically earliest group, group index 0) SHALL be preserved unconditionally — it is treated as a load-bearing anchor establishing the initial page state. When `len(groups) > keep_steps`, only groups in `groups[1 : len(groups) - keep_steps]` are eligible for removal.
-- If a `role="assistant"` message contains `tool_calls` that are split across the keep/drop boundary (partial drop), the entire assistant message and all its paired tool results SHALL be dropped together.
-- `role="user"` state messages (including those prefixed with `STATE_MESSAGE_PREFIX`) SHALL never be dropped by `trim_history`; only `role="tool"` and their paired `role="assistant"` messages are eligible for removal.
-- The function SHALL be a pure function: it SHALL NOT mutate the input list or any of its message dicts.
-- `keep_steps` SHALL default to the value of the `HISTORY_TRIM_KEEP_STEPS` environment variable parsed as an integer, falling back to `4` if the variable is absent or unparseable.
-
-The loop function SHALL call `trim_history` on the accumulated `messages` list after appending the current step's state message and before passing `messages` to `llm_client.chat()`. This call SHALL occur after `_compact_messages` is applied: `_compact_messages` enforces the absolute token-budget cap first, and `trim_history` then applies the per-step structured cap for surgical reduction.
-
-#### Scenario: Tool results outside the window are dropped
-
-- **WHEN** `trim_history` is called with a messages list containing 6 complete tool-result groups and `keep_steps=4`
-- **THEN** the returned list SHALL NOT contain any `role="tool"` messages from group index 1 (the second-oldest group)
-- **AND** the returned list SHALL NOT contain the `role="assistant"` message paired with group index 1
-- **AND** the returned list SHALL contain all `role="tool"` and `role="assistant"` messages from group index 0 (the anchor) and from the 4 most recent groups (indices 2, 3, 4, 5)
-
-#### Scenario: System prompt is always retained
-
-- **WHEN** `trim_history` is called with any messages list where `messages[0]["role"] == "system"` and `keep_steps` is any positive integer
-- **THEN** `messages[0]` SHALL appear as the first element of the returned list unchanged
-
-#### Scenario: User state messages are never dropped
-
-- **WHEN** `trim_history` is called with a messages list containing multiple `role="user"` state messages interspersed with tool-result groups
-- **THEN** all `role="user"` messages SHALL be present in the returned list regardless of their position relative to `keep_steps`
-
-#### Scenario: Keep window larger than history is a no-op
-
-- **WHEN** `trim_history` is called with `keep_steps` greater than or equal to the total number of tool-result groups in `messages`
-- **THEN** the returned list SHALL be equal to the input list (same messages, same order)
-
-#### Scenario: HISTORY_TRIM_KEEP_STEPS env var is respected
-
-- **WHEN** the environment variable `HISTORY_TRIM_KEEP_STEPS` is set to `"2"` and `trim_history` is called without an explicit `keep_steps` override
-- **THEN** the function SHALL behave as if `keep_steps=2` was passed
-
-#### Scenario: First tool-result group is preserved as page-state anchor
-
-- **WHEN** `trim_history` is called with a messages list containing 6 complete tool-result groups and `keep_steps=2`
-- **THEN** the returned list SHALL contain the `role="assistant"` message and `role="tool"` results from group index 0 (the chronologically earliest group)
-- **AND** the returned list SHALL contain the `role="assistant"` message and `role="tool"` results from groups at indices 4 and 5 (the most recent 2 groups)
-- **AND** the returned list SHALL NOT contain any `role="tool"` messages or their paired `role="assistant"` messages from groups at indices 1, 2, or 3

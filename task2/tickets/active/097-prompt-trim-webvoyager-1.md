@@ -1,7 +1,7 @@
 ---
 id: 97
 slug: prompt-trim-webvoyager-1
-status: archived
+status: active
 tier: 5
 urgency: P1
 axes:
@@ -15,9 +15,9 @@ evidence:
 - task2/tests/test_benchmark_analysis.py
 related:
 - 96
-filed_pr: 154
-merged_pr: 154
-archived_at: "2026-04-29"
+filed_pr: null
+merged_pr: null
+archived_at: null
 trigger: "2026-04-29 — diagnostic from ticket #96 ranked prompt-trim as the highest-ROI lever among (prompt-trim, path-shorten, observation-trim)"
 ---
 
