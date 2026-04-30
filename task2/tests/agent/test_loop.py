@@ -9,7 +9,14 @@ import pytest
 
 from agent.browser import Browser
 from agent.llm import ChatResponse, ToolCall, Usage
-from agent.loop import RunResult, _build_system_prompt, loop
+from agent.loop import (
+    STATE_MESSAGE_PREFIX,
+    RunResult,
+    _build_observation_tape,
+    _build_system_prompt,
+    loop,
+    verify_done_with_llm,
+)
 from agent.trace import (
     ActEvent,
     LocateEvent,
@@ -4913,3 +4920,117 @@ def test_loop_done_unsupported_after_replan_marks_unverified(
     ]
     assert len(sup_events) >= 1
     writer.close()
+
+
+# ---------------------------------------------------------------------------
+# verify_done_with_llm: false-positive reduction
+# ---------------------------------------------------------------------------
+
+
+class _CountingJudgeLLM:
+    """Records every chat call so tests can assert on LLM-call count."""
+
+    def __init__(self, default_verdict: str = "supported") -> None:
+        self.calls: list[list[dict]] = []
+        self._default = default_verdict
+
+    def chat(self, messages, *, tools=None, **_):  # type: ignore[no-untyped-def]
+        self.calls.append(list(messages))
+        return _judge_response(self._default, "stub")
+
+
+def test_verify_done_short_circuits_when_result_text_appears_in_tape():
+    """Skip the LLM call entirely when every string leaf of result is in the tape.
+
+    Why: webvoyager-2 (arXiv abstract) trace showed the judge LLM falsely rejecting
+    a done where the abstract text appeared verbatim in the read output. Each false
+    positive cost ~30s of LLM time + a wasted replan cycle. A deterministic substring
+    check covers the common case (agent reads, then quotes back) at zero cost.
+    """
+    abstract = (
+        "The dominant sequence transduction models are based on complex recurrent "
+        "or convolutional neural networks in an encoder-decoder configuration."
+    )
+    tape = f"Some chrome text\n{abstract}\nMore page text"
+    judge = _CountingJudgeLLM(default_verdict="unsupported")
+
+    verdict, reason, response = verify_done_with_llm(
+        task="find abstract",
+        observation_tape=tape,
+        result={"answer": abstract},
+        evidence={"url": "https://example.com", "text_snippet": abstract[:80]},
+        llm_client=judge,
+    )
+
+    assert verdict == "supported"
+    assert "tape" in reason.lower() or "observ" in reason.lower()
+    assert judge.calls == [], "judge LLM should not be called when result is grounded in tape"
+    assert response is None or response.usage.prompt_tokens == 0
+
+
+def test_verify_done_calls_llm_when_result_not_grounded_in_tape():
+    """Fall through to LLM when a string leaf of result is absent from the tape.
+
+    Why: the judge's whole point is to catch fabrication. A short-circuit must NOT
+    skip the LLM when the agent has invented facts.
+    """
+    tape = "Page content about Transformers and attention."
+    judge = _CountingJudgeLLM(default_verdict="unsupported")
+
+    verdict, _reason, _response = verify_done_with_llm(
+        task="find price",
+        observation_tape=tape,
+        result={"price": "NT$8,710 from Taipei"},
+        evidence={"url": "https://example.com", "text_snippet": "tape"},
+        llm_client=judge,
+    )
+
+    assert verdict == "unsupported"
+    assert len(judge.calls) == 1
+
+
+def test_build_observation_tape_excludes_state_messages():
+    """State messages contain repeated plan-progress and AX-tree noise — drop them.
+
+    Why: the judge prompt is truncated to ~8000 chars. The state messages eat ~80%
+    of that with repeated plan progress and AX-tree summaries that aren't evidence.
+    Keep only `read` tool outputs and tool-call results — the actual observation.
+    """
+    messages = [
+        {"role": "system", "content": "you are an agent"},
+        {"role": "user", "content": "task: x"},
+        {"role": "user", "content": f"{STATE_MESSAGE_PREFIX}{json.dumps({'url': 'a'})}"},
+        {"role": "tool", "tool_call_id": "t1", "content": "Important read output: ABCD"},
+        {"role": "user", "content": f"{STATE_MESSAGE_PREFIX}{json.dumps({'url': 'b'})}"},
+        {"role": "tool", "tool_call_id": "t2", "content": "Another read output: EFGH"},
+    ]
+    tape = _build_observation_tape(messages)
+
+    assert "ABCD" in tape
+    assert "EFGH" in tape
+    assert STATE_MESSAGE_PREFIX not in tape
+
+
+def test_verify_done_prompt_biases_toward_supported():
+    """Prompt should default to supported and reject only on contradiction.
+
+    Why: the prior prompt told the judge to reject "results that contain facts that
+    do not appear in observations" — a strict matching rule that triggered false
+    positives whenever tape truncation cut out the evidence. A bias-toward-supported
+    rule fires only when the judge can point to a contradiction.
+    """
+    judge = _CountingJudgeLLM(default_verdict="supported")
+    verify_done_with_llm(
+        task="x",
+        observation_tape="some unrelated text",
+        result={"price": "fabricated"},
+        evidence={"url": "https://example.com", "text_snippet": "unrelated"},
+        llm_client=judge,
+    )
+    assert len(judge.calls) == 1
+    system_prompt = judge.calls[0][0]["content"]
+    assert "[VERIFY DONE]" in system_prompt
+    assert "contradict" in system_prompt.lower()
+    assert "default to supported" in system_prompt.lower() or (
+        "only" in system_prompt.lower() and "contradict" in system_prompt.lower()
+    )

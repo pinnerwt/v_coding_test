@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Literal
@@ -339,17 +340,23 @@ def _record_step(
 
 _VERIFY_DONE_SYSTEM_PROMPT = (
     "[VERIFY DONE]\n"
-    "You are a result verifier for a browser agent. Decide whether the agent's "
-    "claimed result is supported by what it actually observed during the run. "
-    "Reject results that contain facts (names, prices, dates, numbers) that do "
-    "not appear in the observations, or that attribute facts to the wrong "
-    "subject (e.g. a price labelled with a city that is paired with a different "
-    'price in the observations). Reply ONLY with a single JSON object: '
-    '{"verdict": "supported" | "unsupported", "reason": "<one short sentence>"}.'
+    "You verify whether a browser agent's claimed result is grounded in what it "
+    "actually observed. Default to supported. Reject ONLY when the result "
+    "contradicts the observations — e.g. a price/name/date in the result is "
+    "paired with a different value in the observations, or attributes a fact to "
+    "the wrong subject. Absence of evidence is NOT contradiction; if the relevant "
+    "text might have been cut by tape truncation, return supported. Reply ONLY "
+    'with a single JSON object: {"verdict": "supported" | "unsupported", '
+    '"reason": "<one short sentence>"}.'
 )
 
 
 def _build_observation_tape(messages: list[dict]) -> str:
+    """Concatenate read-tool outputs only.
+
+    State messages are dropped: they carry repeated plan progress and AX-tree
+    summaries that crowd out the actual evidence within the tape's char budget.
+    """
     parts: list[str] = []
     for m in messages:
         role = m.get("role")
@@ -358,9 +365,42 @@ def _build_observation_tape(messages: list[dict]) -> str:
             continue
         if role == "tool" and not content.startswith("Error:"):
             parts.append(content)
-        elif role == "user" and STATE_MESSAGE_PREFIX in content:
-            parts.append(content)
     return "\n".join(parts)
+
+
+_TAPE_NORMALIZE_RE = re.compile(r"\s+")
+
+
+def _normalize_for_match(s: str) -> str:
+    return _TAPE_NORMALIZE_RE.sub(" ", s).strip().lower()
+
+
+def _iter_string_leaves(value: Any) -> Iterable[str]:
+    if isinstance(value, str):
+        if value.strip():
+            yield value
+    elif isinstance(value, dict):
+        for v in value.values():
+            yield from _iter_string_leaves(v)
+    elif isinstance(value, list | tuple):
+        for v in value:
+            yield from _iter_string_leaves(v)
+
+
+def _result_grounded_in_tape(result: Any, tape: str) -> bool:
+    norm_tape = _normalize_for_match(tape)
+    if not norm_tape:
+        return False
+    leaves = list(_iter_string_leaves(result))
+    if not leaves:
+        return False
+    for leaf in leaves:
+        norm_leaf = _normalize_for_match(leaf)
+        if not norm_leaf:
+            continue
+        if norm_leaf not in norm_tape:
+            return False
+    return True
 
 
 def verify_done_with_llm(
@@ -371,11 +411,13 @@ def verify_done_with_llm(
     evidence: Any,
     llm_client: LLMClient,
 ) -> tuple[Literal["supported", "unsupported"], str, Any]:
+    if _result_grounded_in_tape(result, observation_tape):
+        return "supported", "every result string appears in the observation tape", None
     user_msg = (
         f"Task: {task}\n\n"
         f"Claimed result:\n{json.dumps(result, ensure_ascii=False)}\n\n"
         f"Claimed evidence:\n{json.dumps(evidence, ensure_ascii=False)}\n\n"
-        f"Observations (read outputs and page state during the run):\n"
+        f"Observations (read outputs during the run):\n"
         f"{observation_tape[:8000]}"
     )
     response = llm_client.chat(
@@ -1232,9 +1274,10 @@ def loop(
                         evidence=evidence,
                         llm_client=llm_client,
                     )
-                    cum_prompt_tokens += judge_resp.usage.prompt_tokens
-                    cum_completion_tokens += judge_resp.usage.completion_tokens
-                    cum_usd += judge_resp.usd
+                    if judge_resp is not None:
+                        cum_prompt_tokens += judge_resp.usage.prompt_tokens
+                        cum_completion_tokens += judge_resp.usage.completion_tokens
+                        cum_usd += judge_resp.usd
 
                     if verdict == "unsupported":
                         verifier = {
