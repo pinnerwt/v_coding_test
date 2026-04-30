@@ -281,10 +281,25 @@ def _build_system_prompt(task: str, *, expect: dict | None = None) -> str:
         "You are a browser automation agent. "
         f"Your task is: {task}\n\n"
         "Use the tools provided to navigate the web and gather information. "
-        "When you have completed the task, call the `done` tool with a structured result "
-        "and evidence (including the current page URL and a text snippet confirming the result). "
-        "Call `fail` ONLY for irrecoverable conditions — login walls, captchas, "
-        "pages that don't exist, or required information genuinely absent from the page. "
+        "Bias strongly toward calling `done` early. The MOMENT you can plausibly "
+        "answer the task from any page content (a `read` result, the URL, or "
+        "visible text), call `done` with that answer. Do NOT continue reading, "
+        "clicking, or navigating once a workable answer is visible. "
+        "Step budget: you have at most 20 steps. By step 12 you should already "
+        "be calling `done` — partial or best-inference answers are acceptable as "
+        "long as they are grounded in something you have read. "
+        "When a `click` or `type` fails, retry with a refined `intent` or replan "
+        "(try a different selector, scroll, or take a different navigation path). "
+        "Only call `done` with a best-effort inference after 2-3 failed retries "
+        "and no clearer plan. Always include the current page URL and a text "
+        "snippet as evidence in `done`. "
+        "If you genuinely run out of budget without finding the answer and "
+        "cannot make a grounded best inference, call `fail` with a clear "
+        "rationale: where you got stuck, what you tried, and what additional "
+        "budget (more steps, different selectors) would enable. Never exceed "
+        "the step budget without either a `done` or a `fail`. "
+        "Otherwise call `fail` only for irrecoverable conditions — login walls, "
+        "captchas, pages that don't exist, or info genuinely absent from the page. "
         "If a target element exists on the page but you don't know how to act on it, "
         "attempt `click`/`type` with a natural-language `intent` first; "
         "the locator pipeline will resolve it."
@@ -796,6 +811,7 @@ def loop(
     _stuck_buf: list[str] = []
     _no_progress_buf: list[tuple[str | None, bool]] = []
     _consecutive_no_tool_call_steps: int = 0
+    _force_done_next: bool = False
     _budget = int(os.environ.get("LLM_CONTEXT_CHAR_BUDGET", _DEFAULT_CONTEXT_CHAR_BUDGET))
     t_loop = time.monotonic()
 
@@ -841,10 +857,30 @@ def loop(
 
         assert active_plan is not None
         plan_prefix = _plan_progress_block(active_plan.steps)
+        budget_prefix = ""
+        steps_remaining = max_steps - step_num
+        time_used = time.monotonic() - t_loop
+        time_frac = time_used / budget_seconds if budget_seconds else 0.0
+        if _force_done_next or steps_remaining <= 4 or time_frac >= 0.65:
+            budget_prefix = (
+                f"URGENT: step {step_num}/{max_steps}, time used "
+                f"{time_used:.0f}s. Stop navigating. Call `done` NOW with your "
+                "best-effort answer based on anything you have already read — "
+                "even a partial or uncertain answer is acceptable. ONLY call "
+                "`fail` if you have literally read nothing relevant; in that "
+                "case explain where you got stuck, what you tried, and what "
+                "additional budget would enable. Do not call any other tool.\n\n"
+            )
+        else:
+            budget_prefix = f"Step {step_num}/{max_steps}.\n\n"
+        _force_done_next = False
         messages.append(
             {
                 "role": "user",
-                "content": f"{plan_prefix}{STATE_MESSAGE_PREFIX}{json.dumps(observation)}",
+                "content": (
+                    f"{budget_prefix}{plan_prefix}{STATE_MESSAGE_PREFIX}"
+                    f"{json.dumps(observation)}"
+                ),
             }
         )
 
@@ -1132,29 +1168,35 @@ def loop(
                 and None not in fps
                 and all(not ok for _, ok in _no_progress_buf)
             ):
-                _record_step(
-                    step_num,
-                    t0,
-                    response,
-                    dispatched_tool_names,
-                    latency_ms_per_step,
-                    step_breakdown,
-                    latency_breakdown=_phase_breakdown(t0, t_llm_start, t_dispatch_start),
-                )
-                return RunResult(
-                    status="failed",
-                    reason="no_progress",
-                    result=None,
-                    evidence=None,
-                    verifier=None,
-                    steps=step_num,
-                    prompt_tokens=cum_prompt_tokens,
-                    completion_tokens=cum_completion_tokens,
-                    usd=cum_usd,
-                    latency_ms_total=sum(latency_ms_per_step),
-                    latency_ms_per_step=latency_ms_per_step,
-                    step_breakdown=step_breakdown,
-                )
+                if not _force_done_next:
+                    _force_done_next = True
+                    _no_progress_buf.clear()
+                else:
+                    _record_step(
+                        step_num,
+                        t0,
+                        response,
+                        dispatched_tool_names,
+                        latency_ms_per_step,
+                        step_breakdown,
+                        latency_breakdown=_phase_breakdown(
+                            t0, t_llm_start, t_dispatch_start
+                        ),
+                    )
+                    return RunResult(
+                        status="failed",
+                        reason="no_progress",
+                        result=None,
+                        evidence=None,
+                        verifier=None,
+                        steps=step_num,
+                        prompt_tokens=cum_prompt_tokens,
+                        completion_tokens=cum_completion_tokens,
+                        usd=cum_usd,
+                        latency_ms_total=sum(latency_ms_per_step),
+                        latency_ms_per_step=latency_ms_per_step,
+                        step_breakdown=step_breakdown,
+                    )
 
         _record_step(
             step_num,

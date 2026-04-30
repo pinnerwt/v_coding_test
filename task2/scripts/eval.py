@@ -261,6 +261,39 @@ def _run_case(
     fixture_url = case.get("fixture_url")
     if fixture_url is None and case.get("fixture_path"):
         fixture_url = _resolve_fixture_url(case["fixture_path"])
+    trace_dir_env = os.environ.get("LLM_TRACE_DIR")
+    trace_jsonl_path: Path | None = None
+    if trace_dir_env:
+        trace_dir = Path(trace_dir_env)
+        trace_dir.mkdir(parents=True, exist_ok=True)
+        trace_jsonl_path = trace_dir / f"{case['id']}_{run_id[:8]}.jsonl"
+        original_chat = llm_client.chat
+
+        def _chat_with_trace(messages, tools=None, **kwargs):  # type: ignore[no-untyped-def]
+            response = original_chat(messages, tools=tools, **kwargs)
+            try:
+                record = {
+                    "case_id": case["id"],
+                    "run_id": run_id,
+                    "messages": messages,
+                    "tools": [t.get("function", {}).get("name") for t in (tools or [])],
+                    "response_content": response.content,
+                    "tool_calls": [
+                        {"name": tc.name, "arguments": tc.arguments}
+                        for tc in (response.tool_calls or [])
+                    ],
+                    "usage": {
+                        "prompt_tokens": response.usage.prompt_tokens,
+                        "completion_tokens": response.usage.completion_tokens,
+                    },
+                }
+                with trace_jsonl_path.open("a") as f:
+                    f.write(json.dumps(record, default=str) + "\n")
+            except Exception:
+                pass
+            return response
+
+        llm_client.chat = _chat_with_trace  # type: ignore[method-assign]
     with TraceWriter(path=":memory:") as writer:
         _open_trace_run(writer, run_id, case)
         try:
