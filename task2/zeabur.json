@@ -6,6 +6,7 @@
     { "key": "LLM_BASE_URL", "required": true, "value": "" },
     { "key": "LLM_MODEL", "required": true, "value": "" },
     { "key": "LLM_API_KEY", "required": false, "value": "" },
+    { "key": "LLM_TEMPERATURE", "required": false, "value": "0.0" },
     { "key": "DB_PATH", "required": false, "value": "" }
   ]
 }

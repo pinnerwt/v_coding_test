@@ -6,6 +6,7 @@ import os
 import sqlite3
 from collections.abc import Generator
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException
@@ -18,7 +19,13 @@ from agent.llm import _DEFAULT_LLM_MODEL, LLMClient
 from agent.loop import RunResult, loop
 from agent.trace import Run, RunBudget, RunLLM, TraceWriter
 from api.db import get_db_path
-from api.sessions import get_session, start_session, submit_answer
+from api.sessions import (
+    get_session,
+    start_session,
+    submit_answer,
+    subscribe_events,
+    unsubscribe_events,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -170,115 +177,13 @@ def get_trace(run_id: str) -> StreamingResponse:
     )
 
 
-_HTML = """<!DOCTYPE html>
-<html>
-<head><title>Agent Task Runner</title></head>
-<body>
-<h1>Run a Task</h1>
-<form id="task-form">
-  <label>task: <input id="task-input" name="task" type="text" size="60" /></label>
-  <button type="submit">Run</button>
-</form>
-<pre id="result"></pre>
-<script>
-document.getElementById('task-form').addEventListener('submit', async function(e) {
-  e.preventDefault();
-  const task = document.getElementById('task-input').value;
-  const pre = document.getElementById('result');
-  pre.textContent = 'Submitting...';
-  const resp = await fetch('/tasks', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({task})
-  });
-  const data = await resp.json();
-  const id = data.id;
-  pre.textContent = 'Running (id=' + id + ')...';
-  const poll = setInterval(async function() {
-    const r = await fetch('/tasks/' + id);
-    const body = await r.json();
-    if (body.status !== 'running') {
-      clearInterval(poll);
-      pre.textContent = JSON.stringify(body, null, 2);
-    }
-  }, 2000);
-});
-</script>
-</body>
-</html>"""
+_STATIC_DIR = Path(__file__).parent / "static"
+_CHAT_HTML = (_STATIC_DIR / "index.html").read_text(encoding="utf-8")
 
 
 @app.get("/")
 def root() -> HTMLResponse:
-    return HTMLResponse(_HTML)
-
-
-_CHAT_HTML = """<!DOCTYPE html>
-<html>
-<head><title>Agent Chat</title></head>
-<body>
-<h1>Agent Chat</h1>
-<form id="task-form">
-  <label>Task: <input id="task-input" name="task" type="text" size="60" /></label>
-  <button id="task-submit" type="submit">Run</button>
-</form>
-<div id="status" data-status="idle"></div>
-<div id="pending" hidden>
-  <p id="pending-question"></p>
-  <form id="answer-form">
-    <input id="answer-input" type="text" size="60" />
-    <button id="answer-submit" type="submit">Send</button>
-  </form>
-</div>
-<pre id="result" hidden></pre>
-<script>
-let runId = null;
-let pollTimer = null;
-
-document.getElementById('task-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const task = document.getElementById('task-input').value;
-  const r = await fetch('/sessions', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({task})
-  });
-  const data = await r.json();
-  runId = data.id;
-  document.getElementById('status').dataset.status = 'running';
-  pollTimer = setInterval(poll, 500);
-});
-
-document.getElementById('answer-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const answer = document.getElementById('answer-input').value;
-  await fetch(`/sessions/${runId}/answer`, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({answer})
-  });
-  document.getElementById('pending').hidden = true;
-  document.getElementById('answer-input').value = '';
-});
-
-async function poll() {
-  if (!runId) return;
-  const r = await fetch(`/sessions/${runId}`);
-  const body = await r.json();
-  document.getElementById('status').dataset.status = body.status;
-  if (body.status === 'awaiting_user') {
-    document.getElementById('pending-question').textContent = body.pending_question || '';
-    document.getElementById('pending').hidden = false;
-  } else if (body.status === 'done' || body.status === 'failed') {
-    clearInterval(pollTimer);
-    const pre = document.getElementById('result');
-    pre.textContent = JSON.stringify(body.result, null, 2);
-    pre.hidden = false;
-  }
-}
-</script>
-</body>
-</html>"""
+    return HTMLResponse(_CHAT_HTML)
 
 
 @app.get("/chat")
@@ -327,3 +232,39 @@ def post_session_answer(run_id: str, body: AnswerRequest) -> dict[str, Any]:
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from None
     return {"ok": True}
+
+
+@app.get("/sessions/{run_id}/events")
+def get_session_events(run_id: str) -> StreamingResponse:
+    session = get_session(run_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="not found")
+
+    backlog, q = subscribe_events(session)
+
+    def gen() -> Generator[str, None, None]:
+        try:
+            terminal_seen = False
+            for ev in backlog:
+                yield f"data: {json.dumps(ev)}\n\n"
+                if ev.get("type") == "terminal":
+                    terminal_seen = True
+            if terminal_seen:
+                return
+            while True:
+                try:
+                    ev = q.get(timeout=15)
+                except Exception:
+                    yield ": keepalive\n\n"
+                    continue
+                yield f"data: {json.dumps(ev)}\n\n"
+                if ev.get("type") == "terminal":
+                    return
+        finally:
+            unsubscribe_events(session, q)
+
+    headers = {
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+    }
+    return StreamingResponse(gen(), media_type="text/event-stream", headers=headers)

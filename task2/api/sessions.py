@@ -13,8 +13,9 @@ from ulid import ULID
 from agent.browser import Browser
 from agent.llm import _DEFAULT_LLM_MODEL, LLMClient
 from agent.loop import RunResult, loop
-from agent.trace import Run, RunBudget, RunLLM, TraceWriter
+from agent.trace import Run, RunBudget, RunLLM
 from api.db import get_db_path
+from api.streaming_trace import StreamingTraceWriter
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,9 @@ class SessionState:
     answer_queue: queue.Queue[str] = field(default_factory=queue.Queue)
     result: RunResult | None = None
     error: str | None = None
+    event_log: list[dict[str, Any]] = field(default_factory=list)
+    event_subscribers: list[queue.Queue[dict[str, Any]]] = field(default_factory=list)
+    event_lock: threading.Lock = field(default_factory=threading.Lock)
 
 
 _SESSIONS: dict[str, SessionState] = {}
@@ -56,15 +60,45 @@ def _register_session(session: SessionState) -> None:
         _SESSIONS[session.run_id] = session
 
 
+def emit_event(session: SessionState, payload: dict[str, Any]) -> None:
+    """Append to event log and broadcast to subscribers under one lock."""
+    with session.event_lock:
+        session.event_log.append(payload)
+        subs = list(session.event_subscribers)
+    for q in subs:
+        q.put(payload)
+
+
+def subscribe_events(
+    session: SessionState,
+) -> tuple[list[dict[str, Any]], queue.Queue[dict[str, Any]]]:
+    """Atomically snapshot the event log and register a live subscriber."""
+    q: queue.Queue[dict[str, Any]] = queue.Queue()
+    with session.event_lock:
+        backlog = list(session.event_log)
+        session.event_subscribers.append(q)
+    return backlog, q
+
+
+def unsubscribe_events(session: SessionState, q: queue.Queue[dict[str, Any]]) -> None:
+    with session.event_lock:
+        try:
+            session.event_subscribers.remove(q)
+        except ValueError:
+            pass
+
+
 def _make_ask_user_callback(session: SessionState):
     def ask(question: str) -> str:
         session.pending_question = question
         session.status = "awaiting_user"
+        emit_event(session, {"type": "ask_user", "question": question})
         try:
             answer = session.answer_queue.get()
         finally:
             session.pending_question = None
             session.status = "running"
+        emit_event(session, {"type": "answer", "answer": answer})
         return answer
 
     return ask
@@ -76,6 +110,7 @@ def _invoke_loop(
     run_id: str,
     expect_schema: dict | None = None,
     ask_user_callback,
+    on_event=None,
 ) -> RunResult:
     """Real loop entrypoint. Tests monkeypatch this seam to avoid Browser/LLM."""
     if os.environ.get("SESSIONS_FAKE_LOOP") == "1":
@@ -87,7 +122,7 @@ def _invoke_loop(
         )
     base_url = os.environ.get("LLM_BASE_URL", "http://localhost:8090")
     model = os.environ.get("LLM_MODEL", _DEFAULT_LLM_MODEL)
-    writer = TraceWriter(get_db_path())
+    writer = StreamingTraceWriter(get_db_path(), on_event=on_event)
     run = Run(
         run_id=run_id,
         task=task,
@@ -134,19 +169,30 @@ def _invoke_loop(
 
 def _worker(session: SessionState, task: str, expect_schema: dict | None) -> None:
     cb = _make_ask_user_callback(session)
+    on_event = lambda payload: emit_event(session, {"type": "trace", **payload})  # noqa: E731
     try:
         result = _invoke_loop(
             task,
             run_id=session.run_id,
             expect_schema=expect_schema,
             ask_user_callback=cb,
+            on_event=on_event,
         )
         session.result = result
         session.status = "done"
+        emit_event(
+            session,
+            {
+                "type": "terminal",
+                "status": "done",
+                "result": result.result,
+            },
+        )
     except Exception as exc:
         logger.exception("session worker failed", extra={"run_id": session.run_id})
         session.error = str(exc)
         session.status = "failed"
+        emit_event(session, {"type": "terminal", "status": "failed", "error": str(exc)})
 
 
 def start_session(task: str, *, expect_schema: dict | None = None) -> str:

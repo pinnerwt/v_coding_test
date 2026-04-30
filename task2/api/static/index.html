@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Browser Agent</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 1rem; color: #1f2937; }
+  h1 { font-size: 1.25rem; margin: 0 0 1rem; }
+  #app {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    height: calc(100vh - 5rem);
+  }
+  #chat-pane, #trace-pane {
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    padding: 0.75rem;
+    overflow-y: auto;
+    background: #fff;
+  }
+  .pane-title {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: #6b7280;
+    margin-bottom: 0.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .msg { margin: 0.5rem 0; padding: 0.5rem 0.75rem; border-radius: 6px; max-width: 80%; }
+  .msg.user { background: #dbeafe; margin-left: auto; }
+  .msg.agent { background: #f3f4f6; }
+  .msg.error { background: #fee2e2; color: #991b1b; }
+  .msg.done { background: #d1fae5; color: #065f46; }
+  .ev {
+    margin: 0.25rem 0;
+    padding: 0.4rem 0.6rem;
+    border-radius: 4px;
+    font-family: ui-monospace, monospace;
+    font-size: 0.78rem;
+    background: #f9fafb;
+    border-left: 3px solid #d1d5db;
+  }
+  .ev.plan { border-left-color: #6366f1; }
+  .ev.act { border-left-color: #0ea5e9; }
+  .ev.ask_user { border-left-color: #f59e0b; }
+  .ev.answer { border-left-color: #10b981; }
+  .ev.terminal { border-left-color: #16a34a; font-weight: 600; }
+  .ev .ev-detail { color: #6b7280; word-break: break-word; }
+  form { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+  input[type=text] {
+    flex: 1;
+    padding: 0.5rem;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    font-size: 0.9rem;
+  }
+  button {
+    padding: 0.5rem 1rem;
+    background: #2563eb;
+    color: #fff;
+    border: 0;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+  }
+  button:disabled { background: #9ca3af; cursor: not-allowed; }
+  #status { font-size: 0.8rem; color: #6b7280; margin-bottom: 0.5rem; }
+</style>
+</head>
+<body>
+<h1>Browser Agent</h1>
+<div id="status" data-status="idle">idle</div>
+<div id="app">
+  <section id="chat-pane">
+    <div class="pane-title">Chat</div>
+    <div id="messages"></div>
+    <form id="task-form">
+      <input id="task-input" type="text" placeholder="What should the agent do?" autocomplete="off" />
+      <button id="task-submit" type="submit">Send</button>
+    </form>
+    <form id="answer-form" hidden>
+      <input id="answer-input" type="text" placeholder="Your answer..." autocomplete="off" />
+      <button id="answer-submit" type="submit">Reply</button>
+    </form>
+  </section>
+  <section id="trace-pane">
+    <div class="pane-title">Trace</div>
+    <div id="events"></div>
+  </section>
+</div>
+<script>
+let runId = null;
+let evtSource = null;
+const messages = document.getElementById('messages');
+const events = document.getElementById('events');
+const status = document.getElementById('status');
+const taskForm = document.getElementById('task-form');
+const answerForm = document.getElementById('answer-form');
+const answerInput = document.getElementById('answer-input');
+
+const ESC_MAP = {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'};
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ESC_MAP[c]);
+}
+
+function addMessage(text, cls) {
+  const div = document.createElement('div');
+  div.className = `msg ${cls}`;
+  div.textContent = text;
+  messages.appendChild(div);
+  messages.scrollTop = messages.scrollHeight;
+  return div;
+}
+
+function addEvent(ev) {
+  const div = document.createElement('div');
+  const kind = ev.type === 'trace' ? (ev.kind || 'trace') : ev.type;
+  div.className = `ev ${kind}`;
+  let label = kind;
+  let detail = '';
+  if (ev.type === 'trace') {
+    if (ev.kind === 'act') {
+      label = `act: ${ev.tool}`;
+      detail = JSON.stringify(ev.args || {});
+    } else if (ev.kind === 'plan') {
+      label = `plan (${ev.reason || 'initial'})`;
+      detail = (ev.steps || []).join(' → ');
+    } else {
+      label = ev.kind;
+    }
+  } else if (ev.type === 'ask_user') {
+    label = 'ask_user';
+    detail = ev.question || '';
+  } else if (ev.type === 'answer') {
+    label = 'answer';
+    detail = ev.answer || '';
+  } else if (ev.type === 'terminal') {
+    label = `terminal: ${ev.status}`;
+    detail = ev.error || JSON.stringify(ev.result || {});
+  }
+  const detailHtml = detail
+    ? ` <span class="ev-detail">${escapeHtml(detail)}</span>`
+    : '';
+  div.innerHTML = `<strong>${escapeHtml(label)}</strong>${detailHtml}`;
+  events.appendChild(div);
+  events.scrollTop = events.scrollHeight;
+}
+
+function setStatus(s) {
+  status.textContent = s;
+  status.dataset.status = s;
+}
+
+taskForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const task = document.getElementById('task-input').value.trim();
+  if (!task) return;
+  addMessage(task, 'user');
+  document.getElementById('task-submit').disabled = true;
+  document.getElementById('task-input').disabled = true;
+  setStatus('running');
+  const r = await fetch('/sessions', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({task})
+  });
+  const data = await r.json();
+  runId = data.id;
+  evtSource = new EventSource(`/sessions/${runId}/events`);
+  evtSource.onmessage = (m) => {
+    const ev = JSON.parse(m.data);
+    addEvent(ev);
+    if (ev.type === 'ask_user') {
+      addMessage(ev.question, 'agent');
+      answerForm.hidden = false;
+      answerInput.disabled = false;
+      answerInput.focus();
+      setStatus('awaiting_user');
+    } else if (ev.type === 'terminal') {
+      const cls = ev.status === 'done' ? 'done' : 'error';
+      const text = ev.status === 'done'
+        ? `done: ${JSON.stringify(ev.result || {})}`
+        : `failed: ${ev.error || 'unknown'}`;
+      addMessage(text, cls);
+      setStatus(ev.status);
+      evtSource.close();
+    }
+  };
+  evtSource.onerror = () => {
+    setStatus('disconnected');
+  };
+});
+
+answerForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const answer = answerInput.value.trim();
+  if (!answer || !runId) return;
+  addMessage(answer, 'user');
+  answerInput.value = '';
+  answerInput.disabled = true;
+  answerForm.hidden = true;
+  setStatus('running');
+  await fetch(`/sessions/${runId}/answer`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({answer})
+  });
+});
+</script>
+</body>
+</html>

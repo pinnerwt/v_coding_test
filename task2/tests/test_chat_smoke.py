@@ -88,20 +88,26 @@ def test_chat_smoke_ask_user_round_trip(smoke_server, playwright_chromium):
         page.fill("#task-input", "find me a hotel")
         page.click("#task-submit")
 
-        page.wait_for_selector("#pending:not([hidden])", timeout=10_000)
-        question = page.text_content("#pending-question") or ""
+        page.wait_for_selector("#answer-form:not([hidden])", timeout=10_000)
+        page.wait_for_selector("#messages .msg.agent", timeout=5_000)
+        question = page.text_content("#messages .msg.agent") or ""
         assert "destination" in question.lower(), question
+        assert page.get_attribute("#status", "data-status") == "awaiting_user"
 
         page.fill("#answer-input", "Tokyo")
         page.click("#answer-submit")
 
-        page.wait_for_selector("#result:not([hidden])", timeout=10_000)
-        result_text = page.text_content("#result") or ""
-        assert "Tokyo" in result_text, result_text
-        assert "find me a hotel" in result_text, result_text
+        page.wait_for_function(
+            "document.querySelector('#status').dataset.status === 'done'",
+            timeout=10_000,
+        )
 
-        status = page.get_attribute("#status", "data-status")
-        assert status == "done", status
+        msgs = page.text_content("#messages") or ""
+        assert "Tokyo" in msgs, msgs
+        assert "find me a hotel" in msgs, msgs
+
+        events_text = page.text_content("#events") or ""
+        assert "terminal: done" in events_text, events_text
     finally:
         context.close()
 
