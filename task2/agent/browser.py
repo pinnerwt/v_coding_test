@@ -80,13 +80,13 @@ class Browser:
         if self._page is None:
             raise BrowserClosed()
         try:
-            self._page.goto(url, wait_until="domcontentloaded", timeout=15000)
+            self._page.goto(url, wait_until="domcontentloaded", timeout=30000)
         except PlaywrightError as e:
             if not _TRANSIENT_NAV_RE.search(str(e)):
                 raise NavigationError(f"failed to navigate to {url}: {e}") from e
             time.sleep(0.25)
             try:
-                self._page.goto(url, wait_until="domcontentloaded", timeout=15000)
+                self._page.goto(url, wait_until="domcontentloaded", timeout=30000)
             except PlaywrightError as e2:
                 raise NavigationError(f"failed to navigate to {url}: {e2}") from e2
 

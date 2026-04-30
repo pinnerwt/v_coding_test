@@ -12,6 +12,20 @@ _DEFAULT_BASE_URL = "http://localhost:8090"
 _DEFAULT_LLM_MODEL = "qwen3-5-27b"
 _CHAT_PATH = "/v1/chat/completions"
 _MAX_ERROR_BODY = 2048
+_DEFAULT_TEMPERATURE = 0.0
+
+
+def _resolve_temperature(explicit: float | None) -> float:
+    if explicit is not None:
+        return explicit
+    raw = os.environ.get("LLM_TEMPERATURE")
+    if raw is None:
+        return _DEFAULT_TEMPERATURE
+    try:
+        return float(raw)
+    except ValueError:
+        return _DEFAULT_TEMPERATURE
+
 
 LLMErrorKind = Literal["config", "transport", "http", "decode"]
 
@@ -94,7 +108,7 @@ class LLMClient:
         messages: list[dict],
         *,
         model: str | None = None,
-        temperature: float = 0.0,
+        temperature: float | None = None,
         tools: list[dict] | None = None,
         seed: int | None = None,
     ) -> ChatResponse:
@@ -102,10 +116,12 @@ class LLMClient:
         if not resolved_model:
             raise LLMError("model not configured", kind="config")
 
+        resolved_temperature = _resolve_temperature(temperature)
+
         body: dict[str, Any] = {
             "model": resolved_model,
             "messages": messages,
-            "temperature": temperature,
+            "temperature": resolved_temperature,
         }
         if tools is not None:
             body["tools"] = tools
@@ -211,7 +227,7 @@ def chat(
     messages: list[dict],
     *,
     model: str | None = None,
-    temperature: float = 0.0,
+    temperature: float | None = None,
     tools: list[dict] | None = None,
     seed: int | None = None,
     base_url: str | None = None,

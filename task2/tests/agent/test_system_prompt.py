@@ -5,7 +5,7 @@ from agent.loop import _build_system_prompt
 
 def test_system_prompt_contains_only_for_irrecoverable():
     prompt = _build_system_prompt("dummy task")
-    assert "ONLY for irrecoverable conditions" in prompt
+    assert "only for irrecoverable conditions" in prompt
 
 
 def test_system_prompt_contains_action_first_guidance():
@@ -23,7 +23,10 @@ def test_system_prompt_names_irrecoverable_conditions():
     assert "login walls" in prompt
     assert "captchas" in prompt
     assert "pages that don't exist" in prompt
-    assert "required information genuinely absent from the page" in prompt
+    assert "genuinely absent from the page" in prompt
+
+
+_SCHEMA_MARKER = "MUST be a JSON object matching this schema"
 
 
 def test_build_system_prompt_schema_present():
@@ -31,7 +34,7 @@ def test_build_system_prompt_schema_present():
         "find the price",
         expect={"schema": {"answer": "str"}, "validators": ["answer.nonempty"]},
     )
-    assert "MUST" in prompt
+    assert _SCHEMA_MARKER in prompt
     assert "answer" in prompt
 
 
@@ -39,19 +42,19 @@ def test_build_system_prompt_schema_absent():
     prompt = _build_system_prompt("find the price")
     assert "browser automation agent" in prompt
     assert "find the price" in prompt
-    assert "ONLY for irrecoverable conditions" in prompt
-    assert "MUST" not in prompt
+    assert "only for irrecoverable conditions" in prompt
+    assert _SCHEMA_MARKER not in prompt
     assert _build_system_prompt("find the price") == _build_system_prompt(
         "find the price", expect=None
     )
 
 
-def test_build_system_prompt_empty_schema_leaves_no_must():
+def test_build_system_prompt_empty_schema_leaves_no_schema_clause():
     prompt = _build_system_prompt(
         "find the price",
         expect={"schema": {}, "validators": []},
     )
-    assert "MUST" not in prompt
+    assert _SCHEMA_MARKER not in prompt
     assert prompt == _build_system_prompt("find the price")
 
 

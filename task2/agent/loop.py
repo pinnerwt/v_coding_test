@@ -4,6 +4,7 @@ import json
 import os
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Literal
@@ -32,7 +33,7 @@ if TYPE_CHECKING:
 
 RunStatus = Literal["succeeded", "unverified", "failed", "timeout"]
 RunResultReason = Literal["stuck_repeat", "no_tool_call_repeat", "seconds_budget", "no_progress"]
-ToolName = Literal["goto", "read", "click", "type", "done", "fail"]
+ToolName = Literal["goto", "read", "click", "type", "done", "fail", "ask_user"]
 _CLICK_SUCCESS_OUTCOMES: frozenset[str] = frozenset({"ok", "nav"})
 _IRRECOVERABLE_REASONS: frozenset[str] = frozenset({"login wall", "captcha", "blocked"})
 
@@ -61,8 +62,11 @@ TOOLS: list[dict] = [
         "function": {
             "name": "read",
             "description": (
-                "Read visible text from the page, optionally targeting an element by intent "
-                "(e.g. 'the article heading'). Returns the text content."
+                "Read visible text from the page. With no args, returns the first ~2000 "
+                "chars of body text. Use 'intent' to target an element (e.g. 'the article "
+                "heading'). Use 'find' to return a window of text centered on the first "
+                "occurrence of a substring (case-insensitive) — useful when the answer "
+                "sits past the default window on a long page (e.g. a Wikipedia article)."
             ),
             "parameters": {
                 "type": "object",
@@ -74,7 +78,15 @@ TOOLS: list[dict] = [
                             "(e.g. 'the search result heading'). "
                             "Omit to read the full page body."
                         ),
-                    }
+                    },
+                    "find": {
+                        "type": "string",
+                        "description": (
+                            "Optional: a substring (case-insensitive) to locate in the "
+                            "full body text; returns ~2000 chars of surrounding context. "
+                            "Mutually exclusive with 'intent'."
+                        ),
+                    },
                 },
                 "required": [],
             },
@@ -142,6 +154,14 @@ TOOLS: list[dict] = [
                         "type": "string",
                         "description": "The text to fill into the textbox.",
                     },
+                    "submit": {
+                        "type": "boolean",
+                        "description": (
+                            "If true, press Enter after filling. Use only as a "
+                            "fallback when a Search/Submit button cannot be "
+                            "located via `click`."
+                        ),
+                    },
                 },
                 "required": ["intent", "text"],
             },
@@ -161,6 +181,29 @@ TOOLS: list[dict] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "ask_user",
+            "description": (
+                "Ask the human a clarifying question and get their answer back as the "
+                "tool result. Use only when the task is genuinely ambiguous (e.g. a "
+                "named entity has multiple matching locations and there is no way to "
+                "infer the intended one from the task text). Do NOT use for things you "
+                "can resolve by reading the page."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "question": {
+                        "type": "string",
+                        "description": "A concise question for the user.",
+                    }
+                },
+                "required": ["question"],
+            },
+        },
+    },
 ]
 
 
@@ -168,6 +211,39 @@ _DEFAULT_CONTEXT_CHAR_BUDGET: int = 80_000
 _STUCK_REPEAT_K: int = 3
 _NO_TOOL_CALL_K: int = 3
 _NO_PROGRESS_K: int = 4
+
+
+_ELIDED_AX_TREE_MARKER = "[elided — see latest observation]"
+_KEEP_RECENT_AX_TREES = 2
+
+
+def _strip_stale_ax_trees(messages: list[dict]) -> list[dict]:
+    state_indices = [
+        i
+        for i, m in enumerate(messages)
+        if m.get("role") == "user"
+        and isinstance(m.get("content"), str)
+        and STATE_MESSAGE_PREFIX in m["content"]
+    ]
+    if len(state_indices) <= _KEEP_RECENT_AX_TREES:
+        return messages
+
+    out = list(messages)
+    for i in state_indices[:-_KEEP_RECENT_AX_TREES]:
+        content = out[i]["content"]
+        prefix_idx = content.find(STATE_MESSAGE_PREFIX)
+        head = content[: prefix_idx + len(STATE_MESSAGE_PREFIX)]
+        json_part = content[prefix_idx + len(STATE_MESSAGE_PREFIX) :]
+        try:
+            obs = json.loads(json_part)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if not isinstance(obs, dict) or "ax_tree_digest" not in obs:
+            continue
+        pruned = {k: v for k, v in obs.items() if k != "ax_tree_digest"}
+        pruned["ax_tree_digest"] = _ELIDED_AX_TREE_MARKER
+        out[i] = {**out[i], "content": head + json.dumps(pruned)}
+    return out
 
 
 def _compact_messages(messages: list[dict], budget_chars: int) -> list[dict]:
@@ -281,13 +357,50 @@ def _build_system_prompt(task: str, *, expect: dict | None = None) -> str:
         "You are a browser automation agent. "
         f"Your task is: {task}\n\n"
         "Use the tools provided to navigate the web and gather information. "
-        "When you have completed the task, call the `done` tool with a structured result "
-        "and evidence (including the current page URL and a text snippet confirming the result). "
-        "Call `fail` ONLY for irrecoverable conditions — login walls, captchas, "
-        "pages that don't exist, or required information genuinely absent from the page. "
+        "Bias strongly toward calling `done` early. The MOMENT you can plausibly "
+        "answer the task from any page content (a `read` result, the URL, or "
+        "visible text), call `done` with that answer. Do NOT continue reading, "
+        "clicking, or navigating once a workable answer is visible. "
+        "Step budget: you have at most 20 steps. By step 12 you should already "
+        "be calling `done` — partial or best-inference answers are acceptable as "
+        "long as they are grounded in something you have read. "
+        "When a `click` or `type` fails, retry with a refined `intent` or replan "
+        "(try a different selector, scroll, or take a different navigation path). "
+        "If two clicks fail to advance the task on the current page (no URL "
+        "change, no new content), STOP clicking — call `goto` to a different "
+        "URL instead (the brand's official site or a fresh search with refined "
+        "keywords). Listing/aggregator pages often surface results but rarely "
+        "expose the actionable links you need; pivot away. "
+        "Only call `done` with a best-effort inference after 2-3 failed retries "
+        "and no clearer plan. Always include the current page URL and a text "
+        "snippet as evidence in `done`. "
+        "If you genuinely run out of budget without finding the answer and "
+        "cannot make a grounded best inference, call `fail` with a clear "
+        "rationale: where you got stuck, what you tried, and what additional "
+        "budget (more steps, different selectors) would enable. Never exceed "
+        "the step budget without either a `done` or a `fail`. "
+        "Otherwise call `fail` only for irrecoverable conditions — login walls, "
+        "captchas, pages that don't exist, or info genuinely absent from the page. "
         "If a target element exists on the page but you don't know how to act on it, "
         "attempt `click`/`type` with a natural-language `intent` first; "
-        "the locator pipeline will resolve it."
+        "the locator pipeline will resolve it. "
+        "If a Search/Submit button is not locatable after typing into a search "
+        "box, retry the `type` call with `submit=true` to press Enter instead "
+        "of clicking a button — do not give up on the search just because the "
+        "button can't be found. "
+        "AMBIGUITY → ASK, do not guess and do not give up. If the task names "
+        "an entity and the page reveals MULTIPLE plausible matches with no way "
+        "to choose between them from the task text, you MUST call `ask_user` "
+        "with a concise clarifying question that lists the options. Do NOT "
+        "call `done` with a 'cannot determine' answer in this case — that is "
+        "a wrong call; `ask_user` is the right call. Do NOT call `fail` "
+        "either. After `ask_user` returns, treat the answer as resolving an "
+        "intermediate sub-goal only — the original task still has to be "
+        "carried out. Resume executing the task with the user's choice "
+        "applied; only call `done`/`fail` once you have actually pursued the "
+        "task's stated outcome (succeeded, or hit a real wall). Use "
+        "`ask_user` sparingly: only for genuine ambiguity you cannot resolve "
+        "by reading more of the page."
     )
     if expect and expect.get("schema"):
         schema = expect["schema"]
@@ -301,6 +414,19 @@ def _build_system_prompt(task: str, *, expect: dict | None = None) -> str:
 
 def _body_text(page: Page) -> str:
     return page.evaluate(_BODY_TEXT_JS)[:_BODY_TEXT_LIMIT]
+
+
+def _window_around(text: str, query: str, *, window: int = _BODY_TEXT_LIMIT) -> str | None:
+    idx = text.lower().find(query.lower())
+    if idx == -1:
+        return None
+    if len(text) <= window:
+        return text
+    half = window // 2
+    start = max(0, idx - half)
+    end = min(len(text), start + window)
+    start = max(0, end - window)
+    return text[start:end]
 
 
 def _locate_via_ladder(
@@ -610,11 +736,27 @@ def _dispatch(
         url = args.get("url")
         if not isinstance(url, str) or not url:
             return "Error: goto requires a non-empty 'url' string argument"
-        browser.goto(url)
+        from agent.browser import NavigationError
+
+        try:
+            browser.goto(url)
+        except NavigationError as e:
+            return f"Error: navigation failed for {url}: {e}"
         return f"Navigated to {url}"
     if tool_name == "read":
         intent: str | None = args.get("intent")
+        find: str | None = args.get("find")
         page = browser._page
+        if intent and find:
+            return "Error: read accepts either 'intent' or 'find', not both"
+        if find is not None:
+            if not isinstance(find, str) or not find.strip():
+                return "Error: read 'find' must be a non-empty string"
+            full = page.evaluate(_BODY_TEXT_JS)
+            window = _window_around(full, find)
+            if window is None:
+                return f"Error: 'find' query {find!r} not found in page text"
+            return window
         if intent:
             located = _locate_or_error_msg(
                 page,
@@ -685,6 +827,7 @@ def _dispatch(
     if tool_name == "type":
         intent_val = args.get("intent")
         text_val = args.get("text")
+        submit_val = bool(args.get("submit", False))
         if not isinstance(intent_val, str) or not intent_val:
             return "Error: type requires a non-empty 'intent' string argument"
         if not isinstance(text_val, str) or not text_val:
@@ -707,20 +850,33 @@ def _dispatch(
         from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
         fill_outcome: Literal["ok", "timeout", "error"]
+        locator = page.locator(locate_result.selector)
         try:
-            page.locator(locate_result.selector).fill(text_val, timeout=5000)
+            locator.fill(text_val, timeout=5000)
         except PlaywrightTimeoutError:
             fill_outcome = "timeout"
         except PlaywrightError:
             fill_outcome = "error"
         else:
             fill_outcome = "ok"
+            if submit_val:
+                try:
+                    locator.press("Enter", timeout=5000)
+                    try:
+                        page.wait_for_load_state("load", timeout=3000)
+                    except PlaywrightTimeoutError:
+                        pass
+                except (PlaywrightTimeoutError, PlaywrightError):
+                    pass
         elapsed_ms = int((time.monotonic() - t_fill) * 1000)
+        emit_args: dict = {"intent": intent_val, "text": text_val}
+        if submit_val:
+            emit_args["submit"] = True
         _emit_act_event(
             trace_writer=trace_writer,
             run_id=run_id,
             tool="type",
-            args={"intent": intent_val, "text": text_val},
+            args=emit_args,
             outcome=fill_outcome,
             ms=elapsed_ms,
             step_id=step_id,
@@ -776,6 +932,7 @@ def loop(
     locator_cache: LocatorCache | None = None,
     expect: dict | None = None,
     budget_seconds: float | None = None,
+    ask_user_callback: Callable[[str], str] | None = None,
 ) -> RunResult:
     if trace_writer is not None and run_id is None:
         raise ValueError("run_id is required when trace_writer is provided")
@@ -796,6 +953,8 @@ def loop(
     _stuck_buf: list[str] = []
     _no_progress_buf: list[tuple[str | None, bool]] = []
     _consecutive_no_tool_call_steps: int = 0
+    _force_done_next: bool = False
+    _no_progress_warned: bool = False
     _budget = int(os.environ.get("LLM_CONTEXT_CHAR_BUDGET", _DEFAULT_CONTEXT_CHAR_BUDGET))
     t_loop = time.monotonic()
 
@@ -841,16 +1000,36 @@ def loop(
 
         assert active_plan is not None
         plan_prefix = _plan_progress_block(active_plan.steps)
+        budget_prefix = ""
+        steps_remaining = max_steps - step_num
+        time_used = time.monotonic() - t_loop
+        time_frac = time_used / budget_seconds if budget_seconds else 0.0
+        if _force_done_next or steps_remaining <= 4 or time_frac >= 0.65:
+            budget_prefix = (
+                f"URGENT: step {step_num}/{max_steps}, time used "
+                f"{time_used:.0f}s. Stop navigating. Call `done` NOW with your "
+                "best-effort answer based on anything you have already read — "
+                "even a partial or uncertain answer is acceptable. ONLY call "
+                "`fail` if you have literally read nothing relevant; in that "
+                "case explain where you got stuck, what you tried, and what "
+                "additional budget would enable. Do not call any other tool.\n\n"
+            )
+        else:
+            budget_prefix = f"Step {step_num}/{max_steps}.\n\n"
+        _force_done_next = False
         messages.append(
             {
                 "role": "user",
-                "content": f"{plan_prefix}{STATE_MESSAGE_PREFIX}{json.dumps(observation)}",
+                "content": (
+                    f"{budget_prefix}{plan_prefix}{STATE_MESSAGE_PREFIX}{json.dumps(observation)}"
+                ),
             }
         )
 
         if events is not None:
             events.append(_DecisionMarker())
 
+        messages = _strip_stale_ax_trees(messages)
         messages = _compact_messages(messages, _budget)
         t_llm_start = time.monotonic()
         response = llm_client.chat(messages, tools=TOOLS)
@@ -1009,6 +1188,50 @@ def loop(
                     step_breakdown=step_breakdown,
                 )
 
+            if tool_call.name == "ask_user":
+                question = args.get("question")
+                if not isinstance(question, str) or not question.strip():
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "content": ("Error: ask_user requires a non-empty 'question' string."),
+                        }
+                    )
+                    continue
+                if ask_user_callback is None:
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "content": (
+                                "Error: ask_user is not available in this run "
+                                "(no callback wired). Resolve the ambiguity from "
+                                "page content or call `done`/`fail`."
+                            ),
+                        }
+                    )
+                    continue
+                try:
+                    answer = ask_user_callback(question)
+                except Exception as exc:  # noqa: BLE001
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "content": f"Error: ask_user callback raised: {exc}",
+                        }
+                    )
+                    continue
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": str(answer),
+                    }
+                )
+                continue
+
             _sup_calls_before = supervisor.total_attempts()
             tool_result = _dispatch(
                 tool_call.name,
@@ -1132,29 +1355,34 @@ def loop(
                 and None not in fps
                 and all(not ok for _, ok in _no_progress_buf)
             ):
-                _record_step(
-                    step_num,
-                    t0,
-                    response,
-                    dispatched_tool_names,
-                    latency_ms_per_step,
-                    step_breakdown,
-                    latency_breakdown=_phase_breakdown(t0, t_llm_start, t_dispatch_start),
-                )
-                return RunResult(
-                    status="failed",
-                    reason="no_progress",
-                    result=None,
-                    evidence=None,
-                    verifier=None,
-                    steps=step_num,
-                    prompt_tokens=cum_prompt_tokens,
-                    completion_tokens=cum_completion_tokens,
-                    usd=cum_usd,
-                    latency_ms_total=sum(latency_ms_per_step),
-                    latency_ms_per_step=latency_ms_per_step,
-                    step_breakdown=step_breakdown,
-                )
+                if not _no_progress_warned:
+                    _force_done_next = True
+                    _no_progress_warned = True
+                    _no_progress_buf.clear()
+                else:
+                    _record_step(
+                        step_num,
+                        t0,
+                        response,
+                        dispatched_tool_names,
+                        latency_ms_per_step,
+                        step_breakdown,
+                        latency_breakdown=_phase_breakdown(t0, t_llm_start, t_dispatch_start),
+                    )
+                    return RunResult(
+                        status="failed",
+                        reason="no_progress",
+                        result=None,
+                        evidence=None,
+                        verifier=None,
+                        steps=step_num,
+                        prompt_tokens=cum_prompt_tokens,
+                        completion_tokens=cum_completion_tokens,
+                        usd=cum_usd,
+                        latency_ms_total=sum(latency_ms_per_step),
+                        latency_ms_per_step=latency_ms_per_step,
+                        step_breakdown=step_breakdown,
+                    )
 
         _record_step(
             step_num,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -266,3 +267,27 @@ def test_bench_webvoyager_tasks_env_overrides_tier1(tmp_path, monkeypatch):
     captured = _capture_loader_paths(tmp_path, ["--suite", "webvoyager", "--tier", "1"])
 
     assert captured == [custom_path]
+
+
+def test_bench_sets_llm_temperature_to_zero_by_default(tmp_path, monkeypatch):
+    """Bench runs are reproducibility-first: force greedy decoding so apparent
+    pass/fail flips reflect agent/page changes, not LLM sampling noise."""
+    monkeypatch.setenv("EVAL_RESULTS_DIR", str(tmp_path))
+    monkeypatch.delenv("WEBVOYAGER_TASKS", raising=False)
+    monkeypatch.delenv("LLM_TEMPERATURE", raising=False)
+
+    _capture_loader_paths(tmp_path, ["--suite", "webvoyager"])
+
+    assert os.environ.get("LLM_TEMPERATURE") == "0.0"
+
+
+def test_bench_respects_explicit_llm_temperature_env(tmp_path, monkeypatch):
+    """A user who deliberately sets LLM_TEMPERATURE keeps their value — bench
+    only fills in 0.0 when the env is unset."""
+    monkeypatch.setenv("EVAL_RESULTS_DIR", str(tmp_path))
+    monkeypatch.delenv("WEBVOYAGER_TASKS", raising=False)
+    monkeypatch.setenv("LLM_TEMPERATURE", "0.3")
+
+    _capture_loader_paths(tmp_path, ["--suite", "webvoyager"])
+
+    assert os.environ.get("LLM_TEMPERATURE") == "0.3"

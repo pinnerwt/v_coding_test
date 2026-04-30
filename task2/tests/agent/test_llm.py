@@ -505,3 +505,58 @@ def test_chat_disable_thinking_falsy_env_omits_kwargs(monkeypatch, value):
 
     body = json.loads(route.calls.last.request.content)
     assert "chat_template_kwargs" not in body
+
+
+@respx.mock
+def test_chat_temperature_env_overrides_default(monkeypatch):
+    """LLM_TEMPERATURE in the environment becomes the request temperature when
+    the caller does not pass one explicitly. Lets benchmarks force temp=0.0
+    without code changes; lets prod set a higher value via Zeabur env."""
+    monkeypatch.setenv("LLM_TEMPERATURE", "0.7")
+    route = respx.post(f"http://localhost:8090{CHAT_PATH}").mock(
+        return_value=httpx.Response(200, json=_ok_payload())
+    )
+
+    chat(messages=[{"role": "user", "content": "hi"}], model="m")
+
+    body = json.loads(route.calls.last.request.content)
+    assert body["temperature"] == 0.7
+
+
+@respx.mock
+def test_chat_temperature_env_unset_defaults_to_zero(monkeypatch):
+    monkeypatch.delenv("LLM_TEMPERATURE", raising=False)
+    route = respx.post(f"http://localhost:8090{CHAT_PATH}").mock(
+        return_value=httpx.Response(200, json=_ok_payload())
+    )
+
+    chat(messages=[{"role": "user", "content": "hi"}], model="m")
+
+    body = json.loads(route.calls.last.request.content)
+    assert body["temperature"] == 0.0
+
+
+@respx.mock
+def test_chat_explicit_temperature_overrides_env(monkeypatch):
+    monkeypatch.setenv("LLM_TEMPERATURE", "0.7")
+    route = respx.post(f"http://localhost:8090{CHAT_PATH}").mock(
+        return_value=httpx.Response(200, json=_ok_payload())
+    )
+
+    chat(messages=[{"role": "user", "content": "hi"}], model="m", temperature=0.2)
+
+    body = json.loads(route.calls.last.request.content)
+    assert body["temperature"] == 0.2
+
+
+@respx.mock
+def test_chat_invalid_temperature_env_falls_back_to_zero(monkeypatch):
+    monkeypatch.setenv("LLM_TEMPERATURE", "not-a-number")
+    route = respx.post(f"http://localhost:8090{CHAT_PATH}").mock(
+        return_value=httpx.Response(200, json=_ok_payload())
+    )
+
+    chat(messages=[{"role": "user", "content": "hi"}], model="m")
+
+    body = json.loads(route.calls.last.request.content)
+    assert body["temperature"] == 0.0

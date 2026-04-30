@@ -112,3 +112,35 @@ def test_replan_returns_fallback_when_steps_contains_non_strings():
         task="find X", observation={}, prior_plan=prior, reason="halt", llm=_FakeLLM(payload)
     )
     assert result.steps == ["find X"]
+
+
+def test_plan_strips_markdown_code_fence_around_json():
+    """Qwen3.5-27B sometimes wraps its planner JSON in ```json ... ``` fences;
+    _parse_plan must strip these so the real plan is used (not the fallback)."""
+    payload = (
+        "```json\n"
+        '{"steps": ["ask the user: which branch?", "navigate to booking"], '
+        '"expected_end_state": "reservation confirmed"}\n'
+        "```"
+    )
+    llm = _FakeLLM(payload)
+    result, _ = plan(task="book a table at 旭集", observation={}, llm=llm)
+    assert result.steps == ["ask the user: which branch?", "navigate to booking"]
+    assert result.expected_end_state == "reservation confirmed"
+
+
+def test_plan_strips_unlabeled_code_fence_around_json():
+    """Bare ``` ... ``` fences (no language tag) must also be stripped."""
+    payload = '```\n{"steps": ["a", "b"], "expected_end_state": "done"}\n```'
+    llm = _FakeLLM(payload)
+    result, _ = plan(task="t", observation={}, llm=llm)
+    assert result.steps == ["a", "b"]
+
+
+def test_replan_strips_markdown_code_fence_around_json():
+    payload = '```json\n{"steps": ["c"], "expected_end_state": "done"}\n```'
+    prior = Plan(steps=["x"], expected_end_state="x")
+    result, _ = replan(
+        task="t", observation={}, prior_plan=prior, reason="halt", llm=_FakeLLM(payload)
+    )
+    assert result.steps == ["c"]

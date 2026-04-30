@@ -219,6 +219,103 @@ def test_loop_read_no_intent(fixture_server, playwright_chromium):
 
 
 # ---------------------------------------------------------------------------
+# Read tool dispatch — with `find` (substring window into full body text)
+# ---------------------------------------------------------------------------
+
+
+def test_window_around_returns_window_centered_on_match():
+    from agent.loop import _window_around
+
+    text = "A" * 10000 + "TARGET" + "B" * 10000
+    out = _window_around(text, "TARGET", window=2000)
+    assert out is not None
+    assert "TARGET" in out
+    assert len(out) == 2000
+
+
+def test_window_around_case_insensitive():
+    from agent.loop import _window_around
+
+    out = _window_around("hello world Bengio Hinton", "BENGIO")
+    assert out is not None
+    assert "Bengio" in out
+
+
+def test_window_around_no_match_returns_none():
+    from agent.loop import _window_around
+
+    assert _window_around("hello world", "absent") is None
+
+
+def test_window_around_clamps_short_text():
+    from agent.loop import _window_around
+
+    out = _window_around("short text with TARGET in it", "TARGET", window=2000)
+    assert out == "short text with TARGET in it"
+
+
+def _run_read_dispatch(playwright_chromium, fixture_url: str, read_args: dict) -> str:
+    from agent.loop import _dispatch
+    from agent.supervisor import Supervisor
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        browser.goto(fixture_url)
+        return _dispatch("read", read_args, browser, Supervisor())
+
+
+def test_dispatch_read_with_find_returns_window_past_default_limit(
+    fixture_server, playwright_chromium
+):
+    out = _run_read_dispatch(
+        playwright_chromium,
+        f"{fixture_server}/read_find_long_page.html",
+        {"find": "TURING_2018_WINNERS_SENTINEL"},
+    )
+    assert "TURING_2018_WINNERS_SENTINEL" in out
+
+
+def test_dispatch_read_no_arg_truncates_before_sentinel(fixture_server, playwright_chromium):
+    # Pairs with the test above: proves the fixture's sentinel really does sit
+    # past the 2000-char default window, so the find-window test isn't trivially
+    # passing by accident.
+    out = _run_read_dispatch(
+        playwright_chromium,
+        f"{fixture_server}/read_find_long_page.html",
+        {},
+    )
+    assert "TURING_2018_WINNERS_SENTINEL" not in out
+
+
+def test_dispatch_read_with_find_no_match_returns_error(fixture_server, playwright_chromium):
+    out = _run_read_dispatch(
+        playwright_chromium,
+        f"{fixture_server}/loop_happy_path.html",
+        {"find": "definitely_not_present_xyz"},
+    )
+    assert out.lower().startswith("error")
+    assert "not found" in out.lower()
+
+
+def test_dispatch_read_rejects_both_intent_and_find(fixture_server, playwright_chromium):
+    out = _run_read_dispatch(
+        playwright_chromium,
+        f"{fixture_server}/loop_happy_path.html",
+        {"intent": "the heading", "find": "Hello"},
+    )
+    assert out.lower().startswith("error")
+    assert "either" in out.lower() and "not both" in out.lower()
+
+
+def test_read_tool_schema_advertises_find_parameter():
+    from agent.loop import TOOLS
+
+    read_tool = next(t for t in TOOLS if t["function"]["name"] == "read")
+    props = read_tool["function"]["parameters"]["properties"]
+    assert "find" in props
+    assert props["find"]["type"] == "string"
+
+
+# ---------------------------------------------------------------------------
 # Read tool dispatch — with intent (locate-based element read)
 # ---------------------------------------------------------------------------
 
@@ -3248,6 +3345,120 @@ def test_loop_type_dispatch_ok_returns_typed_into_string(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# Type tool: submit=True presses Enter after fill (search-form pattern)
+# ---------------------------------------------------------------------------
+
+
+def _make_fake_browser_for_type_with_press(selector: str):
+    import types
+
+    from agent.locate import LocateResult
+
+    locate_result = LocateResult(
+        tier="L1_ax",
+        role="searchbox",
+        name="Search",
+        selector=selector,
+        ax_fingerprint="fp-stub",
+        confidence=1.0,
+        coords=None,
+    )
+
+    class _StubLocator:
+        def __init__(self):
+            self.calls: list[tuple[str, dict]] = []
+
+        def fill(self, text, *, timeout):
+            self.calls.append(("fill", {"text": text, "timeout": timeout}))
+
+        def press(self, key, *, timeout=5000):
+            self.calls.append(("press", {"key": key, "timeout": timeout}))
+
+    stub_locator = _StubLocator()
+
+    class _StubPage:
+        @property
+        def url(self):
+            return "http://example.com/"
+
+        def locator(self, sel):
+            assert sel == locate_result.selector
+            return stub_locator
+
+        def wait_for_load_state(self, *_a, **_kw):
+            pass
+
+    fake_page = _StubPage()
+    fake_browser = types.SimpleNamespace(_page=fake_page)
+    return fake_browser, locate_result, stub_locator
+
+
+def test_loop_type_with_submit_true_presses_enter_after_fill(monkeypatch):
+    from agent.loop import _dispatch
+    from agent.supervisor import Supervisor
+
+    fake_browser, locate_result, stub_locator = _make_fake_browser_for_type_with_press("input#q")
+
+    monkeypatch.setattr("agent.loop._locate_or_error_msg", lambda *_a, **_kw: locate_result)
+
+    run_id = "unit-type-submit"
+    writer = _open_click_writer(run_id)
+
+    result_str = _dispatch(
+        "type",
+        {"intent": "search box", "text": "ephemeral", "submit": True},
+        fake_browser,
+        Supervisor(),
+        trace_writer=writer,
+        run_id=run_id,
+        step_id=f"{run_id}:step-1",
+    )
+    writer.close()
+
+    ops = [c[0] for c in stub_locator.calls]
+    assert ops == ["fill", "press"], f"submit=True must press Enter after fill, got {ops}"
+    assert stub_locator.calls[1][1]["key"] == "Enter"
+    assert "ok" in result_str.lower() or result_str.startswith("Typed"), result_str
+
+
+def test_loop_type_without_submit_does_not_press(monkeypatch):
+    from agent.loop import _dispatch
+    from agent.supervisor import Supervisor
+
+    fake_browser, locate_result, stub_locator = _make_fake_browser_for_type_with_press("input#q")
+
+    monkeypatch.setattr("agent.loop._locate_or_error_msg", lambda *_a, **_kw: locate_result)
+
+    run_id = "unit-type-no-submit"
+    writer = _open_click_writer(run_id)
+
+    _dispatch(
+        "type",
+        {"intent": "search box", "text": "ephemeral"},
+        fake_browser,
+        Supervisor(),
+        trace_writer=writer,
+        run_id=run_id,
+        step_id=f"{run_id}:step-1",
+    )
+    writer.close()
+
+    ops = [c[0] for c in stub_locator.calls]
+    assert ops == ["fill"], f"default submit=False must NOT press Enter, got {ops}"
+
+
+def test_tools_list_type_has_submit_param():
+    from agent.loop import TOOLS
+
+    type_entry = next(t for t in TOOLS if t["function"]["name"] == "type")
+    props = type_entry["function"]["parameters"]["properties"]
+    assert "submit" in props, "type entry must have 'submit' parameter"
+    assert props["submit"]["type"] == "boolean"
+    required = type_entry["function"]["parameters"]["required"]
+    assert "submit" not in required, "'submit' must be optional"
+
+
+# ---------------------------------------------------------------------------
 # Compaction tests (fix-qwen-http-400)
 # ---------------------------------------------------------------------------
 
@@ -3390,9 +3601,12 @@ def test_loop_preserves_most_recent_observation_after_compaction():
         if m.get("role") == "user" and "Current state: " in m.get("content", "")
     ]
     assert prev_state_msgs, "prior chat call must have at least one state msg"
-    assert any(m is state_msgs[-2] for m in prev_state_msgs), (
-        "state msg from the prior step should be the same object across "
-        "chat calls (compaction must not copy/mutate kept messages)"
+    assert len(state_msgs) >= 3, "test setup must produce ≥3 state msgs to exercise elision"
+    assert "elided" in state_msgs[0]["content"].lower(), (
+        "stale AX trees from older steps must be elided in the latest chat call"
+    )
+    assert "elided" not in state_msgs[-1]["content"].lower(), (
+        "the most recent state msg must keep its full AX tree"
     )
 
     assert last_messages[0]["role"] == "system"
@@ -3621,6 +3835,129 @@ def test_compact_messages_drops_at_turn_boundary():
             f"assistant tool_call id {tc_id!r} kept without its tool result — "
             "OpenAI-compatible APIs reject this"
         )
+
+
+# ---------------------------------------------------------------------------
+# Stale AX-tree elision tests
+# ---------------------------------------------------------------------------
+
+
+def _state_msg(obs: dict) -> dict:
+    return {"role": "user", "content": f"Current state: {json.dumps(obs)}"}
+
+
+def test_strip_stale_ax_trees_no_op_when_within_keep_window():
+    from agent.loop import _KEEP_RECENT_AX_TREES, _strip_stale_ax_trees
+
+    msgs1: list[dict] = [{"role": "system", "content": "sys"}]
+    assert _strip_stale_ax_trees(msgs1) is msgs1
+
+    msgs_within: list[dict] = [{"role": "system", "content": "sys"}]
+    for i in range(_KEEP_RECENT_AX_TREES):
+        msgs_within.append(_state_msg({"url": f"https://x/{i}", "ax_tree_digest": "BIG"}))
+    assert _strip_stale_ax_trees(msgs_within) is msgs_within
+
+
+def test_strip_stale_ax_trees_keeps_latest_full_elides_prior():
+    from agent.loop import _strip_stale_ax_trees
+
+    big = "[link] page-content " * 500
+    msgs: list[dict] = [
+        {"role": "system", "content": "sys"},
+        _state_msg({"url": "https://a", "title": "A", "ax_tree_digest": big}),
+        {"role": "assistant", "content": None},
+        {"role": "tool", "tool_call_id": "1", "content": "ok"},
+        _state_msg({"url": "https://b", "title": "B", "ax_tree_digest": big}),
+        {"role": "assistant", "content": None},
+        {"role": "tool", "tool_call_id": "2", "content": "ok"},
+        _state_msg({"url": "https://c", "title": "C", "ax_tree_digest": big}),
+        {"role": "assistant", "content": None},
+        {"role": "tool", "tool_call_id": "3", "content": "ok"},
+        _state_msg({"url": "https://d", "title": "D", "ax_tree_digest": big}),
+    ]
+
+    out = _strip_stale_ax_trees(msgs)
+
+    state_indices = [
+        i
+        for i, m in enumerate(out)
+        if m.get("role") == "user" and "Current state: " in m.get("content", "")
+    ]
+    assert len(state_indices) == 4
+
+    for i in state_indices[-2:]:
+        assert out[i]["content"] == msgs[i]["content"]
+
+    for i in state_indices[:-2]:
+        assert big not in out[i]["content"]
+        assert "elided" in out[i]["content"].lower()
+    assert "https://a" in out[state_indices[0]]["content"]
+    assert "https://b" in out[state_indices[1]]["content"]
+
+
+def test_strip_stale_ax_trees_preserves_url_and_last_actions_in_elided():
+    from agent.loop import _strip_stale_ax_trees
+
+    big = "[link] x\n" * 500
+    obs1 = {
+        "url": "https://example.org/page1",
+        "title": "Page One",
+        "ax_tree_digest": big,
+        "ax_fingerprint": "fp1",
+        "last_actions": [{"tool": "click", "intent": "Search", "outcome": "ok"}],
+    }
+    obs2 = {"url": "https://example.org/page2", "ax_tree_digest": big, "last_actions": []}
+    obs3 = {"url": "https://example.org/page3", "ax_tree_digest": big, "last_actions": []}
+    msgs: list[dict] = [
+        {"role": "system", "content": "sys"},
+        _state_msg(obs1),
+        {"role": "tool", "tool_call_id": "1", "content": "ok"},
+        _state_msg(obs2),
+        {"role": "tool", "tool_call_id": "2", "content": "ok"},
+        _state_msg(obs3),
+    ]
+
+    out = _strip_stale_ax_trees(msgs)
+    elided = out[1]["content"]
+    assert "https://example.org/page1" in elided
+    assert "Page One" in elided
+    assert '"intent": "Search"' in elided
+    assert big not in elided
+
+
+def test_strip_stale_ax_trees_does_not_mutate_input():
+    from agent.loop import _strip_stale_ax_trees
+
+    big = "[link] x\n" * 500
+    original_msgs: list[dict] = [
+        {"role": "system", "content": "sys"},
+        _state_msg({"url": "https://a", "ax_tree_digest": big}),
+        {"role": "tool", "tool_call_id": "1", "content": "ok"},
+        _state_msg({"url": "https://b", "ax_tree_digest": big}),
+        {"role": "tool", "tool_call_id": "2", "content": "ok"},
+        _state_msg({"url": "https://c", "ax_tree_digest": big}),
+    ]
+    snapshot = [dict(m) for m in original_msgs]
+
+    _strip_stale_ax_trees(original_msgs)
+
+    assert original_msgs == snapshot
+
+
+def test_strip_stale_ax_trees_handles_non_json_state_content_gracefully():
+    from agent.loop import _strip_stale_ax_trees
+
+    msgs: list[dict] = [
+        {"role": "system", "content": "sys"},
+        {"role": "user", "content": "Current state: not-json-payload"},
+        {"role": "tool", "tool_call_id": "1", "content": "ok"},
+        _state_msg({"url": "https://b", "ax_tree_digest": "X" * 100}),
+        {"role": "tool", "tool_call_id": "2", "content": "ok"},
+        _state_msg({"url": "https://c", "ax_tree_digest": "X" * 100}),
+    ]
+
+    out = _strip_stale_ax_trees(msgs)
+    assert out[1]["content"] == "Current state: not-json-payload"
 
 
 # ---------------------------------------------------------------------------
@@ -4023,3 +4360,190 @@ def test_loop_budget_seconds_signature_accepts_kwarg():
     p = sig.parameters["budget_seconds"]
     assert p.default is None
     assert p.kind == inspect.Parameter.KEYWORD_ONLY
+
+
+# ---------------------------------------------------------------------------
+# ask_user tool: lets the agent ask the human a clarifying question mid-run
+# ---------------------------------------------------------------------------
+
+
+def test_tools_list_includes_ask_user():
+    """ask_user MUST appear in TOOLS with a required `question: string` parameter."""
+    from agent.loop import TOOLS
+
+    entry = next((t for t in TOOLS if t["function"]["name"] == "ask_user"), None)
+    assert entry is not None, "TOOLS must contain an entry with function.name == 'ask_user'"
+    props = entry["function"]["parameters"]["properties"]
+    assert "question" in props, "ask_user entry must have 'question' in parameters.properties"
+    assert props["question"]["type"] == "string", "ask_user 'question' must be type 'string'"
+    required = entry["function"]["parameters"]["required"]
+    assert "question" in required, "'question' must appear in ask_user's parameters.required"
+
+
+def test_loop_ask_user_callback_signature_kwarg():
+    """loop() MUST accept ask_user_callback as a keyword-only param defaulting to None."""
+    import inspect
+
+    from agent import loop as loop_mod
+
+    sig = inspect.signature(loop_mod.loop)
+    assert "ask_user_callback" in sig.parameters, "loop must accept ask_user_callback keyword param"
+    p = sig.parameters["ask_user_callback"]
+    assert p.default is None
+    assert p.kind == inspect.Parameter.KEYWORD_ONLY
+
+
+def test_loop_ask_user_invokes_callback_and_feeds_answer_back(fixture_server, playwright_chromium):
+    """When the LLM calls ask_user, the loop SHALL invoke the callback synchronously
+    and feed the answer back as the tool result so the LLM's next call sees it."""
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+
+    captured_questions: list[str] = []
+    captured_messages_at_step2: list[dict] = []
+
+    def _callback(question: str) -> str:
+        captured_questions.append(question)
+        return "Tianmu"
+
+    responses = [
+        _response_with_tool_call(
+            _tool_call(
+                "ask_user",
+                {"question": "Which 旭集 location?"},
+                call_id="tc-ask",
+            )
+        ),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"location": "Tianmu"},
+                    "evidence": {"url": fixture_url, "text_snippet": "Tianmu"},
+                },
+                call_id="tc-done",
+            )
+        ),
+    ]
+
+    class _CapturingLLM:
+        def __init__(self):
+            self._responses = list(responses)
+            self._idx = 0
+            self._tool_calls = 0
+
+        def chat(self, messages, *, tools=None, **_kw):
+            if tools is None:
+                return _plan_stub_response()
+            self._tool_calls += 1
+            if self._tool_calls == 2:
+                captured_messages_at_step2.extend(messages)
+            if self._idx < len(self._responses):
+                resp = self._responses[self._idx]
+                self._idx += 1
+                return resp
+            return _response_no_tool_call()
+
+    fake_llm = _CapturingLLM()
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        browser.goto(fixture_url)
+        result = loop(
+            "book a table at 旭集",
+            browser,
+            fake_llm,
+            max_steps=4,
+            ask_user_callback=_callback,
+        )
+
+    assert captured_questions == ["Which 旭集 location?"], (
+        f"callback must be invoked once with the question, got {captured_questions!r}"
+    )
+    assert result.status == "succeeded"
+    assert result.result == {"location": "Tianmu"}
+
+    tool_msgs = [
+        m
+        for m in captured_messages_at_step2
+        if m.get("role") == "tool" and m.get("tool_call_id") == "tc-ask"
+    ]
+    assert len(tool_msgs) == 1, (
+        f"ask_user must produce one tool-result message in history, got {len(tool_msgs)}"
+    )
+    assert "Tianmu" in tool_msgs[0]["content"], (
+        f"answer 'Tianmu' must appear in ask_user tool-result content, got {tool_msgs[0]!r}"
+    )
+
+
+def test_loop_ask_user_without_callback_returns_error_and_loop_continues(
+    fixture_server, playwright_chromium
+):
+    """If the LLM calls ask_user but no callback was provided, the loop SHALL return an
+    error tool-result (not crash) so the agent can continue with another tool."""
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+
+    responses = [
+        _response_with_tool_call(
+            _tool_call(
+                "ask_user",
+                {"question": "Which one?"},
+                call_id="tc-ask",
+            )
+        ),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"answer": "fallback"},
+                    "evidence": {"url": fixture_url, "text_snippet": "Hello, loop"},
+                },
+                call_id="tc-done",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        browser.goto(fixture_url)
+        result = loop("task", browser, fake_llm, max_steps=4)
+
+    assert result.status == "succeeded", (
+        f"loop should not crash without callback, got status={result.status!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# goto: a NavigationError (DNS, refused, etc.) must not crash the run.
+# ---------------------------------------------------------------------------
+
+
+def test_loop_goto_navigation_error_returns_tool_error_loop_continues(
+    fixture_server, playwright_chromium
+):
+    """If browser.goto() raises NavigationError (e.g. ERR_NAME_NOT_RESOLVED on
+    a hallucinated URL), the loop SHALL return the error as a tool-result
+    message so the agent can try a different URL — not crash the run."""
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+
+    bad_url = "https://this-domain-does-not-exist.invalid/"
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": bad_url}, call_id="tc-bad")),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"recovered": True},
+                    "evidence": {"url": fixture_url, "text_snippet": "Hello, loop"},
+                },
+                call_id="tc-done",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        browser.goto(fixture_url)
+        result = loop("task", browser, fake_llm, max_steps=4)
+
+    assert result.status == "succeeded", (
+        f"loop should not crash on bad goto URL, got status={result.status!r}"
+    )

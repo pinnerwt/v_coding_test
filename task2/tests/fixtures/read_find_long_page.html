@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Read Find Long Page</title></head>
+<body>
+  <h1>Read Find Long Page</h1>
+  <p id="filler">PADDING_LINE_BEFORE_TARGET. </p>
+  <script>
+    // Inject ~6000 chars of filler so the target sits well past the 2000-char
+    // body-text window that read() returns when called with no arguments.
+    const filler = document.getElementById('filler');
+    for (let i = 0; i < 200; i++) {
+      filler.appendChild(document.createTextNode('PADDING_LINE_BEFORE_TARGET. '));
+    }
+  </script>
+  <p>Before the target. <span id="target">TURING_2018_WINNERS_SENTINEL</span> After the target.</p>
+  <p>More trailing content so windowing has both sides to clamp.</p>
+</body>
+</html>

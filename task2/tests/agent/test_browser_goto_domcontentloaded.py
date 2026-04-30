@@ -62,7 +62,7 @@ def slow_subresource_server() -> Iterator[str]:
 def hanging_html_server() -> Iterator[str]:
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):  # noqa: N802 - signature dictated by stdlib
-            time.sleep(20)
+            time.sleep(35)
             try:
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html")
@@ -97,7 +97,7 @@ def test_goto_raises_navigation_error_on_dcl_timeout(playwright_chromium, hangin
         with pytest.raises(NavigationError):
             b.goto(hanging_html_server + "/")
         elapsed = time.monotonic() - start
-    assert elapsed < 31.0, f"goto did not honor 15s timeout (elapsed={elapsed:.2f}s)"
+    assert elapsed < 65.0, f"goto did not honor 30s timeout (elapsed={elapsed:.2f}s)"
 
 
 def test_goto_passes_wait_until_domcontentloaded_arg(playwright_chromium):
@@ -113,4 +113,4 @@ def test_goto_passes_wait_until_domcontentloaded_arg(playwright_chromium):
 
     assert len(captured) == 1
     assert captured[0]["wait_until"] == "domcontentloaded"
-    assert captured[0]["timeout"] == 15000
+    assert captured[0]["timeout"] == 30000
