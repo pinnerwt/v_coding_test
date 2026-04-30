@@ -62,8 +62,11 @@ TOOLS: list[dict] = [
         "function": {
             "name": "read",
             "description": (
-                "Read visible text from the page, optionally targeting an element by intent "
-                "(e.g. 'the article heading'). Returns the text content."
+                "Read visible text from the page. With no args, returns the first ~2000 "
+                "chars of body text. Use 'intent' to target an element (e.g. 'the article "
+                "heading'). Use 'find' to return a window of text centered on the first "
+                "occurrence of a substring (case-insensitive) — useful when the answer "
+                "sits past the default window on a long page (e.g. a Wikipedia article)."
             ),
             "parameters": {
                 "type": "object",
@@ -75,7 +78,15 @@ TOOLS: list[dict] = [
                             "(e.g. 'the search result heading'). "
                             "Omit to read the full page body."
                         ),
-                    }
+                    },
+                    "find": {
+                        "type": "string",
+                        "description": (
+                            "Optional: a substring (case-insensitive) to locate in the "
+                            "full body text; returns ~2000 chars of surrounding context. "
+                            "Mutually exclusive with 'intent'."
+                        ),
+                    },
                 },
                 "required": [],
             },
@@ -405,6 +416,19 @@ def _body_text(page: Page) -> str:
     return page.evaluate(_BODY_TEXT_JS)[:_BODY_TEXT_LIMIT]
 
 
+def _window_around(text: str, query: str, *, window: int = _BODY_TEXT_LIMIT) -> str | None:
+    idx = text.lower().find(query.lower())
+    if idx == -1:
+        return None
+    if len(text) <= window:
+        return text
+    half = window // 2
+    start = max(0, idx - half)
+    end = min(len(text), start + window)
+    start = max(0, end - window)
+    return text[start:end]
+
+
 def _locate_via_ladder(
     page: Page,
     intent: str,
@@ -721,7 +745,18 @@ def _dispatch(
         return f"Navigated to {url}"
     if tool_name == "read":
         intent: str | None = args.get("intent")
+        find: str | None = args.get("find")
         page = browser._page
+        if intent and find:
+            return "Error: read accepts either 'intent' or 'find', not both"
+        if find is not None:
+            if not isinstance(find, str) or not find.strip():
+                return "Error: read 'find' must be a non-empty string"
+            full = page.evaluate(_BODY_TEXT_JS)
+            window = _window_around(full, find)
+            if window is None:
+                return f"Error: 'find' query {find!r} not found in page text"
+            return window
         if intent:
             located = _locate_or_error_msg(
                 page,

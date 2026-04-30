@@ -219,6 +219,130 @@ def test_loop_read_no_intent(fixture_server, playwright_chromium):
 
 
 # ---------------------------------------------------------------------------
+# Read tool dispatch — with `find` (substring window into full body text)
+# ---------------------------------------------------------------------------
+
+
+def test_window_around_returns_window_centered_on_match():
+    from agent.loop import _window_around
+
+    text = "A" * 10000 + "TARGET" + "B" * 10000
+    out = _window_around(text, "TARGET", window=2000)
+    assert out is not None
+    assert "TARGET" in out
+    assert len(out) == 2000
+
+
+def test_window_around_case_insensitive():
+    from agent.loop import _window_around
+
+    out = _window_around("hello world Bengio Hinton", "BENGIO")
+    assert out is not None
+    assert "Bengio" in out
+
+
+def test_window_around_no_match_returns_none():
+    from agent.loop import _window_around
+
+    assert _window_around("hello world", "absent") is None
+
+
+def test_window_around_clamps_short_text():
+    from agent.loop import _window_around
+
+    out = _window_around("short text with TARGET in it", "TARGET", window=2000)
+    assert out == "short text with TARGET in it"
+
+
+def _make_dispatch_supervisor():
+    """Return a minimal Supervisor stub for _dispatch calls in unit tests."""
+    from agent.supervisor import Supervisor
+
+    return Supervisor()
+
+
+def test_dispatch_read_with_find_returns_window_past_default_limit(
+    fixture_server, playwright_chromium
+):
+    """`read(find='SENTINEL')` must return text containing the sentinel even when
+    the sentinel sits past the 2000-char no-arg body-text window."""
+    from agent.loop import _dispatch
+
+    fixture_url = f"{fixture_server}/read_find_long_page.html"
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        browser.goto(fixture_url)
+        out = _dispatch(
+            "read",
+            {"find": "TURING_2018_WINNERS_SENTINEL"},
+            browser,
+            _make_dispatch_supervisor(),
+        )
+
+    assert "TURING_2018_WINNERS_SENTINEL" in out
+
+
+def test_dispatch_read_no_arg_truncates_before_sentinel(fixture_server, playwright_chromium):
+    """Sanity check: with no `find`, the no-arg read does NOT contain the sentinel
+    (the 2000-char window is too short). Proves the long-page fixture is set up
+    correctly for the windowing test above."""
+    from agent.loop import _dispatch
+
+    fixture_url = f"{fixture_server}/read_find_long_page.html"
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        browser.goto(fixture_url)
+        out = _dispatch("read", {}, browser, _make_dispatch_supervisor())
+
+    assert "TURING_2018_WINNERS_SENTINEL" not in out
+
+
+def test_dispatch_read_with_find_no_match_returns_error(fixture_server, playwright_chromium):
+    from agent.loop import _dispatch
+
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        browser.goto(fixture_url)
+        out = _dispatch(
+            "read",
+            {"find": "definitely_not_present_xyz"},
+            browser,
+            _make_dispatch_supervisor(),
+        )
+
+    assert out.lower().startswith("error")
+    assert "not found" in out.lower()
+
+
+def test_dispatch_read_rejects_both_intent_and_find(fixture_server, playwright_chromium):
+    from agent.loop import _dispatch
+
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        browser.goto(fixture_url)
+        out = _dispatch(
+            "read",
+            {"intent": "the heading", "find": "Hello"},
+            browser,
+            _make_dispatch_supervisor(),
+        )
+
+    assert out.lower().startswith("error")
+    assert "either" in out.lower() and "not both" in out.lower()
+
+
+def test_read_tool_schema_advertises_find_parameter():
+    from agent.loop import TOOLS
+
+    read_tool = next(t for t in TOOLS if t["function"]["name"] == "read")
+    props = read_tool["function"]["parameters"]["properties"]
+    assert "find" in props
+    assert props["find"]["type"] == "string"
+
+
+# ---------------------------------------------------------------------------
 # Read tool dispatch — with intent (locate-based element read)
 # ---------------------------------------------------------------------------
 
