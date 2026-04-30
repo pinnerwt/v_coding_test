@@ -28,7 +28,7 @@ Three processes, each in its own terminal:
 1. **Local LLM** — `llama-server --model qwen3.5-27b ... --port 8090 --temp 1.0 --top-p 0.95 --top-k 20 --seed 42 --jinja` (config from CLAUDE.md). Verify with `curl http://localhost:8090/v1/models`.
 2. **FastAPI backend** — from `task2/`:
    ```bash
-   LLM_BASE_URL=http://localhost:8090/v1 \
+   LLM_BASE_URL=http://localhost:8090 \
    LLM_MODEL=qwen3.5-27b \
    LLM_API_KEY=local \
    LLM_TEMPERATURE=0.0 \
