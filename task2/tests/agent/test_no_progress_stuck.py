@@ -164,16 +164,17 @@ class _StubBrowserWithClick:
         pass
 
 
-def test_no_progress_bail_after_4_unchanged_fingerprint_steps_no_successful_action():
-    """Constant fingerprint + read-only steps → bail at step 4 with reason=no_progress."""
+def test_no_progress_bail_after_two_consecutive_unchanged_fingerprint_windows():
+    """Constant fingerprint + read-only steps → first 4-step window triggers a
+    'force done' warning, second 4-step window fails with reason=no_progress."""
     stub_browser = _StubBrowser()
     stub_llm = _ReadEachStepClient()
     with patch("agent.loop.observe.build_observation", return_value=_CONSTANT_OBS):
         result = loop("task", browser=stub_browser, llm_client=stub_llm, max_steps=20)
     assert result.status == "failed"
     assert result.reason == "no_progress"
-    assert result.steps == 4
-    assert len(result.step_breakdown) == 4
+    assert result.steps == 8
+    assert len(result.step_breakdown) == 8
     for entry in result.step_breakdown:
         bd = entry["latency_breakdown_ms"]
         assert isinstance(bd["observation_ms"], int)

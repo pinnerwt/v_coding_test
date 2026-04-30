@@ -170,6 +170,39 @@ _NO_TOOL_CALL_K: int = 3
 _NO_PROGRESS_K: int = 4
 
 
+_ELIDED_AX_TREE_MARKER = "[elided — see latest observation]"
+_KEEP_RECENT_AX_TREES = 2
+
+
+def _strip_stale_ax_trees(messages: list[dict]) -> list[dict]:
+    state_indices = [
+        i
+        for i, m in enumerate(messages)
+        if m.get("role") == "user"
+        and isinstance(m.get("content"), str)
+        and STATE_MESSAGE_PREFIX in m["content"]
+    ]
+    if len(state_indices) <= _KEEP_RECENT_AX_TREES:
+        return messages
+
+    out = list(messages)
+    for i in state_indices[:-_KEEP_RECENT_AX_TREES]:
+        content = out[i]["content"]
+        prefix_idx = content.find(STATE_MESSAGE_PREFIX)
+        head = content[: prefix_idx + len(STATE_MESSAGE_PREFIX)]
+        json_part = content[prefix_idx + len(STATE_MESSAGE_PREFIX) :]
+        try:
+            obs = json.loads(json_part)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if not isinstance(obs, dict) or "ax_tree_digest" not in obs:
+            continue
+        pruned = {k: v for k, v in obs.items() if k != "ax_tree_digest"}
+        pruned["ax_tree_digest"] = _ELIDED_AX_TREE_MARKER
+        out[i] = {**out[i], "content": head + json.dumps(pruned)}
+    return out
+
+
 def _compact_messages(messages: list[dict], budget_chars: int) -> list[dict]:
     def _is_state_msg(m: dict) -> bool:
         return (
@@ -812,6 +845,7 @@ def loop(
     _no_progress_buf: list[tuple[str | None, bool]] = []
     _consecutive_no_tool_call_steps: int = 0
     _force_done_next: bool = False
+    _no_progress_warned: bool = False
     _budget = int(os.environ.get("LLM_CONTEXT_CHAR_BUDGET", _DEFAULT_CONTEXT_CHAR_BUDGET))
     t_loop = time.monotonic()
 
@@ -878,8 +912,7 @@ def loop(
             {
                 "role": "user",
                 "content": (
-                    f"{budget_prefix}{plan_prefix}{STATE_MESSAGE_PREFIX}"
-                    f"{json.dumps(observation)}"
+                    f"{budget_prefix}{plan_prefix}{STATE_MESSAGE_PREFIX}{json.dumps(observation)}"
                 ),
             }
         )
@@ -887,6 +920,7 @@ def loop(
         if events is not None:
             events.append(_DecisionMarker())
 
+        messages = _strip_stale_ax_trees(messages)
         messages = _compact_messages(messages, _budget)
         t_llm_start = time.monotonic()
         response = llm_client.chat(messages, tools=TOOLS)
@@ -1168,8 +1202,9 @@ def loop(
                 and None not in fps
                 and all(not ok for _, ok in _no_progress_buf)
             ):
-                if not _force_done_next:
+                if not _no_progress_warned:
                     _force_done_next = True
+                    _no_progress_warned = True
                     _no_progress_buf.clear()
                 else:
                     _record_step(
@@ -1179,9 +1214,7 @@ def loop(
                         dispatched_tool_names,
                         latency_ms_per_step,
                         step_breakdown,
-                        latency_breakdown=_phase_breakdown(
-                            t0, t_llm_start, t_dispatch_start
-                        ),
+                        latency_breakdown=_phase_breakdown(t0, t_llm_start, t_dispatch_start),
                     )
                     return RunResult(
                         status="failed",

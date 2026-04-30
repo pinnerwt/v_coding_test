@@ -46,6 +46,33 @@ def _default_run_dict(run_id: str, task: str) -> dict:
     }
 
 
+def _live_user_content(
+    observation: dict, *, step: int, max_steps: int, plan: list[str] | None = None
+) -> str:
+    """Reproduce the user message content loop.py builds for a given step.
+
+    Mirrors `budget_prefix + plan_prefix + STATE_MESSAGE_PREFIX + json.dumps(obs)`
+    from loop.py so hand-built fixtures stay self-consistent with the live loop.
+    """
+    plan = plan if plan is not None else ["complete the task"]
+    steps_remaining = max_steps - step
+    if steps_remaining <= 4:
+        budget_prefix = (
+            f"URGENT: step {step}/{max_steps}, time used 0s. "
+            "Stop navigating. Call `done` NOW with your "
+            "best-effort answer based on anything you have already read — "
+            "even a partial or uncertain answer is acceptable. ONLY call "
+            "`fail` if you have literally read nothing relevant; in that "
+            "case explain where you got stuck, what you tried, and what "
+            "additional budget would enable. Do not call any other tool.\n\n"
+        )
+    else:
+        budget_prefix = f"Step {step}/{max_steps}.\n\n"
+    plan_lines = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(plan))
+    plan_prefix = f"Plan progress:\n{plan_lines}\n\n"
+    return f"{budget_prefix}{plan_prefix}Current state: {json.dumps(observation)}"
+
+
 def _mutate_decision_tool(lines: list[str], old_tool: str, new_tool: str) -> list[str]:
     """Rewrite the first DecisionEvent line whose tool == old_tool to new_tool."""
     out: list[str] = []
@@ -644,7 +671,10 @@ def test_replay_run_handles_multiple_tool_calls_per_response(tmp_path):
     }
     first_prompt = [
         {"role": "system", "content": _build_system_prompt(task)},
-        {"role": "user", "content": f"Current state: {json.dumps(observation)}"},
+        {
+            "role": "user",
+            "content": _live_user_content(observation, step=1, max_steps=3),
+        },
     ]
 
     events = [
@@ -821,7 +851,10 @@ def test_replay_run_uses_recorded_observation_ax_tree(tmp_path):
         "ax_fingerprint": empty_fp,
         "last_actions": [],
     }
-    state_msg = {"role": "user", "content": f"Current state: {json.dumps(obs)}"}
+    state_msg = {
+        "role": "user",
+        "content": _live_user_content(obs, step=1, max_steps=3),
+    }
     system_msg = {"role": "system", "content": _build_system_prompt(task)}
 
     done_args = {
@@ -1048,7 +1081,10 @@ def test_replay_run_normalizes_dict_form_tool_arguments(tmp_path):
     }
     first_prompt = [
         {"role": "system", "content": _build_system_prompt(task)},
-        {"role": "user", "content": f"Current state: {json.dumps(observation)}"},
+        {
+            "role": "user",
+            "content": _live_user_content(observation, step=1, max_steps=3),
+        },
     ]
 
     run = _default_run_dict("run-rec-001", task)

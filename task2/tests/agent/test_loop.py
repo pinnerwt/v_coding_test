@@ -3390,9 +3390,12 @@ def test_loop_preserves_most_recent_observation_after_compaction():
         if m.get("role") == "user" and "Current state: " in m.get("content", "")
     ]
     assert prev_state_msgs, "prior chat call must have at least one state msg"
-    assert any(m is state_msgs[-2] for m in prev_state_msgs), (
-        "state msg from the prior step should be the same object across "
-        "chat calls (compaction must not copy/mutate kept messages)"
+    assert len(state_msgs) >= 3, "test setup must produce ≥3 state msgs to exercise elision"
+    assert "elided" in state_msgs[0]["content"].lower(), (
+        "stale AX trees from older steps must be elided in the latest chat call"
+    )
+    assert "elided" not in state_msgs[-1]["content"].lower(), (
+        "the most recent state msg must keep its full AX tree"
     )
 
     assert last_messages[0]["role"] == "system"
@@ -3621,6 +3624,129 @@ def test_compact_messages_drops_at_turn_boundary():
             f"assistant tool_call id {tc_id!r} kept without its tool result — "
             "OpenAI-compatible APIs reject this"
         )
+
+
+# ---------------------------------------------------------------------------
+# Stale AX-tree elision tests
+# ---------------------------------------------------------------------------
+
+
+def _state_msg(obs: dict) -> dict:
+    return {"role": "user", "content": f"Current state: {json.dumps(obs)}"}
+
+
+def test_strip_stale_ax_trees_no_op_when_within_keep_window():
+    from agent.loop import _KEEP_RECENT_AX_TREES, _strip_stale_ax_trees
+
+    msgs1: list[dict] = [{"role": "system", "content": "sys"}]
+    assert _strip_stale_ax_trees(msgs1) is msgs1
+
+    msgs_within: list[dict] = [{"role": "system", "content": "sys"}]
+    for i in range(_KEEP_RECENT_AX_TREES):
+        msgs_within.append(_state_msg({"url": f"https://x/{i}", "ax_tree_digest": "BIG"}))
+    assert _strip_stale_ax_trees(msgs_within) is msgs_within
+
+
+def test_strip_stale_ax_trees_keeps_latest_full_elides_prior():
+    from agent.loop import _strip_stale_ax_trees
+
+    big = "[link] page-content " * 500
+    msgs: list[dict] = [
+        {"role": "system", "content": "sys"},
+        _state_msg({"url": "https://a", "title": "A", "ax_tree_digest": big}),
+        {"role": "assistant", "content": None},
+        {"role": "tool", "tool_call_id": "1", "content": "ok"},
+        _state_msg({"url": "https://b", "title": "B", "ax_tree_digest": big}),
+        {"role": "assistant", "content": None},
+        {"role": "tool", "tool_call_id": "2", "content": "ok"},
+        _state_msg({"url": "https://c", "title": "C", "ax_tree_digest": big}),
+        {"role": "assistant", "content": None},
+        {"role": "tool", "tool_call_id": "3", "content": "ok"},
+        _state_msg({"url": "https://d", "title": "D", "ax_tree_digest": big}),
+    ]
+
+    out = _strip_stale_ax_trees(msgs)
+
+    state_indices = [
+        i
+        for i, m in enumerate(out)
+        if m.get("role") == "user" and "Current state: " in m.get("content", "")
+    ]
+    assert len(state_indices) == 4
+
+    for i in state_indices[-2:]:
+        assert out[i]["content"] == msgs[i]["content"]
+
+    for i in state_indices[:-2]:
+        assert big not in out[i]["content"]
+        assert "elided" in out[i]["content"].lower()
+    assert "https://a" in out[state_indices[0]]["content"]
+    assert "https://b" in out[state_indices[1]]["content"]
+
+
+def test_strip_stale_ax_trees_preserves_url_and_last_actions_in_elided():
+    from agent.loop import _strip_stale_ax_trees
+
+    big = "[link] x\n" * 500
+    obs1 = {
+        "url": "https://example.org/page1",
+        "title": "Page One",
+        "ax_tree_digest": big,
+        "ax_fingerprint": "fp1",
+        "last_actions": [{"tool": "click", "intent": "Search", "outcome": "ok"}],
+    }
+    obs2 = {"url": "https://example.org/page2", "ax_tree_digest": big, "last_actions": []}
+    obs3 = {"url": "https://example.org/page3", "ax_tree_digest": big, "last_actions": []}
+    msgs: list[dict] = [
+        {"role": "system", "content": "sys"},
+        _state_msg(obs1),
+        {"role": "tool", "tool_call_id": "1", "content": "ok"},
+        _state_msg(obs2),
+        {"role": "tool", "tool_call_id": "2", "content": "ok"},
+        _state_msg(obs3),
+    ]
+
+    out = _strip_stale_ax_trees(msgs)
+    elided = out[1]["content"]
+    assert "https://example.org/page1" in elided
+    assert "Page One" in elided
+    assert '"intent": "Search"' in elided
+    assert big not in elided
+
+
+def test_strip_stale_ax_trees_does_not_mutate_input():
+    from agent.loop import _strip_stale_ax_trees
+
+    big = "[link] x\n" * 500
+    original_msgs: list[dict] = [
+        {"role": "system", "content": "sys"},
+        _state_msg({"url": "https://a", "ax_tree_digest": big}),
+        {"role": "tool", "tool_call_id": "1", "content": "ok"},
+        _state_msg({"url": "https://b", "ax_tree_digest": big}),
+        {"role": "tool", "tool_call_id": "2", "content": "ok"},
+        _state_msg({"url": "https://c", "ax_tree_digest": big}),
+    ]
+    snapshot = [dict(m) for m in original_msgs]
+
+    _strip_stale_ax_trees(original_msgs)
+
+    assert original_msgs == snapshot
+
+
+def test_strip_stale_ax_trees_handles_non_json_state_content_gracefully():
+    from agent.loop import _strip_stale_ax_trees
+
+    msgs: list[dict] = [
+        {"role": "system", "content": "sys"},
+        {"role": "user", "content": "Current state: not-json-payload"},
+        {"role": "tool", "tool_call_id": "1", "content": "ok"},
+        _state_msg({"url": "https://b", "ax_tree_digest": "X" * 100}),
+        {"role": "tool", "tool_call_id": "2", "content": "ok"},
+        _state_msg({"url": "https://c", "ax_tree_digest": "X" * 100}),
+    ]
+
+    out = _strip_stale_ax_trees(msgs)
+    assert out[1]["content"] == "Current state: not-json-payload"
 
 
 # ---------------------------------------------------------------------------

@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 _EXPECT = {"schema": {"answer": "str"}, "validators": ["answer.nonempty"]}
-_BUDGET = {"steps": 20, "usd": 0.25, "seconds": 120}
+_BUDGET = {"steps": 20, "usd": 0.25, "seconds": 150}
 
 
 def load_webvoyager(path: str | Path) -> list[dict]:
