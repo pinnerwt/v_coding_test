@@ -254,81 +254,54 @@ def test_window_around_clamps_short_text():
     assert out == "short text with TARGET in it"
 
 
-def _make_dispatch_supervisor():
-    """Return a minimal Supervisor stub for _dispatch calls in unit tests."""
+def _run_read_dispatch(playwright_chromium, fixture_url: str, read_args: dict) -> str:
+    from agent.loop import _dispatch
     from agent.supervisor import Supervisor
 
-    return Supervisor()
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        browser.goto(fixture_url)
+        return _dispatch("read", read_args, browser, Supervisor())
 
 
 def test_dispatch_read_with_find_returns_window_past_default_limit(
     fixture_server, playwright_chromium
 ):
-    """`read(find='SENTINEL')` must return text containing the sentinel even when
-    the sentinel sits past the 2000-char no-arg body-text window."""
-    from agent.loop import _dispatch
-
-    fixture_url = f"{fixture_server}/read_find_long_page.html"
-
-    with Browser(playwright_browser=playwright_chromium) as browser:
-        browser.goto(fixture_url)
-        out = _dispatch(
-            "read",
-            {"find": "TURING_2018_WINNERS_SENTINEL"},
-            browser,
-            _make_dispatch_supervisor(),
-        )
-
+    out = _run_read_dispatch(
+        playwright_chromium,
+        f"{fixture_server}/read_find_long_page.html",
+        {"find": "TURING_2018_WINNERS_SENTINEL"},
+    )
     assert "TURING_2018_WINNERS_SENTINEL" in out
 
 
 def test_dispatch_read_no_arg_truncates_before_sentinel(fixture_server, playwright_chromium):
-    """Sanity check: with no `find`, the no-arg read does NOT contain the sentinel
-    (the 2000-char window is too short). Proves the long-page fixture is set up
-    correctly for the windowing test above."""
-    from agent.loop import _dispatch
-
-    fixture_url = f"{fixture_server}/read_find_long_page.html"
-
-    with Browser(playwright_browser=playwright_chromium) as browser:
-        browser.goto(fixture_url)
-        out = _dispatch("read", {}, browser, _make_dispatch_supervisor())
-
+    # Pairs with the test above: proves the fixture's sentinel really does sit
+    # past the 2000-char default window, so the find-window test isn't trivially
+    # passing by accident.
+    out = _run_read_dispatch(
+        playwright_chromium,
+        f"{fixture_server}/read_find_long_page.html",
+        {},
+    )
     assert "TURING_2018_WINNERS_SENTINEL" not in out
 
 
 def test_dispatch_read_with_find_no_match_returns_error(fixture_server, playwright_chromium):
-    from agent.loop import _dispatch
-
-    fixture_url = f"{fixture_server}/loop_happy_path.html"
-
-    with Browser(playwright_browser=playwright_chromium) as browser:
-        browser.goto(fixture_url)
-        out = _dispatch(
-            "read",
-            {"find": "definitely_not_present_xyz"},
-            browser,
-            _make_dispatch_supervisor(),
-        )
-
+    out = _run_read_dispatch(
+        playwright_chromium,
+        f"{fixture_server}/loop_happy_path.html",
+        {"find": "definitely_not_present_xyz"},
+    )
     assert out.lower().startswith("error")
     assert "not found" in out.lower()
 
 
 def test_dispatch_read_rejects_both_intent_and_find(fixture_server, playwright_chromium):
-    from agent.loop import _dispatch
-
-    fixture_url = f"{fixture_server}/loop_happy_path.html"
-
-    with Browser(playwright_browser=playwright_chromium) as browser:
-        browser.goto(fixture_url)
-        out = _dispatch(
-            "read",
-            {"intent": "the heading", "find": "Hello"},
-            browser,
-            _make_dispatch_supervisor(),
-        )
-
+    out = _run_read_dispatch(
+        playwright_chromium,
+        f"{fixture_server}/loop_happy_path.html",
+        {"intent": "the heading", "find": "Hello"},
+    )
     assert out.lower().startswith("error")
     assert "either" in out.lower() and "not both" in out.lower()
 
