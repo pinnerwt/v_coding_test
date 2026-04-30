@@ -2,6 +2,43 @@
 
 Plan for shipping a usable demo: a chat UI where reviewers submit tasks, see the agent's plan and step-by-step trace live, answer clarifying questions when the agent calls `ask_user`, and read the final result.
 
+## Branching & deployment workflow
+
+```
+   feature/* ──PR──▶ dev ──PR──▶ master ──push──▶ Zeabur (when enabled)
+                      │             │
+                      │             └── task2 deploy: build image,
+                      │                  smoke-test container, deploy
+                      │
+                      └── task2 CI: ruff + pytest
+                          task2 benchmark: canary gate + diff comment
+```
+
+- **`feature/*`** — work in progress. PRs target `dev`. Same CI as today (`task2 CI` + `task2 benchmark`).
+- **`dev`** — integration branch. Run the FastAPI server + chat UI here against the local Qwen3.5 backend (see *Local development* below). When `dev` is verified end-to-end (ask_user round-trip works, no regressions on the verification checklist), open a PR `dev → master`.
+- **`master`** — production. Push triggers `task2 deploy`: builds the Docker image, runs a containerised smoke test (`curl /` returns 200), and conditionally deploys to Zeabur.
+- **Zeabur deploy gating** — the deploy job is gated on `vars.ZEABUR_DEPLOY_ENABLED == 'true'`. While the Zeabur account is not yet provisioned, the variable stays unset and the deploy job is skipped. Build + smoke still run, so master is always known to be deployable.
+
+When the Zeabur account exists: set repo variable `ZEABUR_DEPLOY_ENABLED=true`, set secret `ZEABUR_TOKEN`, set variable `ZEABUR_SERVICE_ID`, and replace the placeholder echo in `.github/workflows/task2-deploy.yml::deploy` with the actual deploy CLI/API call.
+
+## Local development (dev branch)
+
+Three processes, each in its own terminal:
+
+1. **Local LLM** — `llama-server --model qwen3.5-27b ... --port 8090 --temp 1.0 --top-p 0.95 --top-k 20 --seed 42 --jinja` (config from CLAUDE.md). Verify with `curl http://localhost:8090/v1/models`.
+2. **FastAPI backend** — from `task2/`:
+   ```bash
+   LLM_BASE_URL=http://localhost:8090/v1 \
+   LLM_MODEL=qwen3.5-27b \
+   LLM_API_KEY=local \
+   LLM_TEMPERATURE=0.0 \
+   DB_PATH=./runs.db \
+   uv run uvicorn api.server:app --reload --port 8000
+   ```
+3. **Frontend** — served by FastAPI at `http://localhost:8000/` once B1–B4 land. Until then, `/` shows the legacy one-shot form.
+
+Smoke flow: open `http://localhost:8000/`, submit *"請問下禮拜六中午十二點可不可以訂位旭集？"*, verify the chat asks which branch, answer *"天母店"*, watch the trace pane render `goto / read / click / type` events, and confirm the run terminates with `done` or a real `fail`.
+
 ## What already exists
 
 - `api/server.py` — FastAPI app with `POST /tasks`, `GET /tasks/{id}`, `GET /tasks/{id}/trace` (ndjson snapshot, not streaming), and a minimal HTML form at `/`.
