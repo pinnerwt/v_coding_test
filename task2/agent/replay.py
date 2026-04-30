@@ -152,6 +152,24 @@ _STUB_PLAN_RESPONSE = ChatResponse(
 )
 
 
+_STUB_JUDGE_RESPONSE = ChatResponse(
+    content='{"verdict": "supported", "reason": "stub"}',
+    tool_calls=[],
+    finish_reason="stop",
+    model="stub",
+    usage=Usage(0, 0, 0),
+    raw={},
+)
+
+
+def _is_judge_call(messages: list[dict]) -> bool:
+    if not messages:
+        return False
+    first = messages[0]
+    content = first.get("content", "") if isinstance(first, dict) else ""
+    return isinstance(content, str) and "[VERIFY DONE]" in content
+
+
 class StubLLMClient:
     """Returns pre-recorded ChatResponse objects in sequence.
 
@@ -175,6 +193,9 @@ class StubLLMClient:
         seed: int | None = None,  # noqa: ARG002
         **kwargs: Any,  # noqa: ARG002
     ) -> ChatResponse:
+        # Verify-done judge calls — return supported without consuming decision queue.
+        if _is_judge_call(messages):
+            return _STUB_JUDGE_RESPONSE
         # Planner calls have no tools; return a stub plan without consuming the decision queue.
         if tools is None:
             return _STUB_PLAN_RESPONSE

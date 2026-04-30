@@ -24,6 +24,26 @@ def _plan_stub_response() -> ChatResponse:
     )
 
 
+def _judge_stub_response() -> ChatResponse:
+    return ChatResponse(
+        content='{"verdict": "supported", "reason": "stub"}',
+        tool_calls=[],
+        finish_reason="stop",
+        model="fake",
+        usage=Usage(prompt_tokens=0, completion_tokens=0, total_tokens=0),
+        raw={},
+        usd=0.0,
+    )
+
+
+def _is_judge_call(messages: list[dict]) -> bool:
+    if not messages:
+        return False
+    first = messages[0]
+    content = first.get("content", "") if isinstance(first, dict) else ""
+    return isinstance(content, str) and "[VERIFY DONE]" in content
+
+
 def _tool_call(name: str, args: dict, call_id: str = "tc-1") -> ToolCall:
     return ToolCall(id=call_id, name=name, arguments=json.dumps(args))
 
@@ -68,6 +88,8 @@ class _SleepingLLMClient:
         self._index = 0
 
     def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
+        if _is_judge_call(messages):
+            return _judge_stub_response()
         if tools is None:
             return _plan_stub_response()
         time.sleep(0.4)
@@ -86,6 +108,8 @@ class _SimpleLLMClient:
         self._index = 0
 
     def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
+        if _is_judge_call(messages):
+            return _judge_stub_response()
         if tools is None:
             return _plan_stub_response()
         if self._index < len(self._responses):

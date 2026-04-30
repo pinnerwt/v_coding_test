@@ -337,6 +337,74 @@ def _record_step(
     return step_ms
 
 
+_VERIFY_DONE_SYSTEM_PROMPT = (
+    "[VERIFY DONE]\n"
+    "You are a result verifier for a browser agent. Decide whether the agent's "
+    "claimed result is supported by what it actually observed during the run. "
+    "Reject results that contain facts (names, prices, dates, numbers) that do "
+    "not appear in the observations, or that attribute facts to the wrong "
+    "subject (e.g. a price labelled with a city that is paired with a different "
+    'price in the observations). Reply ONLY with a single JSON object: '
+    '{"verdict": "supported" | "unsupported", "reason": "<one short sentence>"}.'
+)
+
+
+def _build_observation_tape(messages: list[dict]) -> str:
+    parts: list[str] = []
+    for m in messages:
+        role = m.get("role")
+        content = m.get("content", "")
+        if not isinstance(content, str):
+            continue
+        if role == "tool" and not content.startswith("Error:"):
+            parts.append(content)
+        elif role == "user" and STATE_MESSAGE_PREFIX in content:
+            parts.append(content)
+    return "\n".join(parts)
+
+
+def verify_done_with_llm(
+    *,
+    task: str,
+    observation_tape: str,
+    result: Any,
+    evidence: Any,
+    llm_client: LLMClient,
+) -> tuple[Literal["supported", "unsupported"], str, Any]:
+    user_msg = (
+        f"Task: {task}\n\n"
+        f"Claimed result:\n{json.dumps(result, ensure_ascii=False)}\n\n"
+        f"Claimed evidence:\n{json.dumps(evidence, ensure_ascii=False)}\n\n"
+        f"Observations (read outputs and page state during the run):\n"
+        f"{observation_tape[:8000]}"
+    )
+    response = llm_client.chat(
+        [
+            {"role": "system", "content": _VERIFY_DONE_SYSTEM_PROMPT},
+            {"role": "user", "content": user_msg},
+        ],
+    )
+    raw = (response.content or "").strip()
+    if raw.startswith("```"):
+        raw = raw.strip("`")
+        if "\n" in raw:
+            raw = raw.split("\n", 1)[1]
+        raw = raw.rstrip("`").strip()
+    verdict: Literal["supported", "unsupported"] = "unsupported"
+    reason = "verifier returned non-JSON output"
+    try:
+        parsed = json.loads(raw)
+        v = parsed.get("verdict")
+        if v in ("supported", "unsupported"):
+            verdict = v
+            reason = str(parsed.get("reason", ""))
+        else:
+            reason = f"verifier returned invalid verdict: {v!r}"
+    except (ValueError, TypeError):
+        pass
+    return verdict, reason, response
+
+
 def _check_evidence(evidence: dict | None) -> dict:
     reasons: list[str] = []
     if not isinstance(evidence, dict):
@@ -1154,6 +1222,77 @@ def loop(
             if tool_call.name == "done":
                 evidence = args.get("evidence")
                 verifier = _check_evidence(evidence)
+
+                if verifier["ok"]:
+                    tape = _build_observation_tape(messages)
+                    verdict, reason, judge_resp = verify_done_with_llm(
+                        task=task,
+                        observation_tape=tape,
+                        result=args.get("result"),
+                        evidence=evidence,
+                        llm_client=llm_client,
+                    )
+                    cum_prompt_tokens += judge_resp.usage.prompt_tokens
+                    cum_completion_tokens += judge_resp.usage.completion_tokens
+                    cum_usd += judge_resp.usd
+
+                    if verdict == "unsupported":
+                        verifier = {
+                            "ok": False,
+                            "reasons": [f"verifier: {reason}"],
+                        }
+                        if trace_writer is not None and run_id is not None:
+                            sup_seq = trace_writer.next_seq(run_id)
+                            trace_writer.append_event(
+                                SupervisorEvent(
+                                    run_id=run_id,
+                                    seq=sup_seq,
+                                    ts=datetime.now(UTC).isoformat(),
+                                    step_id=_step_id,
+                                    trigger_event_seq=0,
+                                    classified_as="unsupported_done",
+                                    policy="replan",
+                                    attempt=1,
+                                )
+                            )
+                        if not supervisor.replan_used:
+                            messages.append(
+                                {
+                                    "role": "tool",
+                                    "tool_call_id": tool_call.id,
+                                    "content": (
+                                        "Supervisor: claimed result not supported by "
+                                        f"observations ({reason}). Gather missing "
+                                        "evidence with `read`/`goto`/`click` and call "
+                                        "`done` again, or call `fail` with a rationale."
+                                    ),
+                                }
+                            )
+                            new_plan, replan_resp = plan_module.replan(
+                                task,
+                                observation,
+                                active_plan,
+                                f"unsupported done: {reason}",
+                                llm_client,
+                            )
+                            cum_prompt_tokens += replan_resp.usage.prompt_tokens
+                            cum_completion_tokens += replan_resp.usage.completion_tokens
+                            cum_usd += replan_resp.usd
+                            supervisor.replan_used = True
+                            active_plan = new_plan
+                            _no_progress_buf.clear()
+                            replanned_this_step = True
+                            _emit_plan_event(
+                                events,
+                                "replan",
+                                new_plan.steps,
+                                str(uuid.uuid4()),
+                                trace_writer=trace_writer,
+                                run_id=run_id,
+                                step_id=_step_id,
+                            )
+                            break
+
                 status: RunStatus = "succeeded" if verifier["ok"] else "unverified"
                 _emit_act_event(
                     trace_writer=trace_writer,

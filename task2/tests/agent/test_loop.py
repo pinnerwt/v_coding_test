@@ -69,18 +69,55 @@ def _plan_stub_response() -> ChatResponse:
     )
 
 
+def _judge_response(verdict: str = "supported", reason: str = "") -> ChatResponse:
+    return ChatResponse(
+        content=json.dumps({"verdict": verdict, "reason": reason}),
+        tool_calls=[],
+        finish_reason="stop",
+        model="fake",
+        usage=Usage(prompt_tokens=0, completion_tokens=0, total_tokens=0),
+        raw={},
+    )
+
+
+def _is_judge_call(messages: list[dict]) -> bool:
+    if not messages:
+        return False
+    first = messages[0]
+    if not isinstance(first, dict):
+        return False
+    content = first.get("content")
+    return isinstance(content, str) and "[VERIFY DONE]" in content
+
+
 class _FakeLLMClient:
     """Returns pre-canned ChatResponse objects in sequence.
 
     Planner calls (tools=None) are answered with a stub plan response so
     existing tests do not need to prepend a planner response to their lists.
+    Judge calls (system message contains "[VERIFY DONE]") consume from
+    judge_responses; if exhausted, default to a "supported" verdict so
+    existing tests stay green without explicit setup.
     """
 
-    def __init__(self, responses: list[ChatResponse]):
+    def __init__(
+        self,
+        responses: list[ChatResponse],
+        *,
+        judge_responses: list[ChatResponse] | None = None,
+    ):
         self._responses = list(responses)
+        self._judge_responses = list(judge_responses or [])
         self._index = 0
+        self._judge_index = 0
 
     def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
+        if _is_judge_call(messages):
+            if self._judge_index < len(self._judge_responses):
+                resp = self._judge_responses[self._judge_index]
+                self._judge_index += 1
+                return resp
+            return _judge_response("supported", "default")
         if tools is None:
             return _plan_stub_response()
         if self._index < len(self._responses):
@@ -1154,6 +1191,8 @@ def test_second_supervisor_halt_returns_failed(fixture_server, playwright_chromi
             self._replan_done = False
 
         def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
+            if _is_judge_call(messages):
+                return _judge_response("supported", "test default")
             idx = self._call_index
             self._call_index += 1
             if idx == 0:
@@ -1185,6 +1224,8 @@ def test_planner_tokens_included_in_run_metrics(fixture_server, playwright_chrom
             self._call_index = 0
 
         def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
+            if _is_judge_call(messages):
+                return _judge_response("supported", "test default")
             idx = self._call_index
             self._call_index += 1
             if idx == 0:
@@ -1232,6 +1273,8 @@ def test_loop_does_not_terminally_fail_on_unrelated_error_after_replan(
             self._state = "plan"
 
         def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
+            if _is_judge_call(messages):
+                return _judge_response("supported", "test default")
             if self._state == "plan":
                 self._state = "read"
                 return _fake_text_response(plan_json)
@@ -1287,6 +1330,8 @@ def test_replan_does_not_leave_orphan_tool_call_in_message_history(
             self.all_messages: list[list[dict]] = []
 
         def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
+            if _is_judge_call(messages):
+                return _judge_response("supported", "test default")
             self.all_messages.append(list(messages))
             idx = self._call_index
             self._call_index += 1
@@ -4432,6 +4477,8 @@ def test_loop_ask_user_invokes_callback_and_feeds_answer_back(fixture_server, pl
             self._tool_calls = 0
 
         def chat(self, messages, *, tools=None, **_kw):
+            if _is_judge_call(messages):
+                return _judge_response("supported", "test default")
             if tools is None:
                 return _plan_stub_response()
             self._tool_calls += 1
@@ -4716,4 +4763,153 @@ def test_loop_fail_emits_act_event(fixture_server, playwright_chromium):
     fail_events = [e for e in events if e.tool == "fail"]
     assert len(fail_events) == 1
     assert fail_events[0].outcome == "ok"
+    writer.close()
+
+
+# ---------------------------------------------------------------------------
+# LLM-as-judge: supervisor verifies done with a follow-up LLM call
+# ---------------------------------------------------------------------------
+
+
+def test_loop_done_supported_judge_marks_succeeded(fixture_server, playwright_chromium):
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+        _response_with_tool_call(_tool_call("read", {}, call_id="tc-2")),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"heading": "Hello, loop"},
+                    "evidence": {"url": fixture_url, "text_snippet": "Hello, loop"},
+                },
+                call_id="tc-3",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(
+        responses,
+        judge_responses=[_judge_response("supported", "matches observed text")],
+    )
+
+    run_id = "test-judge-supported"
+    writer = _make_writer_with_run(run_id)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop("t", browser, fake_llm, trace_writer=writer, run_id=run_id)
+
+    assert result.status == "succeeded"
+    sup_events = [
+        e for e in writer.iter_events(run_id)
+        if isinstance(e, SupervisorEvent) and e.classified_as == "unsupported_done"
+    ]
+    assert sup_events == []
+    writer.close()
+
+
+def test_loop_done_unsupported_triggers_replan_and_emits_supervisor_event(
+    fixture_server, playwright_chromium
+):
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"price": "NT$8,710 from Taipei"},
+                    "evidence": {"url": fixture_url, "text_snippet": "Hello, loop"},
+                },
+                call_id="tc-2",
+            )
+        ),
+        # After replan, agent reads then submits a supportable done
+        _response_with_tool_call(_tool_call("read", {}, call_id="tc-3")),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"heading": "Hello, loop"},
+                    "evidence": {"url": fixture_url, "text_snippet": "Hello, loop"},
+                },
+                call_id="tc-4",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(
+        responses,
+        judge_responses=[
+            _judge_response("unsupported", "price not in observations"),
+            _judge_response("supported", "matches"),
+        ],
+    )
+
+    run_id = "test-judge-unsupported-replan"
+    writer = _make_writer_with_run(run_id)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop("t", browser, fake_llm, trace_writer=writer, run_id=run_id)
+
+    sup_events = [
+        e for e in writer.iter_events(run_id)
+        if isinstance(e, SupervisorEvent) and e.classified_as == "unsupported_done"
+    ]
+    assert len(sup_events) == 1
+    assert sup_events[0].policy == "replan"
+
+    plan_events = [e for e in writer.iter_events(run_id) if isinstance(e, PlanEvent)]
+    replan_events = [e for e in plan_events if e.reason == "replan"]
+    assert len(replan_events) == 1
+
+    assert result.status == "succeeded"
+    writer.close()
+
+
+def test_loop_done_unsupported_after_replan_marks_unverified(
+    fixture_server, playwright_chromium
+):
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"price": "NT$8,710 from Taipei"},
+                    "evidence": {"url": fixture_url, "text_snippet": "Hello, loop"},
+                },
+                call_id="tc-2",
+            )
+        ),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"price": "NT$9,999 from Taipei"},
+                    "evidence": {"url": fixture_url, "text_snippet": "Hello, loop"},
+                },
+                call_id="tc-3",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(
+        responses,
+        judge_responses=[
+            _judge_response("unsupported", "price not in observations"),
+            _judge_response("unsupported", "still not supported"),
+        ],
+    )
+
+    run_id = "test-judge-unsupported-twice"
+    writer = _make_writer_with_run(run_id)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop("t", browser, fake_llm, trace_writer=writer, run_id=run_id)
+
+    assert result.status == "unverified"
+    sup_events = [
+        e for e in writer.iter_events(run_id)
+        if isinstance(e, SupervisorEvent) and e.classified_as == "unsupported_done"
+    ]
+    assert len(sup_events) >= 1
     writer.close()
