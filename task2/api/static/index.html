@@ -118,6 +118,11 @@ function addMessage(text, cls) {
   return div;
 }
 
+// Answers received since the last finalised (initial/replan) plan event.
+// Surfaced on the next plan render so the user can confirm their input
+// was captured even when the planner returned a degenerate plan.
+let pendingAnswers = [];
+
 function addEvent(ev) {
   const div = document.createElement('div');
   const kind = ev.type === 'trace' ? (ev.kind || 'trace') : ev.type;
@@ -136,9 +141,16 @@ function addEvent(ev) {
       }
     } else if (ev.kind === 'plan') {
       label = `plan (${ev.reason || 'initial'})`;
-      detail = (ev.reason === 'ask_user' || ev.reason === 'started')
+      const stepsText = (ev.reason === 'ask_user' || ev.reason === 'started')
         ? (ev.steps || [])[0] || ''
         : (ev.steps || []).join(' → ');
+      if ((ev.reason === 'initial' || ev.reason === 'replan') && pendingAnswers.length) {
+        const prefix = `[answer: ${pendingAnswers.join(' | ')}] `;
+        detail = prefix + stepsText;
+        pendingAnswers = [];
+      } else {
+        detail = stepsText;
+      }
     } else if (ev.kind === 'locate') {
       label = `locate: ${ev.tier || '?'} (${ev.outcome || '?'})`;
       detail = ev.intent || '';
@@ -153,6 +165,9 @@ function addEvent(ev) {
   } else if (ev.type === 'answer') {
     label = 'answer';
     detail = ev.answer || '';
+    if (detail) {
+      pendingAnswers.push(detail);
+    }
   } else if (ev.type === 'terminal') {
     const reasonSuffix = ev.reason ? ` (${ev.reason})` : '';
     label = `terminal: ${ev.status}${reasonSuffix}`;
