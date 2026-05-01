@@ -121,24 +121,18 @@ the remaining (and one regressed) issue families.
 
 ## F18 — `done` after a goto-only sequence with no `read` should require an intervening read
 
+**Status:** DEFERRED (attempted, reverted).
+
 **Severity:** P2.
 
 **Evidence:**
 - A3 (`…/round5/A3.json`): `goto flights.google.com` → 4 silent steps → `done` with `result.cheapest_fare="NT$6,344"` taken from the homepage promo banner. Supervisor correctly halts as `premature_done`, F9 grounding check is empty (no `read` content), and the loop falls through to `no_progress`.
-- The LLM had no opportunity to extract grounded data because no `read` ever ran. The current premature heuristics catch *some* of this (T1 `no_action_yet` at step 1) but not the goto-then-done-after-N-silent-steps shape.
 
-**Diagnosis:** The "is the proposed answer grounded?" check (F9) is gated on `_latest_read_content`. When the agent leaps to `done` having only done a `goto`, `_latest_read_content` is empty, F9 short-circuits to "not grounded" → premature_done, but the agent has already committed and the recovery path is brittle. Better: refuse to consider any `done` premature-or-not until at least one `read` has happened in the run.
+**Diagnosis:** The structural rule "no done before any read" is too coarse for the variety of legitimate flows in the existing test suite. A first-pass implementation (TDD red→green for the three F18 cases) caused 11 unrelated regressions: many `test_loop.py` happy-paths legitimately do `goto → done` with the answer visible in the AX-tree digest (no `read` needed), and the `test_replay.py` fixtures encode specific LLM-call counts that an extra premature-halt round breaks. Even with an AX-tree grounding escape hatch, the rule still pre-empts F9's substring grounding and the LLM-judge premature path.
 
-**Fix:**
-1. Add a precondition in the done-handling branch of `agent/loop.py`: if no `read` event has been emitted in this run, treat the done as `premature_done` with reason `"no_read_yet — call read() to ground the answer in page content"`. This is a precondition, evaluated *before* the existing T1/F2/F7 heuristics.
-2. Counter-example to keep behaviour sane: tasks like "navigate to the login page" that legitimately don't need a read should still pass — but those return `done` with empty `result.value` and current verifier already flags as low-quality. The precondition only fires when `result` carries a non-empty answer field.
+**Why deferred:** The desired effect (rejecting A3-style fabricated-from-promo-banner answers) is largely already covered by F9 (substring grounding) and the supervisor's existing `premature_done` classification. A3's specific failure is a *grounding* failure, not a *no-read-yet* failure — F9 caught it already; the loop just didn't recover well. A nuanced version of F18 would need to be a soft gate (LLM-judge only) or be conditioned on "the answer field is unfindable in any prior observation, AX tree included," which is closer to F9's territory than a structural precondition.
 
-**TDD shape:**
-- Unit: a stub LLM that emits `goto` then `done` with non-empty result. Loop classifies as `premature_done` with reason `no_read_yet`; F10's act event still fires.
-- Unit: the same trace, but with `read` between `goto` and `done`, accepts the done (preserves U4 behaviour).
-- Negative: `done` with empty `result` after a goto-only sequence is *not* gated by F18 (lets the verifier handle no-answer cases).
-
-**Expected impact:** A3 fails earlier and cleaner (no fabricated promo-banner answer). Marginal improvement in extraction-task latency by short-circuiting one wasted halt round.
+**Recommended next step:** Treat A3 recovery as a separate ticket targeting the post-`premature_done` recovery path (planner re-issuing a `read` after a fabricated `done` is downgraded), not a precondition on `done` itself.
 
 ---
 

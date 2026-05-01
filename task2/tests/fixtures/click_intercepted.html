@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Click Intercepted Fixture</title>
+  <style>
+    /* Transparent fixed overlay that intercepts pointer events. The
+       button below is "found" by the locator but Playwright's click
+       times out because the overlay receives the click instead. A JS
+       dispatch (el.click()) bypasses the hit-test entirely. */
+    .overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0);
+      z-index: 9999;
+      pointer-events: auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>Click Intercepted</h1>
+  <button id="target" type="button" onclick="document.title='clicked'">Confirm</button>
+  <div class="overlay"></div>
+</body>
+</html>

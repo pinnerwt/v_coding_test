@@ -24,7 +24,14 @@ from agent.locate import (
 )
 from agent.locator_cache import CacheEntry, _origin_from_url
 from agent.supervisor import EscalationDecision, Supervisor
-from agent.trace import ActEvent, LocateEvent, PlanEvent, SupervisorEvent, TraceWriter
+from agent.trace import (
+    ActEvent,
+    LocateEvent,
+    PlanEvent,
+    StepAdvanceEvent,
+    SupervisorEvent,
+    TraceWriter,
+)
 
 if TYPE_CHECKING:
     from playwright.sync_api import Page
@@ -974,6 +981,35 @@ def _emit_supervisor_event(
     trace_writer.append_event(event)
 
 
+_STEP_ADVANCE_CONTENT_MAX = 256
+
+
+def _emit_step_advance(
+    *,
+    trace_writer: TraceWriter | None,
+    run_id: str | None,
+    reason: Literal["no_tool_call", "parse_error", "arg_validate_error"],
+    content: str,
+    step_id: str | None,
+    tool_call_id: str | None = None,
+) -> int | None:
+    if trace_writer is None or run_id is None:
+        return None
+    seq = trace_writer.next_seq(run_id)
+    truncated = content[:_STEP_ADVANCE_CONTENT_MAX]
+    event = StepAdvanceEvent(
+        run_id=run_id,
+        seq=seq,
+        ts=datetime.now(UTC).isoformat(),
+        step_id=step_id,
+        reason=reason,
+        content=truncated,
+        tool_call_id=tool_call_id,
+    )
+    trace_writer.append_event(event)
+    return seq
+
+
 def _emit_act_event(
     *,
     trace_writer: TraceWriter | None,
@@ -983,6 +1019,7 @@ def _emit_act_event(
     outcome: Literal["ok", "no_effect", "nav", "timeout", "error", "halted_by_supervisor"],
     ms: int,
     step_id: str | None = None,
+    diff: dict[str, Any] | None = None,
 ) -> int:
     if trace_writer is None or run_id is None:
         return 0
@@ -995,7 +1032,7 @@ def _emit_act_event(
         tool=tool,
         args=args,
         outcome=outcome,
-        diff={},
+        diff=diff if diff is not None else {},
         ms=ms,
     )
     trace_writer.append_event(event)
@@ -1271,10 +1308,26 @@ def _dispatch(
         from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
         outcome: Literal["ok", "no_effect", "nav", "timeout", "error"]
+        diff: dict[str, Any] = {}
         try:
             page.locator(locate_result.selector).click(timeout=5000)
         except PlaywrightTimeoutError:
-            outcome = "timeout"
+            # F17: a click that times out usually means a paint-blocking
+            # overlay (cookie banner, modal, age gate) is intercepting
+            # pointer events. Retry once via JS dispatch — bypasses the
+            # hit-test entirely without resorting to site-specific
+            # banner-dismissal heuristics.
+            try:
+                page.locator(locate_result.selector).evaluate("(el) => el.click()")
+            except PlaywrightError:
+                outcome = "timeout"
+            else:
+                try:
+                    page.wait_for_load_state("load", timeout=3000)
+                except PlaywrightTimeoutError:
+                    pass
+                outcome = "nav" if page.url != url_before else "ok"
+                diff = {"retry": "js_click"}
         except PlaywrightError:
             outcome = "error"
         else:
@@ -1292,6 +1345,7 @@ def _dispatch(
             outcome=outcome,
             ms=elapsed_ms,
             step_id=step_id,
+            diff=diff,
         )
         if outcome in _CLICK_SUCCESS_OUTCOMES:
             return f"Clicked {intent_val!r} ({outcome})"
@@ -1600,6 +1654,13 @@ def loop(
 
         if not response.tool_calls:
             _consecutive_no_tool_call_steps += 1
+            _emit_step_advance(
+                trace_writer=trace_writer,
+                run_id=run_id,
+                reason="no_tool_call",
+                content=response.content or "",
+                step_id=_step_id,
+            )
             _record_step(
                 step_num,
                 t0,
@@ -1632,6 +1693,14 @@ def loop(
             try:
                 args = json.loads(tool_call.arguments) if tool_call.arguments else {}
             except json.JSONDecodeError as exc:
+                _emit_step_advance(
+                    trace_writer=trace_writer,
+                    run_id=run_id,
+                    reason="parse_error",
+                    content=tool_call.arguments or "",
+                    step_id=_step_id,
+                    tool_call_id=tool_call.id,
+                )
                 messages.append(
                     {
                         "role": "tool",
@@ -1642,6 +1711,14 @@ def loop(
                 continue
 
             if not isinstance(args, dict):
+                _emit_step_advance(
+                    trace_writer=trace_writer,
+                    run_id=run_id,
+                    reason="arg_validate_error",
+                    content=tool_call.arguments or "",
+                    step_id=_step_id,
+                    tool_call_id=tool_call.id,
+                )
                 messages.append(
                     {
                         "role": "tool",
@@ -1676,6 +1753,13 @@ def loop(
                 eval_prev = args.get("evaluation_previous_action")
                 next_goal = args.get("next_goal")
                 premature_reason: str | None = None
+                # F18: precondition — when no `read` has ever succeeded in
+                # this run AND the proposed result carries a non-trivial
+                # answer, refuse the done. Otherwise the agent is reporting
+                # content it never read (round-5 A3: cheapest_fare lifted
+                # from a homepage promo banner with no intervening read).
+                # An empty/trivial result still flows through to the regular
+                # heuristics so navigation-only tasks aren't blocked.
                 if eval_prev == "no_action_yet" and step_num <= 1:
                     premature_reason = (
                         "agent declared evaluation_previous_action="

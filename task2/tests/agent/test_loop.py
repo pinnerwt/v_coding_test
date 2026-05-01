@@ -2991,6 +2991,13 @@ def _make_fake_browser_for_click(
                 raise click_raises
             _url_holder[0] = url_after
 
+        def evaluate(self, _js):
+            # F17: click-timeout JS-fallback path. The stub mirrors a deeply
+            # broken click (e.g. detached element); both attempts fail so
+            # outcome remains "timeout".
+            if click_raises is not None:
+                raise click_raises
+
     class _StubPage:
         @property
         def url(self):

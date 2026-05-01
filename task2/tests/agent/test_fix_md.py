@@ -945,3 +945,248 @@ def test_f15_full_locate_resolves_cjk_combobox_at_l1(
         b2.goto(fixture_url)
         loc = b2._page.locator(result.selector)
         assert loc.count() == 1
+
+
+# --- F16 (trace-gap step_advance event) -----------------------------------
+
+
+def test_f16_no_tool_call_response_emits_step_advance_event(
+    fixture_server, playwright_chromium
+):
+    """A text-only LLM response (no tool calls) used to leave a trace gap:
+    step_id incremented, no event written. F16: emit a StepAdvanceEvent
+    with reason='no_tool_call' so reviewers can see what happened during
+    the gap. The assistant's content is preserved (truncated to 256 chars)."""
+    from agent.trace import StepAdvanceEvent
+    from tests.agent.test_loop import (  # type: ignore[no-untyped-import]
+        _FakeLLMClient,
+        _make_writer_with_run,
+    )
+
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+
+    text_only = ChatResponse(
+        content="I am thinking about what to do next, but I will emit no tool call.",
+        tool_calls=[],
+        finish_reason="stop",
+        model="fake",
+        usage=Usage(prompt_tokens=1, completion_tokens=1, total_tokens=2),
+        raw={},
+    )
+    follow_up_done = _response_with_tool_call(
+        _tool_call(
+            "done",
+            {
+                "result": {"ok": True},
+                "evidence": {"url": fixture_url, "text_snippet": "Hello"},
+            },
+            call_id="tc-done",
+        )
+    )
+    fake_llm = _FakeLLMClient([text_only, follow_up_done])
+
+    run_id = "f16-no-tool-call"
+    writer = _make_writer_with_run(run_id)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        loop(
+            "task",
+            browser,
+            fake_llm,
+            max_steps=5,
+            trace_writer=writer,
+            run_id=run_id,
+        )
+
+    events = list(writer.iter_events(run_id))
+    advances = [e for e in events if isinstance(e, StepAdvanceEvent)]
+    writer.close()
+
+    assert len(advances) == 1, (
+        f"F16: text-only response must emit exactly one StepAdvanceEvent; got {len(advances)}"
+    )
+    adv = advances[0]
+    assert adv.reason == "no_tool_call"
+    assert "thinking" in adv.content.lower()
+    assert adv.step_id is not None and ":step-" in adv.step_id
+
+
+def test_f16_malformed_json_args_emits_step_advance_event(
+    fixture_server, playwright_chromium
+):
+    """A tool call with non-JSON arguments used to write only a synthetic
+    'Error: invalid JSON' tool message and `continue`, leaving no trace
+    record. F16: emit StepAdvanceEvent with reason='parse_error' carrying
+    the raw arguments string."""
+    from agent.trace import StepAdvanceEvent
+    from tests.agent.test_loop import (  # type: ignore[no-untyped-import]
+        _FakeLLMClient,
+        _make_writer_with_run,
+    )
+
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+
+    bad_args_tc = ToolCall(id="tc-bad", name="goto", arguments="{not json")
+    bad_args_response = ChatResponse(
+        content=None,
+        tool_calls=[bad_args_tc],
+        finish_reason="tool_calls",
+        model="fake",
+        usage=Usage(prompt_tokens=1, completion_tokens=1, total_tokens=2),
+        raw={},
+    )
+    follow_up_done = _response_with_tool_call(
+        _tool_call(
+            "done",
+            {
+                "result": {"ok": True},
+                "evidence": {"url": fixture_url, "text_snippet": "Hello"},
+            },
+            call_id="tc-done",
+        )
+    )
+    fake_llm = _FakeLLMClient([bad_args_response, follow_up_done])
+
+    run_id = "f16-parse-error"
+    writer = _make_writer_with_run(run_id)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        loop(
+            "task",
+            browser,
+            fake_llm,
+            max_steps=5,
+            trace_writer=writer,
+            run_id=run_id,
+        )
+
+    events = list(writer.iter_events(run_id))
+    advances = [e for e in events if isinstance(e, StepAdvanceEvent)]
+    writer.close()
+
+    parse_advances = [a for a in advances if a.reason == "parse_error"]
+    assert len(parse_advances) == 1, (
+        f"F16: malformed JSON args must emit a parse_error StepAdvanceEvent; got {advances}"
+    )
+    assert parse_advances[0].tool_call_id == "tc-bad"
+    assert "{not json" in parse_advances[0].content
+
+
+def test_f16_non_object_args_emits_step_advance_event(
+    fixture_server, playwright_chromium
+):
+    """A tool call whose decoded arguments are valid JSON but not an object
+    (e.g. a bare string or number) used to silently `continue`. F16: emit
+    StepAdvanceEvent with reason='arg_validate_error'."""
+    from agent.trace import StepAdvanceEvent
+    from tests.agent.test_loop import (  # type: ignore[no-untyped-import]
+        _FakeLLMClient,
+        _make_writer_with_run,
+    )
+
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+
+    non_obj_tc = ToolCall(id="tc-nobj", name="goto", arguments='"just-a-string"')
+    non_obj_response = ChatResponse(
+        content=None,
+        tool_calls=[non_obj_tc],
+        finish_reason="tool_calls",
+        model="fake",
+        usage=Usage(prompt_tokens=1, completion_tokens=1, total_tokens=2),
+        raw={},
+    )
+    follow_up_done = _response_with_tool_call(
+        _tool_call(
+            "done",
+            {
+                "result": {"ok": True},
+                "evidence": {"url": fixture_url, "text_snippet": "Hello"},
+            },
+            call_id="tc-done",
+        )
+    )
+    fake_llm = _FakeLLMClient([non_obj_response, follow_up_done])
+
+    run_id = "f16-arg-validate"
+    writer = _make_writer_with_run(run_id)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        loop(
+            "task",
+            browser,
+            fake_llm,
+            max_steps=5,
+            trace_writer=writer,
+            run_id=run_id,
+        )
+
+    events = list(writer.iter_events(run_id))
+    advances = [e for e in events if isinstance(e, StepAdvanceEvent)]
+    writer.close()
+
+    validate_advances = [a for a in advances if a.reason == "arg_validate_error"]
+    assert len(validate_advances) == 1, (
+        f"F16: non-object args must emit an arg_validate_error StepAdvanceEvent; got {advances}"
+    )
+    assert validate_advances[0].tool_call_id == "tc-nobj"
+
+
+# --- F17 (click-timeout JS-click retry) -----------------------------------
+
+
+def test_f17_click_timeout_retries_via_js_click(fixture_server, playwright_chromium):
+    """Round-5 A1 evidence: `click intent="網路訂位 link"` resolved its locator
+    fine but the actual click timed out (most likely cause: cookie-banner
+    overlay intercepting pointer events). F17: when Playwright's click
+    times out, retry once via `locator.evaluate('(el) => el.click()')` —
+    JS-dispatch bypasses the hit-test and unblocks pages with intercepting
+    overlays without resorting to site-specific banner-dismissal logic.
+
+    Test contract:
+      - Fixture has a transparent fixed overlay over the target button.
+      - First attempt → Playwright TimeoutError.
+      - F17 retry via JS-click → succeeds (button onclick fires; title changes).
+      - The act event records `outcome="ok"` with retry annotation in `diff`.
+    """
+    from agent.loop import _dispatch
+    from agent.supervisor import Supervisor
+    from agent.trace import ActEvent
+    from tests.agent.test_loop import _make_writer_with_run
+
+    fixture_url = f"{fixture_server}/click_intercepted.html"
+    run_id = "f17-js-click-retry"
+    writer = _make_writer_with_run(run_id)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        browser.goto(fixture_url)
+        out = _dispatch(
+            "click",
+            {"intent": "the Confirm button"},
+            browser,
+            Supervisor(),
+            trace_writer=writer,
+            run_id=run_id,
+            step_id=f"{run_id}:step-1",
+        )
+        # Sanity: button onclick must have fired.
+        title = browser._page.title()
+
+    events = list(writer.iter_events(run_id))
+    click_acts = [e for e in events if isinstance(e, ActEvent) and e.tool == "click"]
+    writer.close()
+
+    assert click_acts, "expected at least one click act event"
+    last = click_acts[-1]
+    assert last.outcome in {"ok", "nav"}, (
+        f"F17: click on intercepted target must succeed via JS-click retry; "
+        f"got outcome={last.outcome!r} out={out!r}"
+    )
+    assert last.diff.get("retry") == "js_click", (
+        f"F17 retry must be annotated in the act event diff; got diff={last.diff!r}"
+    )
+    assert title == "clicked", (
+        f"F17: button onclick handler must have fired after JS retry; title={title!r}"
+    )
+    assert not out.lower().startswith("error"), (
+        f"F17: dispatcher must not report error after successful JS-click; got {out!r}"
+    )
