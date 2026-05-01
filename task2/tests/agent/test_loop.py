@@ -3246,6 +3246,92 @@ def test_loop_click_playwright_error_yields_outcome_error(monkeypatch):
     )
 
 
+def test_i3_click_playwright_error_retries_via_js_click(monkeypatch):
+    """I3: a non-timeout PlaywrightError on click (e.g. "element not
+    interactable", detached, hit-test failure) must also traverse the
+    JS-click fallback. Round-17 A3/A6 saw 4-5× consecutive `outcome=error`
+    on positively-located dropdown rows / Trad-Chinese comboboxes; JS-click
+    bypasses Playwright's actionability check and would have unblocked them.
+    Previously F17 wired the fallback only on `PlaywrightTimeoutError`.
+    """
+    import types
+
+    import playwright.sync_api as pw_api
+
+    from agent.locate import LocateResult
+    from agent.loop import _dispatch
+    from agent.supervisor import Supervisor
+
+    locate_result = LocateResult(
+        tier="L1_ax",
+        role="combobox",
+        name="搜尋",
+        selector="role=combobox[name='搜尋']",
+        ax_fingerprint="fp",
+        confidence=1.0,
+        coords=None,
+    )
+
+    url_holder = ["http://example.com/maps"]
+    js_click_calls: list[str] = []
+
+    class _StubLocator:
+        def click(self, *, timeout):
+            raise pw_api.Error("element is not interactable")
+
+        def evaluate(self, js):
+            js_click_calls.append(js)
+            url_holder[0] = "http://example.com/maps?q=ramen"
+
+    class _StubPage:
+        @property
+        def url(self):
+            return url_holder[0]
+
+        def locator(self, _sel):
+            return _StubLocator()
+
+        def wait_for_load_state(self, _state, *, timeout):
+            pass
+
+    fake_browser = types.SimpleNamespace(_page=_StubPage())
+
+    monkeypatch.setattr(
+        "agent.loop._locate_or_error_msg", lambda *_a, **_kw: locate_result
+    )
+
+    run_id = "i3-js-click-on-error"
+    writer = _open_click_writer(run_id)
+
+    result_str = _dispatch(
+        "click",
+        {"intent": "the search combobox"},
+        fake_browser,
+        Supervisor(),
+        trace_writer=writer,
+        run_id=run_id,
+        step_id=f"{run_id}:step-1",
+    )
+
+    act_events = [e for e in writer.iter_events(run_id) if isinstance(e, ActEvent)]
+    writer.close()
+
+    assert js_click_calls, (
+        "I3: JS-click fallback must be attempted when click raises non-timeout "
+        f"PlaywrightError; got no evaluate() calls. result={result_str!r}"
+    )
+    assert len(act_events) == 1
+    assert act_events[0].outcome in {"ok", "nav"}, (
+        f"I3: outcome must reflect JS-click success, got {act_events[0].outcome!r}"
+    )
+    assert act_events[0].diff.get("retry") == "js_click", (
+        f"I3: diff must annotate the retry; got {act_events[0].diff!r}"
+    )
+    assert not result_str.lower().startswith("error"), (
+        f"I3: dispatcher must not report error after JS-click recovery; got {result_str!r}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Type tool: TOOLS list includes type entry with intent and text parameters
 # ---------------------------------------------------------------------------

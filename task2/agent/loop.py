@@ -1320,16 +1320,19 @@ def _dispatch(
         diff: dict[str, Any] = {}
         try:
             page.locator(locate_result.selector).click(timeout=5000)
-        except PlaywrightTimeoutError:
-            # F17: a click that times out usually means a paint-blocking
-            # overlay (cookie banner, modal, age gate) is intercepting
-            # pointer events. Retry once via JS dispatch — bypasses the
-            # hit-test entirely without resorting to site-specific
-            # banner-dismissal heuristics.
+        except PlaywrightError as exc:
+            # F17 + I3: a click that times out usually means a paint-blocking
+            # overlay (cookie banner, modal, age gate) is intercepting pointer
+            # events. A non-timeout PlaywrightError ("not interactable") often
+            # has the same root cause on locale-skinned pages where Playwright's
+            # actionability check refuses but a direct DOM .click() works. Retry
+            # once via JS dispatch — bypasses the hit-test entirely without
+            # resorting to site-specific banner-dismissal heuristics.
+            is_timeout = isinstance(exc, PlaywrightTimeoutError)
             try:
                 page.locator(locate_result.selector).evaluate("(el) => el.click()")
             except PlaywrightError:
-                outcome = "timeout"
+                outcome = "timeout" if is_timeout else "error"
             else:
                 try:
                     page.wait_for_load_state("load", timeout=3000)
@@ -1337,8 +1340,6 @@ def _dispatch(
                     pass
                 outcome = "nav" if page.url != url_before else "ok"
                 diff = {"retry": "js_click"}
-        except PlaywrightError:
-            outcome = "error"
         else:
             try:
                 page.wait_for_load_state("load", timeout=3000)
