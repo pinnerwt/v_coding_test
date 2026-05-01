@@ -47,6 +47,71 @@ def record_request(*, route: str, method: str, status: int, latency_seconds: flo
     http_request_latency_seconds.labels(route=route, method=method).observe(latency_seconds)
 
 
+# Task-level metrics: emitted from the terminal-emit path so both
+# `/tasks` and `/sessions` flows feed the same series.
+tasks_completed_total = Counter(
+    "tasks_completed_total",
+    "Count of agent runs that reached a terminal event, labeled by terminal status.",
+    labelnames=("status",),
+)
+
+task_latency_seconds = Histogram(
+    "task_latency_seconds",
+    "End-to-end agent run latency in seconds, labeled by terminal status.",
+    labelnames=("status",),
+    # Tasks span seconds-to-minutes; bucket edges chosen for the
+    # observed Tier-1 distribution (sub-second up to the 5-minute budget).
+    buckets=(1.0, 5.0, 15.0, 30.0, 60.0, 120.0, 240.0, 360.0, 600.0),
+)
+
+tasks_failure_class_total = Counter(
+    "tasks_failure_class_total",
+    "Count of non-succeeded terminal events, labeled by derived failure class.",
+    labelnames=("failure_class",),
+)
+
+
+def _classify_failure(*, status: str, verifier: dict | None) -> str | None:
+    """Bucket a non-succeeded terminal into a low-cardinality failure class.
+
+    Picks the first verifier reason key (the leading token before `:`)
+    if present — gives buckets like `self_reported_incomplete` or
+    `verifier`. Otherwise falls back to the terminal status itself
+    (`failed`, `timeout`, `unverified`). Returns None for `succeeded` /
+    `done` so callers don't increment the counter on success.
+    """
+    if status in ("succeeded", "done"):
+        return None
+    if isinstance(verifier, dict):
+        reasons = verifier.get("reasons")
+        if isinstance(reasons, list) and reasons:
+            first = str(reasons[0])
+            head = first.split(":", 1)[0].strip()
+            if head:
+                return head
+    return status or "unknown"
+
+
+def record_task_terminal(
+    *,
+    status: str,
+    latency_seconds: float,
+    verifier: dict | None = None,
+) -> None:
+    """Single entry-point for task observability on terminal emit.
+
+    Increments `tasks_completed_total{status}` and observes
+    `task_latency_seconds{status}`. Non-succeeded runs additionally
+    increment `tasks_failure_class_total{failure_class}` under a
+    verifier-derived bucket (see `_classify_failure`).
+    """
+    tasks_completed_total.labels(status=status).inc()
+    task_latency_seconds.labels(status=status).observe(latency_seconds)
+    failure_class = _classify_failure(status=status, verifier=verifier)
+    if failure_class is not None:
+        tasks_failure_class_total.labels(failure_class=failure_class).inc()
+
+
 def render_latest() -> tuple[bytes, str]:
     """Render the default registry in Prometheus text-exposition format.
 

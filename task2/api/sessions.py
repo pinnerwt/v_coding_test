@@ -4,6 +4,7 @@ import logging
 import os
 import queue
 import threading
+import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Literal
@@ -14,6 +15,7 @@ from agent.browser import Browser
 from agent.llm import _DEFAULT_LLM_MODEL, LLMClient
 from agent.loop import RunResult, loop
 from agent.trace import Run, RunBudget, RunLLM
+from api import metrics
 from api.db import get_db_path
 from api.streaming_trace import StreamingTraceWriter
 
@@ -63,6 +65,10 @@ class SessionState:
     event_log: list[dict[str, Any]] = field(default_factory=list)
     event_subscribers: list[queue.Queue[dict[str, Any]]] = field(default_factory=list)
     event_lock: threading.Lock = field(default_factory=threading.Lock)
+    # Monotonic clock at session start; used to compute task latency for
+    # the Prometheus histogram on terminal emit. `time.perf_counter()` is
+    # the right clock here — wall-clock can jump under NTP correction.
+    started_perf: float = field(default_factory=time.perf_counter)
 
 
 _SESSIONS: dict[str, SessionState] = {}
@@ -111,7 +117,11 @@ def _emit_terminal_once(session: SessionState, payload: dict[str, Any]) -> bool:
     """Emit a terminal event iff none has been emitted yet. Returns True if
     this call emitted, False if a terminal was already in the event log.
     Guards the SSE contract of exactly one terminal per run when both the
-    loop's normal completion and the watchdog can race."""
+    loop's normal completion and the watchdog can race.
+
+    Also records task-level Prometheus metrics on first emit — terminal
+    is the natural hook because it's exactly-once per run by construction
+    (the `event_log` check above) and carries the final status."""
     with session.event_lock:
         if any(e.get("type") == "terminal" for e in session.event_log):
             return False
@@ -119,6 +129,13 @@ def _emit_terminal_once(session: SessionState, payload: dict[str, Any]) -> bool:
         subs = list(session.event_subscribers)
     for q in subs:
         q.put(payload)
+    latency = max(0.0, time.perf_counter() - session.started_perf)
+    verifier = session.result.verifier if session.result is not None else None
+    metrics.record_task_terminal(
+        status=str(payload.get("status", "unknown")),
+        latency_seconds=latency,
+        verifier=verifier,
+    )
     return True
 
 
