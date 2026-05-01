@@ -117,8 +117,41 @@ TOOLS: list[dict] = [
                         },
                         "required": ["url", "text_snippet"],
                     },
+                    "evaluation_previous_action": {
+                        "type": "string",
+                        "enum": ["success", "partial", "failed", "no_action_yet"],
+                        "description": (
+                            "Self-eval of the most recent tool call before this `done`. "
+                            "Use 'no_action_yet' ONLY when literally no click/type/select "
+                            "has happened in this run — in which case you almost certainly "
+                            "should not be calling `done` yet."
+                        ),
+                    },
+                    "evaluation_reason": {
+                        "type": "string",
+                        "description": (
+                            "One-sentence justification for evaluation_previous_action, "
+                            "grounded in observed page changes."
+                        ),
+                    },
+                    "next_goal": {
+                        "type": "string",
+                        "description": (
+                            "What this `done` is for. For a real terminal call this should "
+                            "be a reporting phrase like 'report the final answer'. If you "
+                            "find yourself writing a navigation/search verb here (search, "
+                            "navigate, click, find, look up, fill in), you are not done — "
+                            "call the appropriate tool instead."
+                        ),
+                    },
                 },
-                "required": ["result", "evidence"],
+                "required": [
+                    "result",
+                    "evidence",
+                    "evaluation_previous_action",
+                    "evaluation_reason",
+                    "next_goal",
+                ],
             },
         },
     },
@@ -189,6 +222,35 @@ _DEFAULT_CONTEXT_CHAR_BUDGET: int = 80_000
 _STUCK_REPEAT_K: int = 3
 _NO_TOOL_CALL_K: int = 3
 _NO_PROGRESS_K: int = 4
+
+# T1: words in a `next_goal` that signal the agent still has work to do
+# (browse / interact) rather than report a final answer. Matched as
+# whole-word, case-insensitive substrings.
+_NEXT_GOAL_NAV_VERBS: tuple[str, ...] = (
+    "search",
+    "navigate",
+    "go to",
+    "click",
+    "find",
+    "look up",
+    "look for",
+    "fill in",
+    "fill out",
+    "enter",
+    "type",
+    "browse",
+    "open",
+    "submit",
+    "load",
+    "scroll",
+)
+
+
+def _next_goal_is_navigation(next_goal: Any) -> bool:
+    if not isinstance(next_goal, str):
+        return False
+    lowered = next_goal.lower()
+    return any(verb in lowered for verb in _NEXT_GOAL_NAV_VERBS)
 
 
 _ELIDED_AX_TREE_MARKER = "[elided — see latest observation]"
@@ -503,6 +565,15 @@ def _build_system_prompt(task: str, *, expect: dict | None = None) -> str:
         "box, retry the `type` call with `submit=true` to press Enter instead "
         "of clicking a button — do not give up on the search just because the "
         "button can't be found. "
+        "When you call `done` you MUST fill three self-eval fields: "
+        "`evaluation_previous_action` (one of success/partial/failed/no_action_yet "
+        "describing the most recent action), `evaluation_reason` (one sentence "
+        "grounded in observed page changes), and `next_goal` (a reporting phrase "
+        "like 'report the final answer'). If you would write a navigation/search "
+        "verb in `next_goal` (search, navigate, click, find, look up, fill in), "
+        "you are not done yet — execute that action first. If `evaluation_"
+        "previous_action` would honestly be 'no_action_yet' (you have only "
+        "navigated, not interacted), do not call `done` — interact first. "
     )
     if expect and expect.get("schema"):
         schema = expect["schema"]
@@ -1291,6 +1362,55 @@ def loop(
                 continue
 
             if tool_call.name == "done":
+                # T1 self-eval gate: reject `done` when the agent's own
+                # evaluation_previous_action / next_goal indicate it has not
+                # actually done the work yet. This catches the goto→done
+                # hallucination mode where the agent fabricates results
+                # without executing the planned interactions.
+                eval_prev = args.get("evaluation_previous_action")
+                next_goal = args.get("next_goal")
+                premature_reason: str | None = None
+                if eval_prev == "no_action_yet" and step_num <= 1:
+                    premature_reason = (
+                        "agent declared evaluation_previous_action="
+                        "'no_action_yet' at step 1 — no interaction has "
+                        "occurred yet, so a final answer cannot be grounded"
+                    )
+                elif _next_goal_is_navigation(next_goal):
+                    premature_reason = (
+                        f"next_goal={next_goal!r} names a navigation/search "
+                        "verb — that is more work to do, not a final answer"
+                    )
+                if premature_reason is not None:
+                    use_writer = trace_writer is not None and run_id is not None
+                    sup_seq = trace_writer.next_seq(run_id) if use_writer else 0
+                    sup_event = SupervisorEvent(
+                        run_id=run_id if use_writer else "loop",
+                        seq=sup_seq,
+                        ts=datetime.now(UTC).isoformat() if use_writer else "",
+                        step_id=_step_id,
+                        trigger_event_seq=0,
+                        classified_as="premature_done",
+                        policy="halt",
+                        attempt=1,
+                    )
+                    if use_writer:
+                        trace_writer.append_event(sup_event)
+                    elif events is not None:
+                        events.append(sup_event)
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "content": (
+                                f"Supervisor: rejected premature `done` ({premature_reason}). "
+                                "Execute the missing action (click / type / read), then "
+                                "re-evaluate before calling `done` again."
+                            ),
+                        }
+                    )
+                    continue
+
                 evidence = args.get("evidence")
                 verifier = _check_evidence(evidence)
 

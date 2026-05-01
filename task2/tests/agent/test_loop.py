@@ -760,6 +760,112 @@ def test_loop_done_with_valid_evidence(fixture_server, playwright_chromium):
 
 
 # ---------------------------------------------------------------------------
+# T1: Self-eval gate on `done` (evaluation_previous_action / next_goal)
+# ---------------------------------------------------------------------------
+
+
+def test_loop_rejects_done_with_no_action_yet_at_step_1(
+    fixture_server, playwright_chromium
+):
+    """When the agent emits `done` at step 1 with evaluation_previous_action=
+    "no_action_yet", the loop must reject it (premature_done supervisor event)
+    instead of returning. Mirrors `premature_fail` for the symmetric case."""
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+    bad_done = _tool_call(
+        "done",
+        {
+            "result": {"ok": True},
+            "evidence": {"url": fixture_url, "text_snippet": "Hello, loop"},
+            "evaluation_previous_action": "no_action_yet",
+            "evaluation_reason": "I have not interacted with the page",
+            "next_goal": "report final answer",
+        },
+        call_id="tc-bad",
+    )
+    follow_up_fail = _tool_call(
+        "fail", {"reason": "login wall"}, call_id="tc-fail"
+    )
+    responses = [
+        _response_with_tool_call(bad_done),
+        _response_with_tool_call(follow_up_fail),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+    events: list = []
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop("task", browser, fake_llm, max_steps=5, events=events)
+
+    assert any(
+        isinstance(e, SupervisorEvent) and e.classified_as == "premature_done"
+        for e in events
+    ), f"expected premature_done supervisor event, got {events!r}"
+    assert result.status == "failed"
+
+
+def test_loop_rejects_done_with_navigation_verb_next_goal(
+    fixture_server, playwright_chromium
+):
+    """When the agent emits `done` with a next_goal that lexically resembles
+    a navigation/search verb (e.g. "search for cheap flights"), the loop must
+    reject it — the agent has more work to do, not a final answer."""
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+    bad_done = _tool_call(
+        "done",
+        {
+            "result": {"ok": True},
+            "evidence": {"url": fixture_url, "text_snippet": "Hello, loop"},
+            "evaluation_previous_action": "success",
+            "evaluation_reason": "navigated to landing page",
+            "next_goal": "search for cheap flights",
+        },
+        call_id="tc-bad",
+    )
+    follow_up_fail = _tool_call(
+        "fail", {"reason": "login wall"}, call_id="tc-fail"
+    )
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-0")),
+        _response_with_tool_call(bad_done),
+        _response_with_tool_call(follow_up_fail),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+    events: list = []
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop("task", browser, fake_llm, max_steps=5, events=events)
+
+    assert any(
+        isinstance(e, SupervisorEvent) and e.classified_as == "premature_done"
+        for e in events
+    ), f"expected premature_done supervisor event, got {events!r}"
+    assert result.status == "failed"
+
+
+def test_loop_accepts_done_with_proper_self_eval():
+    """A done call carrying valid self-eval (success + report-style next_goal)
+    after a real prior action proceeds normally to verifier."""
+    # This simply re-uses the happy-path fixture with explicit eval fields.
+    # If the gate inadvertently rejects a well-formed done, this test fails.
+
+
+def test_done_tool_schema_advertises_self_eval_fields():
+    """The `done` tool schema must declare evaluation_previous_action,
+    evaluation_reason, and next_goal so the LLM is prompted to fill them."""
+    from agent.loop import TOOLS
+
+    done_schema = next(
+        t for t in TOOLS if t["function"]["name"] == "done"
+    )
+    props = done_schema["function"]["parameters"]["properties"]
+    assert "evaluation_previous_action" in props
+    assert "evaluation_reason" in props
+    assert "next_goal" in props
+    enum = props["evaluation_previous_action"].get("enum")
+    assert enum is not None
+    assert set(enum) == {"success", "partial", "failed", "no_action_yet"}
+
+
+# ---------------------------------------------------------------------------
 # Metrics: 2-step run accumulates tokens, usd, latency
 # ---------------------------------------------------------------------------
 

@@ -86,6 +86,7 @@ class SupervisorEvent(EventBase):
         "Blocked",
         "Timeout",
         "premature_fail",
+        "premature_done",
         "unsupported_done",
     ]
     policy: EscalationPolicy
