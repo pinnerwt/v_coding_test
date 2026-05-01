@@ -14,7 +14,7 @@ from typing import Any
 
 import httpx
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, field_validator
 from ulid import ULID
 
@@ -22,6 +22,7 @@ from agent.browser import Browser
 from agent.llm import _DEFAULT_LLM_MODEL, LLMClient
 from agent.loop import RunResult, loop
 from agent.trace import Run, RunBudget, RunLLM, TraceWriter
+from api import metrics
 from api.db import get_db_path
 from api.sessions import (
     get_session,
@@ -73,10 +74,19 @@ async def access_log_middleware(request: Request, call_next):
     request_id = incoming_rid if incoming_rid else str(uuid.uuid4())
     started = time.perf_counter()
     response = await call_next(request)
-    latency_ms = (time.perf_counter() - started) * 1000.0
+    latency_seconds = time.perf_counter() - started
+    latency_ms = latency_seconds * 1000.0
     response.headers["x-request-id"] = request_id
 
     run_id_match = _RUN_ID_PATH_RE.match(request.url.path)
+    # Use the matched route's path template (e.g. "/tasks/{run_id}") for
+    # metrics labels — substituting the actual run_id would make every
+    # run a new label set and blow up Prometheus memory. Falls back to
+    # a generic "unmatched" bucket for 404s.
+    matched_route = request.scope.get("route")
+    metric_route = (
+        getattr(matched_route, "path", None) if matched_route is not None else None
+    ) or "unmatched"
     payload = {
         "request_id": request_id,
         "method": request.method,
@@ -89,6 +99,12 @@ async def access_log_middleware(request: Request, call_next):
         "token_id": None,
     }
     access_logger.info(json.dumps(payload, ensure_ascii=False))
+    metrics.record_request(
+        route=metric_route,
+        method=request.method,
+        status=response.status_code,
+        latency_seconds=latency_seconds,
+    )
     return response
 
 
@@ -116,6 +132,17 @@ def _probe_llm() -> bool:
     with httpx.Client(timeout=1.0) as client:
         client.head(base_url)
     return True
+
+
+@app.get("/metrics")
+def metrics_endpoint() -> Response:
+    """Prometheus scrape endpoint — text-exposition format.
+
+    Renders the process-global default registry. No auth gating for now;
+    the security workstream (plan.md) is the right place to introduce
+    a separate scrape-only token if we publicly expose the surface."""
+    body, content_type = metrics.render_latest()
+    return Response(content=body, media_type=content_type)
 
 
 @app.get("/healthz")
