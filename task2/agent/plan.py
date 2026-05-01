@@ -23,13 +23,13 @@ _PLAN_SYSTEM = (
     "the task points to a single unambiguous target with all parameters "
     "present (most simple fact-lookup or navigation tasks fall here). "
     "If information is INSUFFICIENT, call the `ask_user` tool with a "
-    "single specific clarifying question, wait for the answer, then "
-    "produce the final plan with that answer baked in. Each `ask_user` "
-    "call must request exactly one slot — if multiple slots are missing, "
-    "ask the most blocking one first, then ask the next after the answer "
-    "arrives. Do NOT bundle two questions into one with 'and'. Do NOT "
-    "guess the missing information. Do NOT include 'ask the user: ...' "
-    "as a plan step — that step happens here, in planning, not during "
+    "list of clarifying questions — one per missing slot — wait for the "
+    "answers, then produce the final plan with those answers baked in. "
+    "List each missing slot as a separate item in the `questions` array. "
+    "Do NOT pack multiple slots into one question string with 'and'. Ask "
+    "only what the task actually requires; do not over-ask. Do NOT guess "
+    "the missing information. Do NOT include 'ask the user: ...' as a "
+    "plan step — that step happens here, in planning, not during "
     "navigation. If you have already asked the user about a particular "
     "slot once and the answer did not fill it, do NOT ask again — pick "
     "a sane default and proceed, or produce a best-effort plan. "
@@ -55,23 +55,30 @@ _REPLAN_SYSTEM = (
     'Respond with ONLY a JSON object: {"steps": ["step 1", ...], "expected_end_state": "..."}'
 )
 
+_MAX_QUESTIONS_PER_ASK = 3
+
 _ASK_USER_TOOL = {
     "type": "function",
     "function": {
         "name": "ask_user",
         "description": (
-            "Ask the human user a single clarifying question to resolve "
-            "ambiguity in the task before planning concrete steps."
+            "Ask the human user one or more clarifying questions to resolve "
+            "ambiguity in the task before planning concrete steps. List each "
+            "missing slot as a separate question. Do not list more questions "
+            "than the task actually requires."
         ),
         "parameters": {
             "type": "object",
             "properties": {
-                "question": {
-                    "type": "string",
-                    "description": "A specific clarifying question.",
+                "questions": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "minItems": 1,
+                    "maxItems": _MAX_QUESTIONS_PER_ASK,
+                    "description": "One specific clarifying question per missing slot.",
                 }
             },
-            "required": ["question"],
+            "required": ["questions"],
         },
     },
 }
@@ -123,11 +130,6 @@ _ANSWER_STOPWORDS: frozenset[str] = frozenset(
         "any",
     }
 )
-_ANSWER_NOT_INCORPORATED_MESSAGE = (
-    "The user's answer must be incorporated into the plan; the plan you "
-    "just produced does not reference it. Produce a new plan whose steps "
-    "explicitly use the user's answer."
-)
 
 
 def _answer_tokens(answer: str) -> list[str]:
@@ -143,16 +145,56 @@ def _answer_tokens(answer: str) -> list[str]:
     return out
 
 
+def _answer_has_numeric_token(answer: str) -> bool:
+    """True if any non-stopword token in the answer contains a digit. Used
+    by F28 to gate a second retry: date/price/id answers are easy for the
+    planner to silently drop, so they get one extra correction round."""
+    return any(any(ch.isdigit() for ch in tok) for tok in _answer_tokens(answer))
+
+
 def _plan_references_answer(plan: Plan, answer: str) -> bool:
-    """True if at least one non-stopword token from `answer` appears as a
-    case-insensitive substring in any plan step or expected_end_state. If
-    the answer has no enforceable tokens after stopword removal, returns
-    True (no enforcement)."""
+    """True if the plan references the user's answer.
+
+    F19 baseline: at least one non-stopword token from `answer` must appear
+    as a case-insensitive substring in any plan step or expected_end_state.
+
+    F28 stricter rule for digit-bearing answers: when the answer contains
+    any digit-bearing token (date/price/id), require at least one of THOSE
+    specifically — planners often retain a generic noun (e.g. 'order')
+    while silently dropping the actual number.
+
+    If the answer has no enforceable tokens after stopword removal, returns
+    True (no enforcement).
+    """
     tokens = _answer_tokens(answer)
     if not tokens:
         return True
     haystack = (" ".join(plan.steps) + " " + plan.expected_end_state).lower()
+    digit_tokens = [tok for tok in tokens if any(ch.isdigit() for ch in tok)]
+    if digit_tokens:
+        return any(tok in haystack for tok in digit_tokens)
     return any(tok in haystack for tok in tokens)
+
+
+def _build_answer_not_incorporated_message(answers: list[str], plan_obj: Plan) -> str:
+    """F28: construct a retry message that names the literal answer text and
+    the specific non-stopword tokens that must appear in the next plan."""
+    haystack = (" ".join(plan_obj.steps) + " " + plan_obj.expected_end_state).lower()
+    parts = [
+        "The user's answer must be incorporated into the plan; the plan you "
+        "just produced does not reference it. Produce a new plan whose steps "
+        "explicitly use the user's answer."
+    ]
+    for ans in answers:
+        missing = [tok for tok in _answer_tokens(ans) if tok not in haystack]
+        if not missing:
+            continue
+        parts.append(
+            f' The user answered: "{ans}". '
+            f"Your next plan MUST contain at least one of these tokens "
+            f"verbatim: {', '.join(missing)}."
+        )
+    return "".join(parts)
 
 
 @dataclass(frozen=True)
@@ -237,33 +279,69 @@ def _handle_ask_user_tool_call(
 ) -> str:
     """Resolve an ask_user tool call into the string content for the tool message.
 
-    Tracks normalized fingerprints of questions already asked in this plan()
-    invocation. After the first ask, subsequent ask_user calls receive a
-    synthetic answer that tells the LLM to stop re-asking — they do NOT
-    invoke ask_user_callback again.
+    The tool argument is `questions: list[str]`. Each list item is a separate
+    slot; the callback fires once per item, in order. The result is a Q&A
+    block — `Q1: ...\\nA1: ...\\n\\nQ2: ...\\nA2: ...` — so the LLM never has
+    to remember positional pairing.
+
+    Per-item dedup: if a list item near-matches a question asked in an earlier
+    round of this plan() invocation, that item gets the dedup-synthetic answer
+    while the other items still go through the callback.
     """
     try:
         args = json.loads(tool_call.arguments) if tool_call.arguments else {}
     except json.JSONDecodeError:
         return "Error: ask_user arguments were not valid JSON."
-    question = args.get("question")
-    if not isinstance(question, str) or not question.strip():
-        return "Error: ask_user requires a non-empty 'question' string."
-    if asked_fingerprints:
-        dedup_emitted.append(True)
-        return _DEDUP_SYNTHETIC_ANSWER
-    asked_fingerprints.add(_normalize_question(question))
+    if "question" in args and "questions" not in args:
+        return (
+            "Error: ask_user requires a `questions` list (e.g. "
+            '`{"questions": ["..."]}`). The single-string `question` shape '
+            "is not supported. Re-issue with one question per missing slot."
+        )
+    questions = args.get("questions")
+    if not isinstance(questions, list) or not questions:
+        return "Error: ask_user requires a non-empty `questions` list of strings."
+    if not all(isinstance(q, str) and q.strip() for q in questions):
+        return "Error: every item in `questions` must be a non-empty string."
+    if len(questions) > _MAX_QUESTIONS_PER_ASK:
+        return (
+            f"Error: ask_user accepts at most {_MAX_QUESTIONS_PER_ASK} "
+            "questions per call. Re-issue with the most blocking slots only."
+        )
     if ask_user_callback is None:
         return (
             "Error: ask_user is not available in this run (no callback wired). "
             "Produce a best-effort plan from the task as stated."
         )
-    try:
-        answer = str(ask_user_callback(question))
-    except Exception as exc:  # noqa: BLE001
-        return f"Error: ask_user callback raised: {exc}"
-    received_answers.append(answer)
-    return answer
+
+    qa_pairs: list[tuple[str, str]] = []
+    for question in questions:
+        fingerprint = _normalize_question(question)
+        if fingerprint in asked_fingerprints:
+            dedup_emitted.append(True)
+            qa_pairs.append((question, _DEDUP_SYNTHETIC_ANSWER))
+            continue
+        asked_fingerprints.add(fingerprint)
+        try:
+            answer = str(ask_user_callback(question))
+        except Exception as exc:  # noqa: BLE001
+            qa_pairs.append((question, f"Error: ask_user callback raised: {exc}"))
+            continue
+        received_answers.append(answer)
+        qa_pairs.append((question, answer))
+
+    return _format_qa_block(qa_pairs)
+
+
+def _format_qa_block(qa_pairs: list[tuple[str, str]]) -> str:
+    """Render a list of (question, answer) into a numbered Q&A block."""
+    lines: list[str] = []
+    for idx, (q, a) in enumerate(qa_pairs, start=1):
+        if lines:
+            lines.append("")
+        lines.append(f"Q{idx}: {q}")
+        lines.append(f"A{idx}: {a}")
+    return "\n".join(lines)
 
 
 def plan(
@@ -287,8 +365,8 @@ def plan(
     received_answers: list[str] = []
     dedup_emitted: list[bool] = []
     short_plan_retried = False
-    answer_retry_used = False
-    for _ in range(_MAX_ASK_USER_ROUNDS + 1):
+    answer_retries_used = 0
+    for _ in range(_MAX_ASK_USER_ROUNDS + 2):
         response = llm.chat(messages, tools=[_ASK_USER_TOOL])
         last_response = response
         ask_calls = [tc for tc in (response.tool_calls or []) if tc.name == "ask_user"]
@@ -302,23 +380,28 @@ def plan(
                 messages.append({"role": "assistant", "content": response.content or ""})
                 messages.append({"role": "user", "content": _TOO_SHORT_PLAN_MESSAGE})
                 continue
-            # F19: if any ask_user answer was received during this plan() call
-            # and the produced plan does not reference any non-stopword token
-            # from any answer, retry the planner once with a corrective note.
-            # Cap at one extra attempt; accept whatever comes back next.
-            # Skipped when dedup-synthetic was emitted: the LLM has already been
-            # told to "use sane defaults", so layering a competing "incorporate
-            # the answer" directive doesn't fit that branch.
+            # F19/F28: if any ask_user answer was received during this plan()
+            # call and the produced plan does not reference any non-stopword
+            # token from any answer, retry the planner with a corrective note.
+            # F19 grants 1 retry. F28 grants a 2nd retry only when the answer
+            # contains a digit-bearing token (date/price/id) — those answers
+            # are structurally easy to drop. Cap at 2 retries; accept whatever
+            # comes back next. Skipped when dedup-synthetic was emitted: the
+            # LLM has already been told to "use sane defaults", so layering a
+            # competing "incorporate the answer" directive doesn't fit.
             if (
                 received_answers
-                and not answer_retry_used
                 and not dedup_emitted
                 and not any(_plan_references_answer(parsed, ans) for ans in received_answers)
             ):
-                answer_retry_used = True
-                messages.append({"role": "assistant", "content": response.content or ""})
-                messages.append({"role": "user", "content": _ANSWER_NOT_INCORPORATED_MESSAGE})
-                continue
+                allow_second = any(_answer_has_numeric_token(ans) for ans in received_answers)
+                retry_cap = 2 if allow_second else 1
+                if answer_retries_used < retry_cap:
+                    answer_retries_used += 1
+                    retry_msg = _build_answer_not_incorporated_message(received_answers, parsed)
+                    messages.append({"role": "assistant", "content": response.content or ""})
+                    messages.append({"role": "user", "content": retry_msg})
+                    continue
             return parsed, response
         messages.append(
             {

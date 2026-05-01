@@ -199,7 +199,9 @@ def test_plan_calls_ask_user_callback_when_planner_emits_tool_call():
     )
     llm = _ScriptedLLM(
         [
-            _tool_call_response("ask_user", {"question": "Which 旭集 location?"}, call_id="tc-ask"),
+            _tool_call_response(
+                "ask_user", {"questions": ["Which 旭集 location?"]}, call_id="tc-ask"
+            ),
             _fake_response(final_plan_json),
         ]
     )
@@ -253,7 +255,7 @@ def test_plan_handles_ask_user_with_no_callback_gracefully():
     payload = json.dumps({"steps": ["best effort", "verify"], "expected_end_state": "done"})
     llm = _ScriptedLLM(
         [
-            _tool_call_response("ask_user", {"question": "which?"}, call_id="tc-ask"),
+            _tool_call_response("ask_user", {"questions": ["which?"]}, call_id="tc-ask"),
             _fake_response(payload),
         ]
     )
@@ -373,7 +375,7 @@ def test_plan_retries_when_initial_plan_drops_user_supplied_answer():
     )
     llm = _ScriptedLLM(
         [
-            _tool_call_response("ask_user", {"question": "Dates?"}, call_id="tc-ask"),
+            _tool_call_response("ask_user", {"questions": ["Dates?"]}, call_id="tc-ask"),
             _fake_response(weak_plan),
             _fake_response(strong_plan),
         ]
@@ -422,7 +424,7 @@ def test_plan_does_not_retry_when_answer_already_referenced():
     )
     llm = _ScriptedLLM(
         [
-            _tool_call_response("ask_user", {"question": "Which location?"}, call_id="tc-ask"),
+            _tool_call_response("ask_user", {"questions": ["Which location?"]}, call_id="tc-ask"),
             _fake_response(plan_with_answer),
         ]
     )
@@ -453,7 +455,7 @@ def test_plan_does_not_retry_when_answer_is_only_stopwords():
     )
     llm = _ScriptedLLM(
         [
-            _tool_call_response("ask_user", {"question": "Which?"}, call_id="tc-ask"),
+            _tool_call_response("ask_user", {"questions": ["Which?"]}, call_id="tc-ask"),
             _fake_response(payload),
         ]
     )
@@ -467,9 +469,9 @@ def test_plan_does_not_retry_when_answer_is_only_stopwords():
 
 
 def test_plan_retry_only_runs_once_even_if_second_plan_also_misses():
-    """The retry must be capped at one extra attempt — accept whatever comes
-    back next to avoid infinite loops if the LLM repeatedly ignores the
-    answer."""
+    """For non-numeric answers the retry budget is one (F19 baseline) — accept
+    whatever comes back next to avoid infinite loops. F28 only adds a second
+    retry when the answer carries a digit-bearing token (dates, prices, IDs)."""
 
     def _cb(_q: str) -> str:
         return "Shinjuku"
@@ -485,7 +487,7 @@ def test_plan_retry_only_runs_once_even_if_second_plan_also_misses():
     )
     llm = _ScriptedLLM(
         [
-            _tool_call_response("ask_user", {"question": "Which area?"}, call_id="tc-ask"),
+            _tool_call_response("ask_user", {"questions": ["Which area?"]}, call_id="tc-ask"),
             _fake_response(miss_plan),
             _fake_response(second_miss),
         ]
@@ -502,3 +504,389 @@ def test_plan_retry_only_runs_once_even_if_second_plan_also_misses():
     # though it still doesn't reference Shinjuku.
     assert len(llm.calls) == 3
     assert result.steps == ["Open Maps", "Search ramen and report the best"]
+
+
+# ---------------------------------------------------------------------------
+# F28: strengthen the F19 retry for date/numeric answers. Round-9 A3 trace
+# (`task2/benchmark/feat-task2-sessions-ask-user-http/ask_user_smoke/round9/
+# A3.json`) showed the planner producing two consecutive degenerate plans
+# after `"December 15, 2026, one-way"` — F19's single retry was not enough.
+# F28 adds (a) a stronger retry message naming the literal answer and the
+# specific missing tokens, and (b) one extra retry gated on whether the
+# answer contains any digit-bearing token (purely structural, no domain).
+# ---------------------------------------------------------------------------
+
+
+def test_f28_numeric_answer_triggers_second_retry_when_first_retry_still_misses():
+    """When the answer is digit-bearing (date/price/id) and the first F19
+    retry still produces a plan that drops the answer, F28 grants one more
+    retry. Cap stays at 2 retries total — accept whatever comes back next."""
+
+    def _cb(_q: str) -> str:
+        return "December 15, 2026, one-way"
+
+    miss = json.dumps(
+        {
+            "steps": [
+                "Open a flight search site",
+                "Search Taipei to Tokyo and report the cheapest fare",
+            ],
+            "expected_end_state": "fare reported",
+        }
+    )
+    miss_again = json.dumps(
+        {
+            "steps": [
+                "Open Google Flights",
+                "Enter Taipei and Tokyo and find the cheapest fare",
+            ],
+            "expected_end_state": "fare reported",
+        }
+    )
+    strong = json.dumps(
+        {
+            "steps": [
+                "Open Google Flights",
+                "Set departure date to December 15, 2026 and trip type to one-way",
+                "Enter Taipei -> Tokyo and report the cheapest fare",
+            ],
+            "expected_end_state": "fare reported",
+        }
+    )
+    llm = _ScriptedLLM(
+        [
+            _tool_call_response("ask_user", {"questions": ["Which date?"]}, call_id="tc-ask"),
+            _fake_response(miss),
+            _fake_response(miss_again),
+            _fake_response(strong),
+        ]
+    )
+
+    result, _ = plan(
+        task="Book a flight from Taipei to Tokyo and return the cheapest fare.",
+        observation={},
+        llm=llm,
+        ask_user_callback=_cb,
+    )
+
+    # 4 LLM calls: ask_user + miss + retry-1 (still misses) + retry-2 (succeeds).
+    assert len(llm.calls) == 4, (
+        f"F28: numeric answer that misses twice must receive a second retry; got {len(llm.calls)}"
+    )
+    assert any("December 15" in s for s in result.steps), result.steps
+
+
+def test_f28_numeric_answer_second_retry_capped_third_attempt_accepted():
+    """If the second retry STILL misses, plan() accepts the third attempt
+    rather than retrying indefinitely."""
+
+    def _cb(_q: str) -> str:
+        return "Order #1234567"
+
+    miss1 = json.dumps(
+        {"steps": ["Open the order page", "Look up the order"], "expected_end_state": "ok"}
+    )
+    miss2 = json.dumps(
+        {"steps": ["Open the dashboard", "Find the order"], "expected_end_state": "ok"}
+    )
+    miss3 = json.dumps(
+        {"steps": ["Search the orders list", "Open the matching order"], "expected_end_state": "ok"}
+    )
+    llm = _ScriptedLLM(
+        [
+            _tool_call_response("ask_user", {"questions": ["Which order?"]}, call_id="tc-ask"),
+            _fake_response(miss1),
+            _fake_response(miss2),
+            _fake_response(miss3),
+        ]
+    )
+
+    result, _ = plan(task="open my order", observation={}, llm=llm, ask_user_callback=_cb)
+
+    assert len(llm.calls) == 4, (
+        f"F28: cap at two retries even if all attempts miss; got {len(llm.calls)}"
+    )
+    assert result.steps == ["Search the orders list", "Open the matching order"]
+
+
+def test_f28_retry_message_names_the_literal_answer_and_missing_tokens():
+    """F19's generic retry note ('the plan does not reference it') is too
+    weak for date/quantity answers. F28 strengthens the message to include
+    (a) the literal answer text and (b) the specific tokens that must
+    appear, so the LLM has zero ambiguity about what to fix."""
+
+    def _cb(_q: str) -> str:
+        return "December 15, 2026, one-way"
+
+    miss = json.dumps(
+        {
+            "steps": ["Open a flight search site", "Search and report the cheapest fare"],
+            "expected_end_state": "ok",
+        }
+    )
+    strong = json.dumps(
+        {
+            "steps": [
+                "Open Google Flights",
+                "Set departure date to December 15, 2026, trip type one-way",
+                "Search and report the cheapest fare",
+            ],
+            "expected_end_state": "ok",
+        }
+    )
+    llm = _ScriptedLLM(
+        [
+            _tool_call_response("ask_user", {"questions": ["Which date?"]}, call_id="tc-ask"),
+            _fake_response(miss),
+            _fake_response(strong),
+        ]
+    )
+
+    plan(task="Book a flight", observation={}, llm=llm, ask_user_callback=_cb)
+
+    # The third LLM call's retry message should include the literal answer
+    # and at least one of the digit-bearing tokens (15, 2026).
+    third_call = llm.calls[2]
+    user_msgs = [m for m in third_call["messages"] if m.get("role") == "user"]
+    retry_text = " ".join(m.get("content") or "" for m in user_msgs)
+    assert "December 15, 2026, one-way" in retry_text, (
+        f"F28: retry message must include the literal answer; got {retry_text!r}"
+    )
+    assert "2026" in retry_text or "15" in retry_text or "one-way" in retry_text, (
+        f"F28: retry message must call out missing tokens; got {retry_text!r}"
+    )
+
+
+def test_f28_non_numeric_answer_does_not_get_a_second_retry():
+    """F28's extra retry is gated on the presence of a digit-bearing token in
+    the answer. For purely lexical answers (Shinjuku, Tianmu), the budget
+    stays at one retry — F19's original behavior. This is the structural
+    gate, not a domain rule."""
+
+    def _cb(_q: str) -> str:
+        return "Tianmu (天母店)"
+
+    miss = json.dumps(
+        {"steps": ["Open the booking site", "Pick a location"], "expected_end_state": "ok"}
+    )
+    miss_again = json.dumps(
+        {"steps": ["Open the reservation portal", "Pick a branch"], "expected_end_state": "ok"}
+    )
+    llm = _ScriptedLLM(
+        [
+            _tool_call_response("ask_user", {"questions": ["Which location?"]}, call_id="tc-ask"),
+            _fake_response(miss),
+            _fake_response(miss_again),
+        ]
+    )
+
+    plan(task="book a table", observation={}, llm=llm, ask_user_callback=_cb)
+
+    # Exactly 3 LLM calls — F19's behavior preserved on lexical answers.
+    assert len(llm.calls) == 3, (
+        f"F28: non-numeric answer must not trigger a second retry; got {len(llm.calls)}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# I1: ask_user takes a list of questions, not a single bundled string. The
+# planner declares all missing slots up front; the callback is invoked once
+# per list item; the tool result is a Q&A block. Round-10 A3 motivated this:
+# the planner emitted "What are your departure and return dates...?" — two
+# slots in one string. With a list-shaped argument, bundling is impossible
+# by construction.
+# ---------------------------------------------------------------------------
+
+
+def test_i1_ask_user_tool_schema_takes_questions_array():
+    """The tool schema's required arg is `questions: array of string`, not the
+    single-string `question` shape."""
+    from agent.plan import _ASK_USER_TOOL
+
+    params = _ASK_USER_TOOL["function"]["parameters"]
+    assert params["required"] == ["questions"], params
+    assert "question" not in params["properties"], params
+    questions = params["properties"]["questions"]
+    assert questions["type"] == "array"
+    assert questions["items"]["type"] == "string"
+    assert questions["minItems"] == 1
+    assert questions["maxItems"] == 3
+
+
+def test_i1_ask_user_with_two_questions_invokes_callback_twice_in_order():
+    """A single ask_user tool call with two questions fires the callback twice
+    in list order; both answers are accumulated; the tool result is a Q&A
+    block that names both Qs and their As."""
+    asked: list[str] = []
+
+    def _cb(q: str) -> str:
+        asked.append(q)
+        return {"Which branch?": "天母店 (Tianmu)", "What date?": "Saturday, May 9"}.get(q, "?")
+
+    plan_json = json.dumps(
+        {
+            "steps": [
+                "Open booking site",
+                "Pick 天母店 branch on Saturday, May 9",
+                "Confirm reservation",
+            ],
+            "expected_end_state": "booked",
+        }
+    )
+    llm = _ScriptedLLM(
+        [
+            _tool_call_response(
+                "ask_user",
+                {"questions": ["Which branch?", "What date?"]},
+                call_id="tc-multi",
+            ),
+            _fake_response(plan_json),
+        ]
+    )
+
+    result, _ = plan(task="Book a table", observation={}, llm=llm, ask_user_callback=_cb)
+
+    # Callback fired in list order with each question.
+    assert asked == ["Which branch?", "What date?"], asked
+    # Resulting plan incorporates BOTH answers (F19 token check).
+    assert any("天母店" in s or "Tianmu" in s for s in result.steps)
+    assert any("Saturday" in s or "May 9" in s for s in result.steps)
+
+    # The tool message that was fed back to the LLM contains both Q&A pairs.
+    tool_msg_content = ""
+    for msg in llm.calls[1]["messages"]:
+        if msg.get("role") == "tool":
+            tool_msg_content += msg.get("content", "")
+    assert "Which branch?" in tool_msg_content
+    assert "天母店" in tool_msg_content or "Tianmu" in tool_msg_content
+    assert "What date?" in tool_msg_content
+    assert "Saturday" in tool_msg_content or "May 9" in tool_msg_content
+
+
+def test_i1_ask_user_with_single_question_still_works():
+    """A list of length 1 is the common case — single ambiguity, single ask."""
+    asked: list[str] = []
+
+    def _cb(q: str) -> str:
+        asked.append(q)
+        return "天母店 (Tianmu)"
+
+    plan_json = json.dumps(
+        {"steps": ["Open booking site", "Pick 天母店 branch"], "expected_end_state": "ok"}
+    )
+    llm = _ScriptedLLM(
+        [
+            _tool_call_response("ask_user", {"questions": ["Which branch?"]}, call_id="tc-one"),
+            _fake_response(plan_json),
+        ]
+    )
+
+    plan(task="Book a table", observation={}, llm=llm, ask_user_callback=_cb)
+
+    assert asked == ["Which branch?"]
+
+
+def test_i1_ask_user_rejects_legacy_single_question_shape():
+    """If the LLM emits the old `{question: str}` shape, the tool result is an
+    error message that names the new shape, and the callback never fires.
+    The next planner call gets a chance to re-issue with the correct shape."""
+    asked: list[str] = []
+
+    def _cb(q: str) -> str:
+        asked.append(q)
+        return "should not happen"
+
+    plan_json = json.dumps({"steps": ["Open site", "Read result"], "expected_end_state": "ok"})
+    llm = _ScriptedLLM(
+        [
+            _tool_call_response("ask_user", {"question": "Which?"}, call_id="tc-legacy"),
+            _fake_response(plan_json),
+        ]
+    )
+
+    plan(task="t", observation={}, llm=llm, ask_user_callback=_cb)
+
+    assert asked == [], asked
+    tool_msg_content = ""
+    for msg in llm.calls[1]["messages"]:
+        if msg.get("role") == "tool":
+            tool_msg_content += msg.get("content", "")
+    assert "questions" in tool_msg_content.lower()
+
+
+def test_i1_ask_user_empty_list_returns_error():
+    """Empty questions list → error, callback not fired."""
+    asked: list[str] = []
+
+    def _cb(q: str) -> str:
+        asked.append(q)
+        return "x"
+
+    plan_json = json.dumps({"steps": ["s1", "s2"], "expected_end_state": "ok"})
+    llm = _ScriptedLLM(
+        [
+            _tool_call_response("ask_user", {"questions": []}, call_id="tc-empty"),
+            _fake_response(plan_json),
+        ]
+    )
+
+    plan(task="t", observation={}, llm=llm, ask_user_callback=_cb)
+
+    assert asked == []
+
+
+def test_i1_ask_user_runtime_caps_list_at_three():
+    """If the LLM bypasses the schema's maxItems=3 (some local LLMs ignore
+    it), the runtime check rejects the call without invoking the callback."""
+    asked: list[str] = []
+
+    def _cb(q: str) -> str:
+        asked.append(q)
+        return "x"
+
+    plan_json = json.dumps({"steps": ["s1", "s2"], "expected_end_state": "ok"})
+    llm = _ScriptedLLM(
+        [
+            _tool_call_response(
+                "ask_user",
+                {"questions": ["Q1?", "Q2?", "Q3?", "Q4?"]},
+                call_id="tc-over",
+            ),
+            _fake_response(plan_json),
+        ]
+    )
+
+    plan(task="t", observation={}, llm=llm, ask_user_callback=_cb)
+
+    assert asked == [], f"runtime cap of 3 must reject 4-item list; callback fired for: {asked}"
+
+
+def test_i1_dedup_applies_per_list_item_when_a_question_was_already_asked():
+    """When a second ask_user round overlaps a question from the first round,
+    only the overlapping list items get the dedup-synthetic; new items still
+    invoke the callback. This preserves F18-style "ask once per slot" while
+    not throwing away the LLM's progress on the rest."""
+    asked: list[str] = []
+
+    def _cb(q: str) -> str:
+        asked.append(q)
+        return f"answer to {q}"
+
+    plan_json = json.dumps({"steps": ["Open site", "Continue"], "expected_end_state": "ok"})
+    llm = _ScriptedLLM(
+        [
+            _tool_call_response("ask_user", {"questions": ["Which branch?"]}, call_id="tc-1"),
+            _tool_call_response(
+                "ask_user",
+                {"questions": ["Which branch?", "What date?"]},
+                call_id="tc-2",
+            ),
+            _fake_response(plan_json),
+        ]
+    )
+
+    plan(task="t", observation={}, llm=llm, ask_user_callback=_cb)
+
+    # First round asked branch; second round overlaps on branch (dedup) and
+    # adds date (callback fires).
+    assert asked == ["Which branch?", "What date?"], asked

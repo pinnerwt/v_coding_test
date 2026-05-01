@@ -1159,6 +1159,17 @@ def _dispatch(
     if tool_name == "goto":
         url = args.get("url")
         if not isinstance(url, str) or not url:
+            # F29: emit an act event so the trace records why this step
+            # produced no navigation (otherwise step_id increments silently).
+            _emit_act_event(
+                trace_writer=trace_writer,
+                run_id=run_id,
+                tool="goto",
+                args={"url": url} if url is not None else {},
+                outcome="error",
+                ms=0,
+                step_id=step_id,
+            )
             return "Error: goto requires a non-empty 'url' string argument"
         from agent.browser import NavigationError
 
@@ -1204,6 +1215,7 @@ def _dispatch(
             )
 
         if intent and find:
+            _emit_read("error", {"intent": intent, "find": find})
             return "Error: read accepts either 'intent' or 'find', not both"
         if find is not None:
             if not isinstance(find, str) or not find.strip():
@@ -1263,6 +1275,16 @@ def _dispatch(
     if tool_name == "click":
         intent_val: str | None = args.get("intent")
         if not isinstance(intent_val, str) or not intent_val:
+            # F29: every dispatch path emits something so step_ids stay contiguous.
+            _emit_act_event(
+                trace_writer=trace_writer,
+                run_id=run_id,
+                tool="click",
+                args={"intent": intent_val} if intent_val is not None else {},
+                outcome="error",
+                ms=0,
+                step_id=step_id,
+            )
             return "Error: click requires a non-empty 'intent' string argument"
         page = browser._page
         located = _locate_or_error_msg(
@@ -1276,6 +1298,17 @@ def _dispatch(
             llm_chat=llm_chat,
         )
         if isinstance(located, str):
+            # F29: a locate-failed click is the most common trace gap source —
+            # emit an act so reviewers see why this step performed no click.
+            _emit_act_event(
+                trace_writer=trace_writer,
+                run_id=run_id,
+                tool="click",
+                args={"intent": intent_val},
+                outcome="error",
+                ms=0,
+                step_id=step_id,
+            )
             return located
         locate_result = located
         url_before = page.url
@@ -1331,8 +1364,36 @@ def _dispatch(
         text_val = args.get("text")
         submit_val = bool(args.get("submit", False))
         if not isinstance(intent_val, str) or not intent_val:
+            # F29: contiguous step_ids — emit an error act for missing intent.
+            _emit_act_event(
+                trace_writer=trace_writer,
+                run_id=run_id,
+                tool="type",
+                args={
+                    k: v
+                    for k, v in {"intent": intent_val, "text": text_val}.items()
+                    if v is not None
+                },
+                outcome="error",
+                ms=0,
+                step_id=step_id,
+            )
             return "Error: type requires a non-empty 'intent' string argument"
         if not isinstance(text_val, str) or not text_val:
+            # F29: contiguous step_ids — emit an error act for missing text.
+            _emit_act_event(
+                trace_writer=trace_writer,
+                run_id=run_id,
+                tool="type",
+                args={
+                    k: v
+                    for k, v in {"intent": intent_val, "text": text_val}.items()
+                    if v is not None
+                },
+                outcome="error",
+                ms=0,
+                step_id=step_id,
+            )
             return "Error: type requires a non-empty 'text' string argument"
         page = browser._page
         located = _locate_or_error_msg(
@@ -1346,6 +1407,16 @@ def _dispatch(
             llm_chat=llm_chat,
         )
         if isinstance(located, str):
+            # F29: locate-failed type is the symmetric gap to F29's click case.
+            _emit_act_event(
+                trace_writer=trace_writer,
+                run_id=run_id,
+                tool="type",
+                args={"intent": intent_val, "text": text_val},
+                outcome="error",
+                ms=0,
+                step_id=step_id,
+            )
             return located
         locate_result = located
         t_fill = time.monotonic()
@@ -1387,6 +1458,16 @@ def _dispatch(
         if fill_outcome == "ok":
             return f"Typed into {intent_val!r} (ok)"
         return f"Error: type {fill_outcome} for intent {intent_val!r}"
+    # F29: unknown-tool dispatch should still leave a trace record.
+    _emit_act_event(
+        trace_writer=trace_writer,
+        run_id=run_id,
+        tool=tool_name,
+        args=args,
+        outcome="error",
+        ms=0,
+        step_id=step_id,
+    )
     return f"Error: unknown tool {tool_name!r}"
 
 

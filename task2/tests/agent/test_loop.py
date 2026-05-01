@@ -3362,10 +3362,14 @@ def test_loop_type_l1_miss_returns_tool_error_loop_continues(fixture_server, pla
 
     events = list(writer.iter_events(run_id))
     type_act_events = [e for e in events if isinstance(e, ActEvent) and e.tool == "type"]
-    assert len(type_act_events) == 0, (
-        f"expected zero type ActEvents (locate-miss path returns before emit), "
+    # F29: locate-miss path now emits an act(outcome=error) so the trace
+    # stays contiguous with step_id increments. Loop still continues
+    # (status=succeeded) — the change is purely about trace observability.
+    assert len(type_act_events) == 1, (
+        f"expected one type ActEvent with outcome=error (F29 trace continuity), "
         f"got {[(e.tool, e.outcome) for e in type_act_events]}"
     )
+    assert type_act_events[0].outcome == "error"
     writer.close()
 
 
@@ -3544,11 +3548,22 @@ def test_loop_type_validation_guard_returns_error_without_locating(args, expecte
     )
 
     act_events = [e for e in writer.iter_events(run_id) if isinstance(e, ActEvent)]
+    locate_events = [e for e in writer.iter_events(run_id) if isinstance(e, LocateEvent)]
     assert result_str.startswith("Error: type requires"), (
         f"expected error string, got {result_str!r}"
     )
     assert expected_field in result_str
-    assert len(act_events) == 0, f"locate must not run when {expected_field} guard fires"
+    # F29: validation guards now emit an act(outcome=error) so the trace stays
+    # contiguous with step_id increments. Locate must still not run — verify
+    # via the absence of locate events, not via the act-event count.
+    assert len(locate_events) == 0, (
+        f"locate must not run when {expected_field} guard fires"
+    )
+    assert len(act_events) == 1, (
+        f"F29: validation guard must emit one act(error) event; got {act_events}"
+    )
+    assert act_events[0].tool == "type"
+    assert act_events[0].outcome == "error"
     writer.close()
 
 

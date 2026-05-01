@@ -1404,3 +1404,151 @@ def test_f23_read_find_no_match_returns_ok_with_match_count_zero(
         f"got {read_events[0].outcome!r}"
     )
     writer.close()
+
+
+# --- F29 (close trace gaps from locate-failed dispatch paths) ----------
+
+
+def test_f29_click_locate_failure_emits_act_event(monkeypatch):
+    """When `click`'s locate ladder fully misses, `_dispatch` returns an
+    error string but historically emitted no `act` event — leaving a
+    silent step in the trace. F29: emit an ActEvent with
+    outcome='error' so step_id increments stay contiguous and reviewers
+    can see why the click never happened.
+    """
+    from agent.loop import _dispatch
+    from agent.supervisor import Supervisor
+    from agent.trace import ActEvent
+    from tests.agent.test_loop import _open_click_writer
+
+    monkeypatch.setattr(
+        "agent.loop._locate_or_error_msg",
+        lambda *_a, **_k: "Error: could not locate element for intent 'X'",
+    )
+
+    class _StubBrowser:
+        _page = None
+
+    run_id = "f29-click-locate-miss"
+    writer = _open_click_writer(run_id)
+    out = _dispatch(
+        "click",
+        {"intent": "the missing button"},
+        _StubBrowser(),
+        Supervisor(),
+        trace_writer=writer,
+        run_id=run_id,
+        step_id=f"{run_id}:step-1",
+    )
+
+    assert out.lower().startswith("error"), out
+    events = [e for e in writer.iter_events(run_id) if isinstance(e, ActEvent)]
+    click_events = [e for e in events if e.tool == "click"]
+    writer.close()
+    assert len(click_events) == 1, (
+        f"F29: click dispatch with locate miss must emit one act event; got {click_events}"
+    )
+    assert click_events[0].outcome == "error", click_events[0].outcome
+    assert click_events[0].step_id == f"{run_id}:step-1"
+
+
+def test_f29_type_locate_failure_emits_act_event(monkeypatch):
+    """Same gap exists for `type`: dispatch returns an error string with
+    no act event when the locate ladder misses. F29 closes it for type."""
+    from agent.loop import _dispatch
+    from agent.supervisor import Supervisor
+    from agent.trace import ActEvent
+    from tests.agent.test_loop import _open_click_writer
+
+    monkeypatch.setattr(
+        "agent.loop._locate_or_error_msg",
+        lambda *_a, **_k: "Error: could not locate element for intent 'Y'",
+    )
+
+    class _StubBrowser:
+        _page = None
+
+    run_id = "f29-type-locate-miss"
+    writer = _open_click_writer(run_id)
+    out = _dispatch(
+        "type",
+        {"intent": "the search box", "text": "hello"},
+        _StubBrowser(),
+        Supervisor(),
+        trace_writer=writer,
+        run_id=run_id,
+        step_id=f"{run_id}:step-2",
+    )
+
+    assert out.lower().startswith("error"), out
+    events = [e for e in writer.iter_events(run_id) if isinstance(e, ActEvent)]
+    type_events = [e for e in events if e.tool == "type"]
+    writer.close()
+    assert len(type_events) == 1, (
+        f"F29: type dispatch with locate miss must emit one act event; got {type_events}"
+    )
+    assert type_events[0].outcome == "error", type_events[0].outcome
+
+
+def test_f29_dispatch_missing_required_arg_emits_act_event():
+    """Dispatch error paths for missing required args (no URL on goto,
+    no intent on click/type, etc.) used to return an error string with
+    no act event. F29: every dispatch path should emit something."""
+    from agent.loop import _dispatch
+    from agent.supervisor import Supervisor
+    from agent.trace import ActEvent
+    from tests.agent.test_loop import _open_click_writer
+
+    class _StubBrowser:
+        _page = None
+
+    run_id = "f29-missing-args"
+    writer = _open_click_writer(run_id)
+
+    out = _dispatch(
+        "click",
+        {},  # missing intent
+        _StubBrowser(),
+        Supervisor(),
+        trace_writer=writer,
+        run_id=run_id,
+        step_id=f"{run_id}:step-1",
+    )
+    assert out.lower().startswith("error"), out
+
+    out2 = _dispatch(
+        "type",
+        {"intent": "x"},  # missing text
+        _StubBrowser(),
+        Supervisor(),
+        trace_writer=writer,
+        run_id=run_id,
+        step_id=f"{run_id}:step-2",
+    )
+    assert out2.lower().startswith("error"), out2
+
+    out3 = _dispatch(
+        "goto",
+        {},  # missing url
+        _StubBrowser(),
+        Supervisor(),
+        trace_writer=writer,
+        run_id=run_id,
+        step_id=f"{run_id}:step-3",
+    )
+    assert out3.lower().startswith("error"), out3
+
+    events = [e for e in writer.iter_events(run_id) if isinstance(e, ActEvent)]
+    writer.close()
+    by_tool = {(e.tool, e.step_id): e for e in events}
+    assert ("click", f"{run_id}:step-1") in by_tool, (
+        "F29: click with missing intent should still emit an act event"
+    )
+    assert ("type", f"{run_id}:step-2") in by_tool, (
+        "F29: type with missing text should still emit an act event"
+    )
+    assert ("goto", f"{run_id}:step-3") in by_tool, (
+        "F29: goto with missing url should still emit an act event"
+    )
+    for ev in by_tool.values():
+        assert ev.outcome == "error", (ev.tool, ev.outcome)
