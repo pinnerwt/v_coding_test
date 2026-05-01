@@ -1347,6 +1347,7 @@ def loop(
     _consecutive_off_plan_steps: int = 0
     _force_done_next: bool = False
     _no_progress_warned: bool = False
+    _prev_observation: dict | None = None
     _budget = int(os.environ.get("LLM_CONTEXT_CHAR_BUDGET", _DEFAULT_CONTEXT_CHAR_BUDGET))
     t_loop = time.monotonic()
 
@@ -1376,7 +1377,19 @@ def loop(
         step_saw_off_plan: bool = False
         step_off_plan_reason: str | None = None
 
-        observation = observe.build_observation(browser, last_actions)
+        raw_observation = observe.build_observation(browser, last_actions)
+        # T5: compute the verbal DOM-mutation digest against the previous
+        # observation so the agent knows what changed since the last step.
+        # Build a fresh dict (don't mutate the one build_observation returned —
+        # tests mock it to return a shared constant dict). Some tests mock
+        # build_observation to return a non-dict; treat that as a no-op for
+        # digest purposes.
+        if isinstance(raw_observation, dict):
+            observation = dict(raw_observation)
+            observation["dom_digest"] = observe.compute_dom_digest(_prev_observation, observation)
+            _prev_observation = {k: v for k, v in observation.items() if k != "dom_digest"}
+        else:
+            observation = raw_observation
         last_actions = []
 
         if step_num == 1:
@@ -1449,11 +1462,25 @@ def loop(
         else:
             budget_prefix = f"Step {step_num}/{max_steps}.\n\n"
         _force_done_next = False
+        # T5: surface the DOM-mutation digest as a labeled prefix so the
+        # agent can see "what changed" without bloating the state JSON
+        # (which would also break replay-fixture round-trips).
+        if isinstance(observation, dict):
+            dom_digest_value = observation.get("dom_digest") or ""
+            state_for_llm = {k: v for k, v in observation.items() if k != "dom_digest"}
+            state_payload = json.dumps(state_for_llm)
+        else:
+            dom_digest_value = ""
+            state_payload = json.dumps(observation)
+        digest_prefix = (
+            f"DOM change since last step: {dom_digest_value}\n\n" if dom_digest_value else ""
+        )
         messages.append(
             {
                 "role": "user",
                 "content": (
-                    f"{budget_prefix}{plan_prefix}{STATE_MESSAGE_PREFIX}{json.dumps(observation)}"
+                    f"{budget_prefix}{plan_prefix}{digest_prefix}"
+                    f"{STATE_MESSAGE_PREFIX}{state_payload}"
                 ),
             }
         )
