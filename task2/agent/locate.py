@@ -26,6 +26,17 @@ _ROLE_ALIASES: dict[str, str] = {
     "combobox": "textbox",
 }
 _ARTICLES: frozenset[str] = frozenset({"the", "a", "an"})
+# Punctuation stripped from each token before role-matching. The LLM commonly
+# emits intents like `'the combobox labeled "搜尋 Google 地圖"'`, where the
+# closing `"` attaches to the last whitespace-token and turns the role lookup
+# into `'地圖"'` — guaranteed parse error. Strip these so the role becomes
+# recognizable wherever it sits in the phrase.
+_TOKEN_TRIM_CHARS = "\"'`,.;:!?()[]{}<>"
+# Tokens that, when they appear immediately after the role, signal that the
+# rest of the phrase is the accessible name. e.g. `'X labeled Y'` → name=Y.
+_NAME_HINT_TOKENS: frozenset[str] = frozenset(
+    {"labeled", "named", "label", "placeholder", "called", "titled"}
+)
 
 LocatorMissReason = Literal["zero_matches", "ambiguous", "vision_miss"]
 _VALID_REASONS: frozenset[str] = frozenset(get_args(LocatorMissReason))
@@ -141,20 +152,42 @@ class LocateResult:
 
 
 def parse_intent(intent: str) -> tuple[str, str | None]:
-    tokens = intent.split()
-    if not tokens:
+    raw_tokens = intent.split()
+    if not raw_tokens:
         raise IntentParseError("intent is empty")
-    if len(tokens) > 1 and tokens[0].lower() in _ARTICLES:
-        tokens = tokens[1:]
-    role = tokens[-1].lower()
-    role = _ROLE_ALIASES.get(role, role)
-    if role not in _SUPPORTED_ROLES:
+    cleaned = [t.strip(_TOKEN_TRIM_CHARS) for t in raw_tokens]
+    cleaned = [c for c in cleaned if c]
+    if not cleaned:
+        raise IntentParseError(f"intent {intent!r} is empty after stripping punctuation")
+    if len(cleaned) > 1 and cleaned[0].lower() in _ARTICLES:
+        cleaned = cleaned[1:]
+    role: str | None = None
+    role_idx: int | None = None
+    for idx in range(len(cleaned) - 1, -1, -1):
+        candidate = cleaned[idx].lower()
+        candidate = _ROLE_ALIASES.get(candidate, candidate)
+        if candidate in _SUPPORTED_ROLES:
+            role = candidate
+            role_idx = idx
+            break
+    if role is None or role_idx is None:
         raise IntentParseError(
-            f"unknown role token {tokens[-1]!r} in intent {intent!r}; "
+            f"no supported role token in intent {intent!r}; "
             f"supported: {sorted(_SUPPORTED_ROLES | _ROLE_ALIASES.keys())}"
         )
-    name_tokens = tokens[:-1]
-    name = " ".join(name_tokens) if name_tokens else None
+    after = cleaned[role_idx + 1 :]
+    name: str | None = None
+    if after:
+        i = 0
+        while i < len(after) and after[i].lower() == "with":
+            i += 1
+        if i < len(after) and after[i].lower() in _NAME_HINT_TOKENS:
+            name_tokens_after = after[i + 1 :]
+            if name_tokens_after:
+                name = " ".join(name_tokens_after)
+    if name is None:
+        before = cleaned[:role_idx]
+        name = " ".join(before) if before else None
     return role, name
 
 
