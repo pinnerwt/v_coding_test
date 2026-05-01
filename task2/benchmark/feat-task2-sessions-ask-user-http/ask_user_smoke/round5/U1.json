@@ -1,0 +1,143 @@
+{
+  "summary": {
+    "case_id": "U1",
+    "run_id": "01KQH3274Z18QWXERS9ESTY48W",
+    "task": "Tell me the name of the Turing Award winner in 2018.",
+    "ambiguous_expected": false,
+    "saw_ask_user": false,
+    "asked_questions": [],
+    "terminal": {
+      "type": "terminal",
+      "status": "failed",
+      "reason": null,
+      "result": null,
+      "evidence": null
+    },
+    "elapsed_s": 69.1,
+    "n_events": 9
+  },
+  "events": [
+    {
+      "type": "trace",
+      "run_id": "01KQH3274Z18QWXERS9ESTY48W",
+      "seq": 1,
+      "ts": "2026-05-01T06:19:22.944492+00:00",
+      "step_id": "01KQH3274Z18QWXERS9ESTY48W:step-1",
+      "kind": "plan",
+      "reason": "started",
+      "steps": [
+        "Planning..."
+      ],
+      "llm_call_id": "e4a0c4c5-aa0d-4ce9-b1cd-97ba6a90a589"
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQH3274Z18QWXERS9ESTY48W",
+      "seq": 2,
+      "ts": "2026-05-01T06:19:30.949125+00:00",
+      "step_id": "01KQH3274Z18QWXERS9ESTY48W:step-1",
+      "kind": "plan",
+      "reason": "initial",
+      "steps": [
+        "Navigate to Google search",
+        "Search for 'Turing Award winner 2018'",
+        "Read and extract the name of the 2018 Turing Award winner from the search results"
+      ],
+      "llm_call_id": "1a856de1-70b5-4d29-80b9-4283ef008124"
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQH3274Z18QWXERS9ESTY48W",
+      "seq": 3,
+      "ts": "2026-05-01T06:19:37.283081+00:00",
+      "step_id": "01KQH3274Z18QWXERS9ESTY48W:step-1",
+      "kind": "act",
+      "tool": "goto",
+      "args": {
+        "url": "https://www.google.com"
+      },
+      "outcome": "ok",
+      "diff": {},
+      "ms": 245
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQH3274Z18QWXERS9ESTY48W",
+      "seq": 4,
+      "ts": "2026-05-01T06:19:57.735782+00:00",
+      "step_id": "01KQH3274Z18QWXERS9ESTY48W:step-4",
+      "kind": "locate",
+      "intent": "the search textbox",
+      "tier": "L1_ax",
+      "outcome": "miss",
+      "candidates": [],
+      "chosen": null,
+      "cache_action": null,
+      "ms": 0
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQH3274Z18QWXERS9ESTY48W",
+      "seq": 5,
+      "ts": "2026-05-01T06:19:57.742066+00:00",
+      "step_id": "01KQH3274Z18QWXERS9ESTY48W:step-4",
+      "kind": "supervisor",
+      "trigger_event_seq": 4,
+      "classified_as": "LocatorMiss",
+      "policy": "next_tier",
+      "attempt": 1
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQH3274Z18QWXERS9ESTY48W",
+      "seq": 6,
+      "ts": "2026-05-01T06:19:57.749875+00:00",
+      "step_id": "01KQH3274Z18QWXERS9ESTY48W:step-4",
+      "kind": "locate",
+      "intent": "the search textbox",
+      "tier": "L2_dom",
+      "outcome": "miss",
+      "candidates": [],
+      "chosen": null,
+      "cache_action": null,
+      "ms": 0
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQH3274Z18QWXERS9ESTY48W",
+      "seq": 7,
+      "ts": "2026-05-01T06:19:57.770727+00:00",
+      "step_id": "01KQH3274Z18QWXERS9ESTY48W:step-4",
+      "kind": "locate",
+      "intent": "the search textbox",
+      "tier": "L_textmatch",
+      "outcome": "miss",
+      "candidates": [],
+      "chosen": null,
+      "cache_action": null,
+      "ms": 0
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQH3274Z18QWXERS9ESTY48W",
+      "seq": 8,
+      "ts": "2026-05-01T06:20:31.734527+00:00",
+      "step_id": "01KQH3274Z18QWXERS9ESTY48W:step-6",
+      "kind": "act",
+      "tool": "fail",
+      "args": {
+        "reason": "Got stuck on Google homepage - unable to interact with the search combobox element despite multiple attempts with different intent variations ('the search box', 'the search combobox', 'the search textbox', 'the search combobox labeled 搜尋'). The ax_tree_digest shows a [combobox] \"搜尋\" element exists but locator pipeline keeps failing due to role token issues. Would need either a working selector for the search input or alternative navigation path (e.g., direct Wikipedia URL) to complete the task."
+      },
+      "outcome": "ok",
+      "diff": {},
+      "ms": 0
+    },
+    {
+      "type": "terminal",
+      "status": "failed",
+      "reason": null,
+      "result": null,
+      "evidence": null
+    }
+  ]
+}

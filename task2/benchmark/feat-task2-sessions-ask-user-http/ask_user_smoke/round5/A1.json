@@ -1,0 +1,346 @@
+{
+  "summary": {
+    "case_id": "A1",
+    "run_id": "01KQH2E7DF8YWDA1D5TDT113HX",
+    "task": "Book a table at Inparadise (旭集) for noon next Saturday.",
+    "ambiguous_expected": true,
+    "saw_ask_user": true,
+    "asked_questions": [
+      "Which Inparadise (旭集) location would you like to book - please specify the city or branch name."
+    ],
+    "terminal": {
+      "type": "terminal",
+      "status": "failed",
+      "reason": null,
+      "result": null,
+      "evidence": null
+    },
+    "elapsed_s": 408.7,
+    "n_events": 23
+  },
+  "events": [
+    {
+      "type": "trace",
+      "run_id": "01KQH2E7DF8YWDA1D5TDT113HX",
+      "seq": 1,
+      "ts": "2026-05-01T06:08:27.853663+00:00",
+      "step_id": "01KQH2E7DF8YWDA1D5TDT113HX:step-1",
+      "kind": "plan",
+      "reason": "started",
+      "steps": [
+        "Planning..."
+      ],
+      "llm_call_id": "4c20933e-eaa4-4604-a746-2876fba307db"
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQH2E7DF8YWDA1D5TDT113HX",
+      "seq": 2,
+      "ts": "2026-05-01T06:08:36.035846+00:00",
+      "step_id": "01KQH2E7DF8YWDA1D5TDT113HX:step-1",
+      "kind": "plan",
+      "reason": "ask_user",
+      "steps": [
+        "Asking user: Which Inparadise (旭集) location would you like to book - please specify the city or branch name."
+      ],
+      "llm_call_id": "3966dfc4-60bd-4d83-8871-5d112fc6695b"
+    },
+    {
+      "type": "ask_user",
+      "question": "Which Inparadise (旭集) location would you like to book - please specify the city or branch name."
+    },
+    {
+      "type": "answer",
+      "answer": "天母店 (Tianmu)"
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQH2E7DF8YWDA1D5TDT113HX",
+      "seq": 3,
+      "ts": "2026-05-01T06:08:53.211492+00:00",
+      "step_id": "01KQH2E7DF8YWDA1D5TDT113HX:step-1",
+      "kind": "plan",
+      "reason": "initial",
+      "steps": [
+        "Navigate to Google and search for 'Inparadise 旭集 天母店 reservation' or '旭集 天母 訂位'",
+        "Click on the official website or a booking platform link for Inparadise Tianmu branch",
+        "Select the date 2026-05-09 (next Saturday) and time 12:00 PM (noon)",
+        "Enter party size of 2 people as default",
+        "Fill in required contact information (name, phone number, email)",
+        "Confirm and submit the reservation request"
+      ],
+      "llm_call_id": "eb28e6eb-30cb-4e82-a475-87b1441a83b8"
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQH2E7DF8YWDA1D5TDT113HX",
+      "seq": 4,
+      "ts": "2026-05-01T06:09:01.523948+00:00",
+      "step_id": "01KQH2E7DF8YWDA1D5TDT113HX:step-1",
+      "kind": "act",
+      "tool": "goto",
+      "args": {
+        "url": "https://www.google.com/search?q=Inparadise+%E6%97%A5%E9%9B%86+%E5%A4%A9%E6%AF%8D%E5%BA%97+%E8%A8%9F%E4%BD%8D"
+      },
+      "outcome": "ok",
+      "diff": {},
+      "ms": 490
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQH2E7DF8YWDA1D5TDT113HX",
+      "seq": 5,
+      "ts": "2026-05-01T06:09:06.891294+00:00",
+      "step_id": "01KQH2E7DF8YWDA1D5TDT113HX:step-2",
+      "kind": "act",
+      "tool": "goto",
+      "args": {
+        "url": "https://www.inparadise.com.tw/"
+      },
+      "outcome": "ok",
+      "diff": {},
+      "ms": 512
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQH2E7DF8YWDA1D5TDT113HX",
+      "seq": 6,
+      "ts": "2026-05-01T06:09:18.308707+00:00",
+      "step_id": "01KQH2E7DF8YWDA1D5TDT113HX:step-3",
+      "kind": "act",
+      "tool": "click",
+      "args": {
+        "intent": "網路訂位 link"
+      },
+      "outcome": "timeout",
+      "diff": {},
+      "ms": 5004
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQH2E7DF8YWDA1D5TDT113HX",
+      "seq": 7,
+      "ts": "2026-05-01T06:09:47.799282+00:00",
+      "step_id": "01KQH2E7DF8YWDA1D5TDT113HX:step-6",
+      "kind": "act",
+      "tool": "click",
+      "args": {
+        "intent": "the 網路訂位 link"
+      },
+      "outcome": "timeout",
+      "diff": {},
+      "ms": 5001
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQH2E7DF8YWDA1D5TDT113HX",
+      "seq": 8,
+      "ts": "2026-05-01T06:10:11.969483+00:00",
+      "step_id": "01KQH2E7DF8YWDA1D5TDT113HX:step-7",
+      "kind": "act",
+      "tool": "done",
+      "args": {
+        "result": {
+          "status": "partial",
+          "message": "Found Inparadise official website with online reservation system, but unable to complete booking due to technical issues clicking the reservation link.",
+          "website_url": "https://www.inparadise.com.tw/zh-TW/home",
+          "reservation_link_found": true,
+          "reservation_link_text": "網路訂位"
+        },
+        "evidence": {
+          "url": "https://www.inparadise.com.tw/zh-TW/home",
+          "text_snippet": "[link] \"網路訂位\" - Online reservation link found on the Inparadise official website homepage"
+        },
+        "evaluation_previous_action": "failed",
+        "evaluation_reason": "Multiple attempts to click the 網路訂位 (online reservation) link failed due to timeout or element location errors, preventing access to the booking form.",
+        "next_goal": "report the final answer"
+      },
+      "outcome": "halted_by_supervisor",
+      "diff": {},
+      "ms": 0
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQH2E7DF8YWDA1D5TDT113HX",
+      "seq": 9,
+      "ts": "2026-05-01T06:10:11.977662+00:00",
+      "step_id": "01KQH2E7DF8YWDA1D5TDT113HX:step-7",
+      "kind": "supervisor",
+      "trigger_event_seq": 8,
+      "classified_as": "premature_done",
+      "policy": "halt",
+      "attempt": 1
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQH2E7DF8YWDA1D5TDT113HX",
+      "seq": 10,
+      "ts": "2026-05-01T06:10:52.303733+00:00",
+      "step_id": "01KQH2E7DF8YWDA1D5TDT113HX:step-10",
+      "kind": "locate",
+      "intent": "the navigation menu with reservation link",
+      "tier": "L1_ax",
+      "outcome": "miss",
+      "candidates": [],
+      "chosen": null,
+      "cache_action": null,
+      "ms": 0
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQH2E7DF8YWDA1D5TDT113HX",
+      "seq": 11,
+      "ts": "2026-05-01T06:10:52.310384+00:00",
+      "step_id": "01KQH2E7DF8YWDA1D5TDT113HX:step-10",
+      "kind": "supervisor",
+      "trigger_event_seq": 10,
+      "classified_as": "LocatorMiss",
+      "policy": "next_tier",
+      "attempt": 1
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQH2E7DF8YWDA1D5TDT113HX",
+      "seq": 12,
+      "ts": "2026-05-01T06:10:52.322068+00:00",
+      "step_id": "01KQH2E7DF8YWDA1D5TDT113HX:step-10",
+      "kind": "locate",
+      "intent": "the navigation menu with reservation link",
+      "tier": "L2_dom",
+      "outcome": "miss",
+      "candidates": [],
+      "chosen": null,
+      "cache_action": null,
+      "ms": 0
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQH2E7DF8YWDA1D5TDT113HX",
+      "seq": 13,
+      "ts": "2026-05-01T06:10:52.332303+00:00",
+      "step_id": "01KQH2E7DF8YWDA1D5TDT113HX:step-10",
+      "kind": "locate",
+      "intent": "the navigation menu with reservation link",
+      "tier": "L_textmatch",
+      "outcome": "miss",
+      "candidates": [],
+      "chosen": null,
+      "cache_action": null,
+      "ms": 0
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQH2E7DF8YWDA1D5TDT113HX",
+      "seq": 14,
+      "ts": "2026-05-01T06:10:52.337336+00:00",
+      "step_id": "01KQH2E7DF8YWDA1D5TDT113HX:step-10",
+      "kind": "act",
+      "tool": "read",
+      "args": {
+        "intent": "the navigation menu with reservation link",
+        "fallback": "body"
+      },
+      "outcome": "ok",
+      "diff": {},
+      "ms": 36
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQH2E7DF8YWDA1D5TDT113HX",
+      "seq": 15,
+      "ts": "2026-05-01T06:11:45.371481+00:00",
+      "step_id": "01KQH2E7DF8YWDA1D5TDT113HX:step-13",
+      "kind": "act",
+      "tool": "goto",
+      "args": {
+        "url": "https://www.inparadise.com.tw/zh-TW/reservation"
+      },
+      "outcome": "ok",
+      "diff": {},
+      "ms": 135
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQH2E7DF8YWDA1D5TDT113HX",
+      "seq": 16,
+      "ts": "2026-05-01T06:12:02.078865+00:00",
+      "step_id": "01KQH2E7DF8YWDA1D5TDT113HX:step-14",
+      "kind": "act",
+      "tool": "goto",
+      "args": {
+        "url": "https://www.google.com/search?q=%E9%A6%AE%E9%A6%AE+%E5%A4%A9%E6%AF%8D+%E7%B6%B2%E8%B7%AF%E8%A8%9F%E4%BD%8D"
+      },
+      "outcome": "ok",
+      "diff": {},
+      "ms": 554
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQH2E7DF8YWDA1D5TDT113HX",
+      "seq": 17,
+      "ts": "2026-05-01T06:12:17.051815+00:00",
+      "step_id": "01KQH2E7DF8YWDA1D5TDT113HX:step-15",
+      "kind": "act",
+      "tool": "goto",
+      "args": {
+        "url": "https://www.opentable.com.tw/r/Inparadise-%E5%A4%A9%E6%AF%8D"
+      },
+      "outcome": "error",
+      "diff": {},
+      "ms": 90
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQH2E7DF8YWDA1D5TDT113HX",
+      "seq": 18,
+      "ts": "2026-05-01T06:14:35.134864+00:00",
+      "step_id": "01KQH2E7DF8YWDA1D5TDT113HX:step-16",
+      "kind": "supervisor",
+      "trigger_event_seq": 0,
+      "classified_as": "unsupported_done",
+      "policy": "replan",
+      "attempt": 1
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQH2E7DF8YWDA1D5TDT113HX",
+      "seq": 19,
+      "ts": "2026-05-01T06:14:51.931970+00:00",
+      "step_id": "01KQH2E7DF8YWDA1D5TDT113HX:step-16",
+      "kind": "plan",
+      "reason": "replan",
+      "steps": [
+        "Navigate to Google and search for '旭集 天母店 訂位' or 'Inparadise Tianmu reservation'",
+        "Look for official website link or alternative booking platforms (Line OA, restaurant's own site) instead of OpenTable",
+        "Verify the page shows '天母店' branch before proceeding with date selection",
+        "Select the date 2026-05-09 (next Saturday) and time 12:00 PM (noon)",
+        "Enter party size of 2 people",
+        "Fill in required contact information (name, phone number, email)",
+        "Confirm and submit the reservation request"
+      ],
+      "llm_call_id": "73d65377-12bb-4442-99e1-4310c10d40fa"
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQH2E7DF8YWDA1D5TDT113HX",
+      "seq": 20,
+      "ts": "2026-05-01T06:15:16.200846+00:00",
+      "step_id": "01KQH2E7DF8YWDA1D5TDT113HX:step-17",
+      "kind": "act",
+      "tool": "fail",
+      "args": {
+        "reason": "Unable to complete reservation because: 1) The official website found (inparadise.com.tw) is for 'INPARADISE 饗饗' brand, not specifically '旭集' - these may be different restaurants under the same group. 2) No confirmation that a Tianmu (天母) branch exists - only Xinyi (信義店) was mentioned in the page content. 3) Multiple attempts to access the online reservation system failed due to technical issues (click timeouts, element location errors, HTTP protocol errors). Without confirming the correct restaurant and branch location, I cannot proceed with booking for 2026-05-09 at noon."
+      },
+      "outcome": "ok",
+      "diff": {},
+      "ms": 0
+    },
+    {
+      "type": "terminal",
+      "status": "failed",
+      "reason": null,
+      "result": null,
+      "evidence": null
+    }
+  ]
+}
