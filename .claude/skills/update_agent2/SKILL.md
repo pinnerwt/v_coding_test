@@ -1,6 +1,6 @@
 ---
 name: "Update Agent2"
-description: Restart the live Task 2 /sessions server in tmux, drive the ask_user_test_set against it, read each SSE trace end-to-end, verify that thinking/action/answer are all correct (not just that ask_user fired), and write findings to task2/fix.md. Use when the user asks to "test the served agent", "run the ask_user smoke", or "find issues in the deployed agent".
+description: Restart the live Task 2 /sessions server in tmux, drive the ask_user_test_set against it, read each SSE trace end-to-end, verify that thinking/action/answer are all correct (not just that ask_user fired), and overwrite task2/issues.md with the findings. Use when the user asks to "test the served agent", "run the ask_user smoke", or "find issues in the deployed agent".
 category: Evaluation
 tags: [task2, qualitative-eval, smoke, ask_user]
 ---
@@ -56,11 +56,13 @@ Default subset (manual smoke, ~12 min on Qwen3.5-27B):
 
 (The doc's own "manual smoke" is A1+A3+U1+U4. Add A6 for superlative-gating coverage. Run the full 8+8+3 only when the user asks for the full suite — it is ~60 min.)
 
-A reference runner lives at `/tmp/run_ask_user_http.py` from prior sessions; if absent, reproduce its core loop:
+The runner lives in-repo at `task2/scripts/run_ask_user_http.py`. Run it with `OUT_DIR=task2/benchmark/<branch-slug>/ask_user_smoke uv run python scripts/run_ask_user_http.py` so evidence lands in-repo. The runner uses a per-slot keyword map (`CASES[i].answers`) to pick a contextually-correct canned reply for each `ask_user` question, with a case-level `default` for unmatched questions. If a case starts asking new slots that the map doesn't cover, extend the map in that file rather than swapping the case.
+
+If the runner is missing, reproduce its core loop:
 
 1. `POST /sessions {task}` → `run_id`
 2. Open `GET /sessions/{run_id}/events` (SSE stream).
-3. For each `data:` line, parse JSON. On `type=ask_user`, `POST /sessions/{run_id}/answer {answer: <canned>}`. On `type=terminal`, break.
+3. For each `data:` line, parse JSON. On `type=ask_user`, pick the canned reply by keyword-matching the question text, then `POST /sessions/{run_id}/answer {answer: <reply>}`. On `type=terminal`, break.
 4. Dump every event to `task2/benchmark/<branch-slug>/ask_user_smoke/<case_id>.json` so the evidence is in-repo, not in `/tmp`.
 5. Hard timeout per case: 360 s.
 
@@ -100,30 +102,31 @@ For each case write a short verdict block:
 
 `PARTIAL` is for cases where the system flagged `unverified` correctly but the user-visible result is misleading — that is still a real bug.
 
-### 4. Write findings to `task2/fix.md`
+### 4. Overwrite `task2/issues.md` with the findings
 
-The deliverable is a single markdown file at `task2/fix.md`. Structure:
+The deliverable is a single markdown file at `task2/issues.md`, **overwritten in full** each run — not appended to. The point is the current state of open issues from the latest smoke; stale verdicts from previous rounds are noise. If issues from a prior round are still open, re-state them in the new file with refreshed evidence; if they were fixed, drop them.
 
-1. **Header table** — one row per case (`case`, `expected`, `asked`, `terminal`, `result_quality`, `t_s`).
-2. **Fix proposals**, one section per issue, ordered by severity. Each section:
-   - Title: `## F<N> — <one-line fix description>`.
+Structure:
+
+1. **Header** — one paragraph naming the round and pointing at the in-repo trace directory (`task2/benchmark/<branch-slug>/ask_user_smoke/round<N>/`).
+2. **Per-case verdict table** — one row per case (`case`, `expected ask`, `asked`, `terminal`, `result_quality`, `t_s`).
+3. **Per-case verdict blocks** — the `### <case_id> — <task summary> — PASS/FAIL/PARTIAL` block from step 3, with Thinking / Action / Answer bullets for failed cases. Skip narration for clean PASSes; one line is enough.
+4. **Issue sections** — one section per issue, ordered by severity. Each section:
+   - Title: `## I<N> — <one-line description>`.
    - Severity: P1 / P2 / P3.
    - Evidence: bullet list pointing at the in-repo trace JSONs (not `/tmp/`).
-   - Diagnosis: 1–3 sentences naming the likely faulty code path (e.g. `agent/plan.py`'s info-sufficiency heuristic, `agent/loop.py`'s `_handle_done`).
-   - Fix: numbered steps. Concrete file/function targets where possible.
-   - TDD shape: 1–3 tests that fail before, pass after. Per CLAUDE.md, the test is the spec.
-   - Expected impact: rough deltas to pass-rate / tokens / latency, marked as estimates.
-3. **Lower-severity observations** — single bulleted list at the bottom for things not worth a separate ticket but worth tracking.
-4. **Cross-cutting note** if the harness itself revealed a spec gap.
+   - Diagnosis: 1–3 sentences naming the likely faulty code path (e.g. `agent/plan.py`'s info-sufficiency heuristic, `agent/loop.py`'s `_handle_done`). For carry-over issues that have since been fixed, mark the title `(FIXED)` and keep the diagnosis + reference to the regression test.
+5. **Lower-severity observations** — single bulleted list at the bottom for things not worth a separate ticket but worth tracking.
+6. **Cross-cutting note** if the harness itself revealed a spec gap.
 
 Do **not**:
-- Open tickets unless the user explicitly asks. The user has historically said "just write to fix.md" — respect that.
+- Open tickets unless the user explicitly asks. The user has historically said "just write to issues.md" — respect that.
 - Edit `ask_user_test_set.md` or any benchmark dataset — immutable.
 - Pre-seed specific domains in any prompt fix proposal (per memory `feedback_no_preseeding_domains.md`). Phrase fixes as page-shape rules, not site-specific recipes.
 
 ### 5. End-of-turn summary
 
-Two sentences: which cases ran, which fix tickets you wrote (F1 / F2 / …), and where the evidence lives. Offer next-step actions only if a clear one exists (e.g. "Want me to file F1 and F2 as tickets?"); otherwise stop.
+Two sentences: which cases ran, which issues are now in `task2/issues.md` (I1 / I2 / …), and where the evidence lives. Offer next-step actions only if a clear one exists (e.g. "Want me to file I1 and I2 as tickets?"); otherwise stop.
 
 ## Common mistakes to avoid
 
