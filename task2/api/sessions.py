@@ -102,15 +102,20 @@ def subscribe_events(
     with session.event_lock:
         backlog = list(session.event_log)
         session.event_subscribers.append(q)
+    metrics.sse_subscribers_active.inc()
     return backlog, q
 
 
 def unsubscribe_events(session: SessionState, q: queue.Queue[dict[str, Any]]) -> None:
+    removed = False
     with session.event_lock:
         try:
             session.event_subscribers.remove(q)
+            removed = True
         except ValueError:
             pass
+    if removed:
+        metrics.sse_subscribers_active.dec()
 
 
 def _emit_terminal_once(session: SessionState, payload: dict[str, Any]) -> bool:
@@ -143,12 +148,14 @@ def _make_ask_user_callback(session: SessionState):
     def ask(question: str) -> str:
         session.pending_question = question
         session.status = "awaiting_user"
+        metrics.sessions_awaiting_user.inc()
         emit_event(session, {"type": "ask_user", "question": question})
         try:
             answer = session.answer_queue.get()
         finally:
             session.pending_question = None
             session.status = "running"
+            metrics.sessions_awaiting_user.dec()
         emit_event(session, {"type": "answer", "answer": answer})
         return answer
 

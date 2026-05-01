@@ -21,6 +21,7 @@ import threading
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
     Counter,
+    Gauge,
     Histogram,
     generate_latest,
 )
@@ -170,6 +171,22 @@ def record_task_terminal(
     failure_class = _classify_failure(status=status, verifier=verifier)
     if failure_class is not None:
         tasks_failure_class_total.labels(failure_class=failure_class).inc()
+
+
+# Live session gauges. Both reflect *current* state (not cumulative)
+# so they're Gauges, not Counters. Operators read these to tell a
+# stuck session from a busy one — `sessions_awaiting_user` flags how
+# many runs are blocked on user input right now, and
+# `sse_subscribers_active` flags how many event consumers are tailing.
+sessions_awaiting_user = Gauge(
+    "sessions_awaiting_user",
+    "Number of sessions currently blocked on user input.",
+)
+
+sse_subscribers_active = Gauge(
+    "sse_subscribers_active",
+    "Number of active SSE subscribers across all sessions.",
+)
 
 
 def render_latest() -> tuple[bytes, str]:
