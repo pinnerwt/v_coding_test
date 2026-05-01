@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from agent.loop import _build_system_prompt
+from agent.loop import _VERIFY_DONE_SYSTEM_PROMPT, _build_system_prompt
 from agent.plan import _PLAN_SYSTEM
 
 
@@ -84,14 +84,38 @@ _PLAN_FORBIDDEN_PHRASES = (
     "Inparadise",
     "2018",
     "2026-12-15",
+    "flight",
+    "airline",
 )
 
 
 def test_plan_system_has_no_eval_case_entities():
+    haystack = _PLAN_SYSTEM.lower()
     for phrase in _PLAN_FORBIDDEN_PHRASES:
-        assert phrase not in _PLAN_SYSTEM, (
+        assert phrase.lower() not in haystack, (
             f"_PLAN_SYSTEM names eval-case entity {phrase!r}; "
             f"examples must be shape-only, not domain-specific"
+        )
+
+
+# The verify-done prompt's named-entity examples must stay neutral. "airlines"
+# is the category shape of the flight-booking eval case (Taipei→Tokyo) — a
+# generic verifier should list entity *kinds*, not domain instances.
+_VERIFY_DONE_FORBIDDEN_DOMAIN_TERMS = (
+    "airline",
+    "flight",
+    "hotel",
+    "restaurant",
+)
+
+
+def test_verify_done_system_drops_domain_examples():
+    s = _VERIFY_DONE_SYSTEM_PROMPT.lower()
+    for term in _VERIFY_DONE_FORBIDDEN_DOMAIN_TERMS:
+        assert term not in s, (
+            f"_VERIFY_DONE_SYSTEM_PROMPT lists domain-specific entity {term!r}; "
+            f"named-entity examples must be neutral (prices, dates, addresses, "
+            f"proper names)"
         )
 
 
