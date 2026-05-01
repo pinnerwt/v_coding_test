@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-TW">
+  <head>
+    <meta charset="utf-8">
+    <title>F8 — CJK locator fallback fixture</title>
+  </head>
+  <body>
+    <h1>線上訂位</h1>
+    <p>請點選下方按鈕進入訂位流程。</p>
+    <!-- A clickable <div> styled as a link, with NO role attribute. The
+         standard "link" tier (get_by_role("link")) finds zero matches; the
+         L2 link tier filters <a>/[role=link] only, so it also misses.
+         A verbatim textContent-substring fallback that ignores the role
+         is the only way to locate this from intent="網路訂位 link". -->
+    <div class="cta" onclick="void 0">網路訂位</div>
+    <!-- Another role-less clickable with deeper Chinese text -->
+    <div class="search-cta" onclick="void 0">
+      <span class="icon">🔍</span>
+      <span class="label">搜尋 Google 地圖</span>
+    </div>
+  </body>
+</html>

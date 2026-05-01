@@ -15,17 +15,34 @@ _PLAN_SYSTEM = (
     "task names an entity that plausibly has multiple matches (a brand "
     "with several branches/locations, a person with a common name, a "
     "product with multiple variants) without saying which one; a key "
-    "parameter is missing (a date, a quantity, a destination); or the "
-    "user's intent could be reasonably interpreted in more than one way. "
-    "Information is SUFFICIENT when the task points to a single "
-    "unambiguous target with all parameters present (most simple "
-    "fact-lookup or navigation tasks fall here). "
+    "parameter is missing (a date, a quantity, a destination); the task "
+    "uses a superlative without a comparator (best, cheapest, nearest, "
+    "top, most) and the ranking criterion or a location/category "
+    "constraint is not given; or the user's intent could be reasonably "
+    "interpreted in more than one way. Information is SUFFICIENT when "
+    "the task points to a single unambiguous target with all parameters "
+    "present (most simple fact-lookup or navigation tasks fall here). "
     "If information is INSUFFICIENT, call the `ask_user` tool with a "
     "single specific clarifying question, wait for the answer, then "
-    "produce the final plan with that answer baked in. Do NOT guess the "
-    "missing information. Do NOT include 'ask the user: ...' as a plan "
-    "step — that step happens here, in planning, not during navigation. "
+    "produce the final plan with that answer baked in. Each `ask_user` "
+    "call must request exactly one slot — if multiple slots are missing, "
+    "ask the most blocking one first, then ask the next after the answer "
+    "arrives. Do NOT bundle two questions into one with 'and'. Do NOT "
+    "guess the missing information. Do NOT include 'ask the user: ...' "
+    "as a plan step — that step happens here, in planning, not during "
+    "navigation. If you have already asked the user about a particular "
+    "slot once and the answer did not fill it, do NOT ask again — pick "
+    "a sane default and proceed, or produce a best-effort plan. "
     "If information is SUFFICIENT, just produce the plan. "
+    "Examples of when to ask vs. plan:\n"
+    "  Task: 'Find the best ramen restaurant in Tokyo on Google Maps.' — "
+    "ambiguous superlative; ask 'Best by what criteria — highest rating, "
+    "most reviews, a specific neighborhood?' before planning.\n"
+    "  Task: 'Find the cheapest economy fare from Taipei to Tokyo on "
+    "2026-12-15.' — superlative has a clear comparator (lowest price for "
+    "the given date/route); plan directly.\n"
+    "  Task: 'Tell me the 2018 Turing Award winner.' — single unambiguous "
+    "target; plan directly.\n"
     "When you produce the final plan, respond with ONLY a JSON object: "
     '{"steps": ["step 1", ...], "expected_end_state": "..."} — no tool '
     "call."
@@ -122,11 +139,31 @@ def _parse_plan(content: str | None, task: str) -> Plan:
         return _fallback(task)
 
 
+_DEDUP_SYNTHETIC_ANSWER = (
+    "(already asked the user about this slot; the answer did not fill it. "
+    "Do not call ask_user again — produce a best-effort plan now using "
+    "sane defaults for any still-missing fields.)"
+)
+
+
+def _normalize_question(q: str) -> str:
+    """Lowercase, collapse whitespace, drop trailing punctuation. Used to
+    detect near-duplicate ask_user questions across rounds."""
+    return " ".join(q.lower().strip(" \t\r\n.?!,").split())
+
+
 def _handle_ask_user_tool_call(
     tool_call: ToolCall,
     ask_user_callback: Callable[[str], str] | None,
+    asked_fingerprints: set[str],
 ) -> str:
-    """Resolve an ask_user tool call into the string content for the tool message."""
+    """Resolve an ask_user tool call into the string content for the tool message.
+
+    Tracks normalized fingerprints of questions already asked in this plan()
+    invocation. After the first ask, subsequent ask_user calls receive a
+    synthetic answer that tells the LLM to stop re-asking — they do NOT
+    invoke ask_user_callback again.
+    """
     try:
         args = json.loads(tool_call.arguments) if tool_call.arguments else {}
     except json.JSONDecodeError:
@@ -134,6 +171,9 @@ def _handle_ask_user_tool_call(
     question = args.get("question")
     if not isinstance(question, str) or not question.strip():
         return "Error: ask_user requires a non-empty 'question' string."
+    if asked_fingerprints:
+        return _DEDUP_SYNTHETIC_ANSWER
+    asked_fingerprints.add(_normalize_question(question))
     if ask_user_callback is None:
         return (
             "Error: ask_user is not available in this run (no callback wired). "
@@ -158,12 +198,11 @@ def plan(
         {"role": "system", "content": _PLAN_SYSTEM},
         {
             "role": "user",
-            "content": (
-                f"{ctx_block}Task: {task}\n\nCurrent state: {json.dumps(observation)}"
-            ),
+            "content": (f"{ctx_block}Task: {task}\n\nCurrent state: {json.dumps(observation)}"),
         },
     ]
     last_response: Any = None
+    asked_fingerprints: set[str] = set()
     for _ in range(_MAX_ASK_USER_ROUNDS + 1):
         response = llm.chat(messages, tools=[_ASK_USER_TOOL])
         last_response = response
@@ -186,7 +225,7 @@ def plan(
         )
         for tc in response.tool_calls:
             if tc.name == "ask_user":
-                content = _handle_ask_user_tool_call(tc, ask_user_callback)
+                content = _handle_ask_user_tool_call(tc, ask_user_callback, asked_fingerprints)
             else:
                 content = f"Error: tool {tc.name!r} not available in planning."
             messages.append(

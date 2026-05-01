@@ -454,6 +454,52 @@ def locate_l4(
     )
 
 
+# F8: clickable-ish element shortlist for verbatim text-substring fallback.
+# Used as a final tier before L4_vision when L1/L2 miss and the intent name
+# (often non-ASCII) does not match any role-typed candidate. Matches the
+# innermost element whose textContent contains `name` verbatim, biased to
+# clickable surfaces so we do not return raw <p> / <span> blobs.
+_L_TEXTMATCH_CSS = (
+    "a[href], button, input[type=button], input[type=submit], input[type=reset], "
+    "[role=button], [role=link], [onclick], [tabindex], "
+    '[class*="btn"], [class*="button"], [class*="link"], [class*="cta"]'
+)
+_L_TEXTMATCH_CONFIDENCE = 0.6
+
+
+def locate_l_textmatch(page: Page, *, role: str, name: str | None) -> LocateResult:
+    """Last-resort tier: match clickable-ish elements whose textContent
+    contains `name` verbatim. Role-agnostic — primarily for non-English
+    DOM where AX-name matching fails (e.g. `<div onclick>網路訂位</div>`)."""
+    if not name:
+        raise LocatorMiss(reason="zero_matches", match_count=0)
+    locator = page.locator(_L_TEXTMATCH_CSS).filter(has_text=name)
+    count = locator.count()
+    if count == 0:
+        raise LocatorMiss(reason="zero_matches", match_count=0)
+    # If multiple match, prefer the element with the shortest textContent
+    # (most specific / innermost). Index resolution is deterministic so the
+    # selector round-trips through canonical fingerprint revalidation.
+    if count > 1:
+        lengths = locator.evaluate_all(
+            "els => els.map(e => (e.textContent || '').replace(/\\s+/g, ' ').trim().length)"
+        )
+        chosen = min(range(len(lengths)), key=lambda i: lengths[i])
+    else:
+        chosen = 0
+    pattern = re.escape(name).replace("/", r"\/")
+    selector = f"{_L_TEXTMATCH_CSS} >> text=/{pattern}/i >> nth={chosen}"
+    fingerprint = hashlib.sha256(f"{role}:{name}:textmatch".encode()).hexdigest()
+    return LocateResult(
+        tier="L_textmatch",
+        role=role,
+        name=name,
+        selector=selector,
+        ax_fingerprint=fingerprint,
+        confidence=_L_TEXTMATCH_CONFIDENCE,
+    )
+
+
 def _canonical_ax_fingerprint(page: Page, *, role: str, selector: str) -> str | None:
     # Single revalidation rule for the locator cache: hash role:accessible_name of
     # the element the selector resolves to. Returns None when the selector does not
@@ -481,7 +527,12 @@ def _resolve_via_ladder(
             try:
                 return locate_l2(page, role=role, name=name)
             except LocatorMiss:
-                return locate_l4(page, role=role, name=name, intent=intent, llm_chat=llm_chat)
+                # F8: try verbatim textContent substring match against
+                # clickable-ish elements before falling back to vision.
+                try:
+                    return locate_l_textmatch(page, role=role, name=name)
+                except LocatorMiss:
+                    return locate_l4(page, role=role, name=name, intent=intent, llm_chat=llm_chat)
         if miss.reason == "ambiguous":
             try:
                 return locate_l3(page, role=role, name=name, llm_chat=llm_chat)

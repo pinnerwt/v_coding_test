@@ -257,6 +257,12 @@ _NO_PROGRESS_K: int = 4
 _OFF_PLAN_REPLAN_THRESHOLD: int = 2
 # T4: action tools that carry plan_cursor / plan_cursor_reason.
 _PLAN_CURSOR_TOOLS: frozenset[str] = frozenset({"goto", "click", "type", "read"})
+# F5: result.status values that indicate the agent self-reports a hard
+# failure on a `done` call. Loop downgrades the run to "failed" so eval
+# scoring and SSE consumers don't treat blocked / captcha runs as passes.
+_SELF_FAILURE_STATUSES: frozenset[str] = frozenset(
+    {"failed", "unable_to_complete", "blocked", "captcha"}
+)
 _OFF_PLAN_SENTINEL: str = "off-plan"
 
 # T1: words in a `next_goal` that signal the agent still has work to do
@@ -1348,6 +1354,15 @@ def loop(
     _no_progress_buf: list[tuple[str | None, bool]] = []
     _consecutive_no_tool_call_steps: int = 0
     _consecutive_off_plan_steps: int = 0
+    _max_plan_cursor_seen: int = 0  # F2: highest 1-based plan_cursor advanced this run
+    # F7: rolling window of action outcomes ("ok" / "error") for the most
+    # recent goto/click/type/read calls. Used to reject `done` after
+    # consecutive failures.
+    _recent_outcomes: list[str] = []
+    # F6: per-(tool, classification) halt counter; circuit-breaker fires
+    # after _CIRCUIT_BREAKER_THRESHOLD halts on the same key.
+    _halt_counts: dict[tuple[str, str], int] = {}
+    _CIRCUIT_BREAKER_THRESHOLD = 3
     _force_done_next: bool = False
     _no_progress_warned: bool = False
     _prev_observation: dict | None = None
@@ -1566,6 +1581,8 @@ def loop(
                 cursor = args.get("plan_cursor")
                 if isinstance(cursor, int) and cursor >= 1:
                     step_saw_on_plan = True
+                    if cursor > _max_plan_cursor_seen:
+                        _max_plan_cursor_seen = cursor
                 elif cursor == _OFF_PLAN_SENTINEL:
                     step_saw_off_plan = True
                     if step_off_plan_reason is None:
@@ -1593,6 +1610,39 @@ def loop(
                         f"next_goal={next_goal!r} names a navigation/search "
                         "verb — that is more work to do, not a final answer"
                     )
+                elif (
+                    len(_recent_outcomes) >= 2
+                    and _recent_outcomes[-1] != "ok"
+                    and _recent_outcomes[-2] != "ok"
+                ):
+                    # F7: don't accept `done` after two consecutive action
+                    # failures — the page state has not changed since the
+                    # last successful action and any answer would be
+                    # fabricated. Forces the agent to either change tool /
+                    # intent, or call `fail` cleanly.
+                    premature_reason = (
+                        "the last 2 actions failed (timeout/error); the "
+                        "page state has not advanced — switch tool or "
+                        "intent, or call `fail`, instead of `done`"
+                    )
+                else:
+                    # F2: reject `done` when the agent USED plan_cursor (set it
+                    # at least once) but never advanced past the first half of
+                    # a multi-step plan. Only applies to plans with >=3 steps;
+                    # short plans trip too easily. Guard with `>= 1` so runs
+                    # where the LLM omits plan_cursor entirely fall through
+                    # to other heuristics rather than getting blocked.
+                    plan_len = len(active_plan.steps) if active_plan is not None else 0
+                    if (
+                        plan_len >= 3
+                        and _max_plan_cursor_seen >= 1
+                        and _max_plan_cursor_seen * 2 < plan_len
+                    ):
+                        premature_reason = (
+                            f"plan_cursor only reached {_max_plan_cursor_seen} of "
+                            f"{plan_len} plan steps — execute the remaining steps "
+                            "(fill forms, click search, read results) before `done`"
+                        )
                 if premature_reason is not None:
                     use_writer = trace_writer is not None and run_id is not None
                     sup_seq = trace_writer.next_seq(run_id) if use_writer else 0
@@ -1610,6 +1660,41 @@ def loop(
                         trace_writer.append_event(sup_event)
                     elif events is not None:
                         events.append(sup_event)
+                    # F6: circuit-breaker — repeated halts on the same
+                    # (tool, classification) mean the LLM is ignoring the
+                    # rejection. After N halts, terminate with `failed`
+                    # instead of burning the step budget on retries.
+                    halt_key = ("done", "premature_done")
+                    _halt_counts[halt_key] = _halt_counts.get(halt_key, 0) + 1
+                    if _halt_counts[halt_key] >= _CIRCUIT_BREAKER_THRESHOLD:
+                        _record_step(
+                            step_num,
+                            t0,
+                            response,
+                            dispatched_tool_names,
+                            latency_ms_per_step,
+                            step_breakdown,
+                            latency_breakdown=_phase_breakdown(t0, t_llm_start, t_dispatch_start),
+                        )
+                        return RunResult(
+                            status="failed",
+                            reason=(
+                                "circuit-breaker: "
+                                f"{_halt_counts[halt_key]} consecutive "
+                                f"'premature_done' halts on `done` — "
+                                "agent stuck in a rejection loop"
+                            ),
+                            result=None,
+                            evidence=None,
+                            verifier=None,
+                            steps=step_num,
+                            prompt_tokens=cum_prompt_tokens,
+                            completion_tokens=cum_completion_tokens,
+                            usd=cum_usd,
+                            latency_ms_total=sum(latency_ms_per_step),
+                            latency_ms_per_step=latency_ms_per_step,
+                            step_breakdown=step_breakdown,
+                        )
                     messages.append(
                         {
                             "role": "tool",
@@ -1697,6 +1782,17 @@ def loop(
                             break
 
                 status: RunStatus = "succeeded" if verifier["ok"] else "unverified"
+                # F5: if the agent's own result payload self-reports a hard
+                # failure (captcha, blocked, unable_to_complete), downgrade
+                # the run to "failed" rather than silently marking it done.
+                _result_payload = args.get("result")
+                if isinstance(_result_payload, dict):
+                    _self_status = _result_payload.get("status")
+                    if (
+                        isinstance(_self_status, str)
+                        and _self_status.lower() in _SELF_FAILURE_STATUSES
+                    ):
+                        status = "failed"
                 _emit_act_event(
                     trace_writer=trace_writer,
                     run_id=run_id,
@@ -1836,6 +1932,18 @@ def loop(
                 any_action_succeeded_this_step = True
             elif tool_call.name in {"goto", "read"} and not is_error:
                 any_action_succeeded_this_step = True
+            # F7: track outcomes of *interaction* actions only (click/type)
+            # for the consecutive-failures gate on `done`. `goto` is network /
+            # nav and `read` is info-retrieval — failures there are normal
+            # ("page didn't have what I asked for") and shouldn't block `done`.
+            if tool_call.name in {"click", "type"}:
+                _recent_outcomes.append("error" if is_error else "ok")
+                if len(_recent_outcomes) > 5:
+                    del _recent_outcomes[0]
+            # F6: any successful action is "productive intervening work";
+            # reset the halt counter so it tracks *consecutive* halts.
+            if tool_call.name in {"goto", "click", "type", "read"} and not is_error:
+                _halt_counts.clear()
             action: dict = {
                 "tool": tool_call.name,
                 "intent": str(args),

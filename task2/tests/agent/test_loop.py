@@ -5523,9 +5523,7 @@ def test_action_tool_schemas_advertise_plan_cursor():
         assert "plan_cursor" in props, f"{fn['name']} missing plan_cursor"
 
 
-def test_loop_replans_twice_when_classifications_escalate(
-    fixture_server, playwright_chromium
-):
+def test_loop_replans_twice_when_classifications_escalate(fixture_server, playwright_chromium):
     """T6: with the budget raised to 3, a single run may replan more than
     once provided each replan is triggered by a strictly stronger
     classification than the previous one. Here off-plan (severity 1) fires
@@ -5597,9 +5595,7 @@ def test_loop_replans_twice_when_classifications_escalate(
     writer.close()
 
 
-def test_loop_does_not_replan_twice_for_same_classification(
-    fixture_server, playwright_chromium
-):
+def test_loop_does_not_replan_twice_for_same_classification(fixture_server, playwright_chromium):
     """T6 oscillation guard: the same classification firing twice in a row
     must not produce a second replan, even if the run has budget left."""
     fixture_url = f"{fixture_server}/loop_happy_path.html"

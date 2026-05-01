@@ -38,6 +38,7 @@ def _is_planner_call(messages: list[dict]) -> bool:
     content = first.get("content", "") if isinstance(first, dict) else ""
     return isinstance(content, str) and content.startswith("You are a planning assistant")
 
+
 _FIXTURE_CASE = {
     "id": "fixture-heading",
     "domain": "fixture",
