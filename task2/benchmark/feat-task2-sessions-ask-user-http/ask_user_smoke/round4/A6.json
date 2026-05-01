@@ -1,0 +1,219 @@
+{
+  "summary": {
+    "case_id": "A6",
+    "run_id": "01KQGYH94T1SDJFK8J7TJAFJ6E",
+    "task": "Find the best ramen restaurant in Tokyo on Google Maps.",
+    "ambiguous_expected": true,
+    "saw_ask_user": true,
+    "asked_questions": [
+      "What criteria should I use to determine the best ramen restaurant — highest rating, most reviews, or a specific neighborhood in Tokyo?"
+    ],
+    "terminal": {
+      "type": "terminal",
+      "status": "failed",
+      "reason": "no_progress",
+      "result": null,
+      "evidence": null
+    },
+    "elapsed_s": 180.0,
+    "n_events": 16
+  },
+  "events": [
+    {
+      "type": "trace",
+      "run_id": "01KQGYH94T1SDJFK8J7TJAFJ6E",
+      "seq": 1,
+      "ts": "2026-05-01T05:00:13.594774+00:00",
+      "step_id": "01KQGYH94T1SDJFK8J7TJAFJ6E:step-1",
+      "kind": "plan",
+      "reason": "started",
+      "steps": [
+        "Planning..."
+      ],
+      "llm_call_id": "198a849f-f76b-4b13-95bf-79c4f4653e3f"
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGYH94T1SDJFK8J7TJAFJ6E",
+      "seq": 2,
+      "ts": "2026-05-01T05:00:20.275946+00:00",
+      "step_id": "01KQGYH94T1SDJFK8J7TJAFJ6E:step-1",
+      "kind": "plan",
+      "reason": "ask_user",
+      "steps": [
+        "Asking user: What criteria should I use to determine the best ramen restaurant — highest rating, most reviews, or a specific neighborhood in Tokyo?"
+      ],
+      "llm_call_id": "352b3426-ebce-4b50-ad6c-d8ca043c7222"
+    },
+    {
+      "type": "ask_user",
+      "question": "What criteria should I use to determine the best ramen restaurant — highest rating, most reviews, or a specific neighborhood in Tokyo?"
+    },
+    {
+      "type": "answer",
+      "answer": "highest-rated by Google reviews, in Shinjuku"
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGYH94T1SDJFK8J7TJAFJ6E",
+      "seq": 3,
+      "ts": "2026-05-01T05:00:27.376810+00:00",
+      "step_id": "01KQGYH94T1SDJFK8J7TJAFJ6E:step-1",
+      "kind": "plan",
+      "reason": "initial",
+      "steps": [
+        "Navigate to Google Maps (maps.google.com)",
+        "Search for 'ramen restaurants in Shinjuku, Tokyo'",
+        "Apply filter or sort by highest rating/reviews",
+        "Identify the top-rated ramen restaurant from the results",
+        "Note the restaurant name and key details"
+      ],
+      "llm_call_id": "9c2f6712-b40b-4048-9c54-e70173284d66"
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGYH94T1SDJFK8J7TJAFJ6E",
+      "seq": 4,
+      "ts": "2026-05-01T05:00:33.828102+00:00",
+      "step_id": "01KQGYH94T1SDJFK8J7TJAFJ6E:step-1",
+      "kind": "act",
+      "tool": "goto",
+      "args": {
+        "url": "https://maps.google.com"
+      },
+      "outcome": "ok",
+      "diff": {},
+      "ms": 375
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGYH94T1SDJFK8J7TJAFJ6E",
+      "seq": 5,
+      "ts": "2026-05-01T05:00:52.828208+00:00",
+      "step_id": "01KQGYH94T1SDJFK8J7TJAFJ6E:step-4",
+      "kind": "locate",
+      "intent": "the search textbox",
+      "tier": "L1_ax",
+      "outcome": "miss",
+      "candidates": [],
+      "chosen": null,
+      "cache_action": null,
+      "ms": 0
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGYH94T1SDJFK8J7TJAFJ6E",
+      "seq": 6,
+      "ts": "2026-05-01T05:00:52.836387+00:00",
+      "step_id": "01KQGYH94T1SDJFK8J7TJAFJ6E:step-4",
+      "kind": "supervisor",
+      "trigger_event_seq": 5,
+      "classified_as": "LocatorMiss",
+      "policy": "next_tier",
+      "attempt": 1
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGYH94T1SDJFK8J7TJAFJ6E",
+      "seq": 7,
+      "ts": "2026-05-01T05:00:52.846452+00:00",
+      "step_id": "01KQGYH94T1SDJFK8J7TJAFJ6E:step-4",
+      "kind": "locate",
+      "intent": "the search textbox",
+      "tier": "L2_dom",
+      "outcome": "miss",
+      "candidates": [],
+      "chosen": null,
+      "cache_action": null,
+      "ms": 0
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGYH94T1SDJFK8J7TJAFJ6E",
+      "seq": 8,
+      "ts": "2026-05-01T05:01:28.501711+00:00",
+      "step_id": "01KQGYH94T1SDJFK8J7TJAFJ6E:step-6",
+      "kind": "supervisor",
+      "trigger_event_seq": 0,
+      "classified_as": "premature_done",
+      "policy": "halt",
+      "attempt": 1
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGYH94T1SDJFK8J7TJAFJ6E",
+      "seq": 9,
+      "ts": "2026-05-01T05:01:57.310921+00:00",
+      "step_id": "01KQGYH94T1SDJFK8J7TJAFJ6E:step-9",
+      "kind": "act",
+      "tool": "goto",
+      "args": {
+        "url": "https://www.google.com/maps/search/ramen+restaurants+in+Tokyo"
+      },
+      "outcome": "ok",
+      "diff": {},
+      "ms": 346
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGYH94T1SDJFK8J7TJAFJ6E",
+      "seq": 10,
+      "ts": "2026-05-01T05:02:05.110085+00:00",
+      "step_id": "01KQGYH94T1SDJFK8J7TJAFJ6E:step-10",
+      "kind": "act",
+      "tool": "read",
+      "args": {
+        "intent": "the list of ramen restaurant results"
+      },
+      "outcome": "error",
+      "diff": {},
+      "ms": 0
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGYH94T1SDJFK8J7TJAFJ6E",
+      "seq": 11,
+      "ts": "2026-05-01T05:02:19.794355+00:00",
+      "step_id": "01KQGYH94T1SDJFK8J7TJAFJ6E:step-11",
+      "kind": "act",
+      "tool": "read",
+      "args": {
+        "intent": "the results heading and restaurant links"
+      },
+      "outcome": "error",
+      "diff": {},
+      "ms": 0
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGYH94T1SDJFK8J7TJAFJ6E",
+      "seq": 12,
+      "ts": "2026-05-01T05:02:46.782025+00:00",
+      "step_id": "01KQGYH94T1SDJFK8J7TJAFJ6E:step-12",
+      "kind": "supervisor",
+      "trigger_event_seq": 0,
+      "classified_as": "premature_done",
+      "policy": "halt",
+      "attempt": 1
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGYH94T1SDJFK8J7TJAFJ6E",
+      "seq": 13,
+      "ts": "2026-05-01T05:03:13.239979+00:00",
+      "step_id": "01KQGYH94T1SDJFK8J7TJAFJ6E:step-13",
+      "kind": "supervisor",
+      "trigger_event_seq": 0,
+      "classified_as": "premature_done",
+      "policy": "halt",
+      "attempt": 1
+    },
+    {
+      "type": "terminal",
+      "status": "failed",
+      "reason": "no_progress",
+      "result": null,
+      "evidence": null
+    }
+  ]
+}

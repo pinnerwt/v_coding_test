@@ -1,0 +1,198 @@
+{
+  "summary": {
+    "case_id": "U1",
+    "run_id": "01KQGT3XRTFWSXPF20QJ95GB9S",
+    "task": "Tell me the name of the Turing Award winner in 2018.",
+    "ambiguous_expected": false,
+    "saw_ask_user": false,
+    "asked_questions": [],
+    "terminal": {
+      "type": "terminal",
+      "status": "failed",
+      "reason": "no_progress",
+      "result": null,
+      "evidence": null
+    },
+    "elapsed_s": 246.8,
+    "n_events": 14
+  },
+  "events": [
+    {
+      "type": "trace",
+      "run_id": "01KQGT3XRTFWSXPF20QJ95GB9S",
+      "seq": 1,
+      "ts": "2026-05-01T03:43:01.674602+00:00",
+      "step_id": "01KQGT3XRTFWSXPF20QJ95GB9S:step-1",
+      "kind": "plan",
+      "reason": "started",
+      "steps": [
+        "Planning..."
+      ],
+      "llm_call_id": "0828e14d-5f7f-466a-b0a7-155b0e879697"
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGT3XRTFWSXPF20QJ95GB9S",
+      "seq": 2,
+      "ts": "2026-05-01T03:43:14.672569+00:00",
+      "step_id": "01KQGT3XRTFWSXPF20QJ95GB9S:step-1",
+      "kind": "plan",
+      "reason": "initial",
+      "steps": [
+        "Navigate to a search engine or Wikipedia",
+        "Search for 'Turing Award 2018 winner'",
+        "Find and extract the name(s) of the 2018 Turing Award recipient(s)",
+        "Report the result"
+      ],
+      "llm_call_id": "6cb40100-b925-4902-a243-36d961293ab7"
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGT3XRTFWSXPF20QJ95GB9S",
+      "seq": 3,
+      "ts": "2026-05-01T03:43:25.312999+00:00",
+      "step_id": "01KQGT3XRTFWSXPF20QJ95GB9S:step-1",
+      "kind": "act",
+      "tool": "goto",
+      "args": {
+        "url": "https://www.google.com/search?q=Turing+Award+2018+winner"
+      },
+      "outcome": "ok",
+      "diff": {},
+      "ms": 3746
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGT3XRTFWSXPF20QJ95GB9S",
+      "seq": 4,
+      "ts": "2026-05-01T03:43:30.122376+00:00",
+      "step_id": "01KQGT3XRTFWSXPF20QJ95GB9S:step-2",
+      "kind": "act",
+      "tool": "goto",
+      "args": {
+        "url": "https://en.wikipedia.org/wiki/Turing_Award"
+      },
+      "outcome": "ok",
+      "diff": {},
+      "ms": 510
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGT3XRTFWSXPF20QJ95GB9S",
+      "seq": 5,
+      "ts": "2026-05-01T03:43:37.670545+00:00",
+      "step_id": "01KQGT3XRTFWSXPF20QJ95GB9S:step-3",
+      "kind": "act",
+      "tool": "read",
+      "args": {
+        "find": "2018"
+      },
+      "outcome": "ok",
+      "diff": {},
+      "ms": 6
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGT3XRTFWSXPF20QJ95GB9S",
+      "seq": 6,
+      "ts": "2026-05-01T03:43:56.748929+00:00",
+      "step_id": "01KQGT3XRTFWSXPF20QJ95GB9S:step-4",
+      "kind": "supervisor",
+      "trigger_event_seq": 0,
+      "classified_as": "premature_done",
+      "policy": "halt",
+      "attempt": 1
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGT3XRTFWSXPF20QJ95GB9S",
+      "seq": 7,
+      "ts": "2026-05-01T03:44:23.186066+00:00",
+      "step_id": "01KQGT3XRTFWSXPF20QJ95GB9S:step-5",
+      "kind": "supervisor",
+      "trigger_event_seq": 0,
+      "classified_as": "premature_done",
+      "policy": "halt",
+      "attempt": 1
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGT3XRTFWSXPF20QJ95GB9S",
+      "seq": 8,
+      "ts": "2026-05-01T03:44:50.985720+00:00",
+      "step_id": "01KQGT3XRTFWSXPF20QJ95GB9S:step-6",
+      "kind": "supervisor",
+      "trigger_event_seq": 0,
+      "classified_as": "premature_done",
+      "policy": "halt",
+      "attempt": 1
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGT3XRTFWSXPF20QJ95GB9S",
+      "seq": 9,
+      "ts": "2026-05-01T03:45:19.746280+00:00",
+      "step_id": "01KQGT3XRTFWSXPF20QJ95GB9S:step-7",
+      "kind": "supervisor",
+      "trigger_event_seq": 0,
+      "classified_as": "premature_done",
+      "policy": "halt",
+      "attempt": 1
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGT3XRTFWSXPF20QJ95GB9S",
+      "seq": 10,
+      "ts": "2026-05-01T03:45:40.704242+00:00",
+      "step_id": "01KQGT3XRTFWSXPF20QJ95GB9S:step-8",
+      "kind": "supervisor",
+      "trigger_event_seq": 0,
+      "classified_as": "premature_done",
+      "policy": "halt",
+      "attempt": 1
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGT3XRTFWSXPF20QJ95GB9S",
+      "seq": 11,
+      "ts": "2026-05-01T03:46:12.563196+00:00",
+      "step_id": "01KQGT3XRTFWSXPF20QJ95GB9S:step-9",
+      "kind": "supervisor",
+      "trigger_event_seq": 0,
+      "classified_as": "premature_done",
+      "policy": "halt",
+      "attempt": 1
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGT3XRTFWSXPF20QJ95GB9S",
+      "seq": 12,
+      "ts": "2026-05-01T03:46:34.752312+00:00",
+      "step_id": "01KQGT3XRTFWSXPF20QJ95GB9S:step-10",
+      "kind": "supervisor",
+      "trigger_event_seq": 0,
+      "classified_as": "premature_done",
+      "policy": "halt",
+      "attempt": 1
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGT3XRTFWSXPF20QJ95GB9S",
+      "seq": 13,
+      "ts": "2026-05-01T03:47:07.842283+00:00",
+      "step_id": "01KQGT3XRTFWSXPF20QJ95GB9S:step-11",
+      "kind": "supervisor",
+      "trigger_event_seq": 0,
+      "classified_as": "premature_done",
+      "policy": "halt",
+      "attempt": 1
+    },
+    {
+      "type": "terminal",
+      "status": "failed",
+      "reason": "no_progress",
+      "result": null,
+      "evidence": null
+    }
+  ]
+}

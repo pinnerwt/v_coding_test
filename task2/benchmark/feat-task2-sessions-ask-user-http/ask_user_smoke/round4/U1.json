@@ -1,0 +1,301 @@
+{
+  "summary": {
+    "case_id": "U1",
+    "run_id": "01KQGYPRWM1WHF47PKAAGYEZQZ",
+    "task": "Tell me the name of the Turing Award winner in 2018.",
+    "ambiguous_expected": false,
+    "saw_ask_user": false,
+    "asked_questions": [],
+    "terminal": {
+      "type": "terminal",
+      "status": "done",
+      "reason": null,
+      "result": {
+        "winners": [
+          "Yoshua Bengio",
+          "Geoffrey Hinton",
+          "Yann LeCun"
+        ],
+        "year": 2018,
+        "citation": "for conceptual and engineering breakthroughs that have made deep neural networks a critical component of computing"
+      },
+      "evidence": {
+        "url": "https://en.wikipedia.org/wiki/Turing_Award",
+        "text_snippet": "2018\tYoshua Bengio\t\t\"for conceptual and engineering breakthroughs that have made deep neural networks a critical component of computing\"\tUniversité de Montréal, Mila\nGeoffrey Hinton\t\tUniversity of Toronto, Google Brain\nYann LeCun\t\tNew York University, Meta AI"
+      }
+    },
+    "elapsed_s": 245.4,
+    "n_events": 18
+  },
+  "events": [
+    {
+      "type": "trace",
+      "run_id": "01KQGYPRWM1WHF47PKAAGYEZQZ",
+      "seq": 1,
+      "ts": "2026-05-01T05:03:13.569125+00:00",
+      "step_id": "01KQGYPRWM1WHF47PKAAGYEZQZ:step-1",
+      "kind": "plan",
+      "reason": "started",
+      "steps": [
+        "Planning..."
+      ],
+      "llm_call_id": "8f7da51c-7225-4e7b-993a-58556067401b"
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGYPRWM1WHF47PKAAGYEZQZ",
+      "seq": 2,
+      "ts": "2026-05-01T05:03:21.118770+00:00",
+      "step_id": "01KQGYPRWM1WHF47PKAAGYEZQZ:step-1",
+      "kind": "plan",
+      "reason": "initial",
+      "steps": [
+        "Navigate to Google search",
+        "Search for 'Turing Award winner 2018'",
+        "Read and extract the name of the 2018 Turing Award winner from the search results"
+      ],
+      "llm_call_id": "3943a9a7-6520-4fbd-be5a-4ad95d1f03bf"
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGYPRWM1WHF47PKAAGYEZQZ",
+      "seq": 3,
+      "ts": "2026-05-01T05:03:26.880633+00:00",
+      "step_id": "01KQGYPRWM1WHF47PKAAGYEZQZ:step-1",
+      "kind": "act",
+      "tool": "goto",
+      "args": {
+        "url": "https://www.google.com"
+      },
+      "outcome": "ok",
+      "diff": {},
+      "ms": 247
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGYPRWM1WHF47PKAAGYEZQZ",
+      "seq": 4,
+      "ts": "2026-05-01T05:03:44.779556+00:00",
+      "step_id": "01KQGYPRWM1WHF47PKAAGYEZQZ:step-4",
+      "kind": "locate",
+      "intent": "the search textbox",
+      "tier": "L1_ax",
+      "outcome": "miss",
+      "candidates": [],
+      "chosen": null,
+      "cache_action": null,
+      "ms": 0
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGYPRWM1WHF47PKAAGYEZQZ",
+      "seq": 5,
+      "ts": "2026-05-01T05:03:44.786370+00:00",
+      "step_id": "01KQGYPRWM1WHF47PKAAGYEZQZ:step-4",
+      "kind": "supervisor",
+      "trigger_event_seq": 4,
+      "classified_as": "LocatorMiss",
+      "policy": "next_tier",
+      "attempt": 1
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGYPRWM1WHF47PKAAGYEZQZ",
+      "seq": 6,
+      "ts": "2026-05-01T05:03:44.799620+00:00",
+      "step_id": "01KQGYPRWM1WHF47PKAAGYEZQZ:step-4",
+      "kind": "locate",
+      "intent": "the search textbox",
+      "tier": "L2_dom",
+      "outcome": "miss",
+      "candidates": [],
+      "chosen": null,
+      "cache_action": null,
+      "ms": 0
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGYPRWM1WHF47PKAAGYEZQZ",
+      "seq": 7,
+      "ts": "2026-05-01T05:04:06.102210+00:00",
+      "step_id": "01KQGYPRWM1WHF47PKAAGYEZQZ:step-6",
+      "kind": "act",
+      "tool": "goto",
+      "args": {
+        "url": "https://en.wikipedia.org/wiki/Turing_Award"
+      },
+      "outcome": "ok",
+      "diff": {},
+      "ms": 672
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGYPRWM1WHF47PKAAGYEZQZ",
+      "seq": 8,
+      "ts": "2026-05-01T05:04:14.610654+00:00",
+      "step_id": "01KQGYPRWM1WHF47PKAAGYEZQZ:step-7",
+      "kind": "act",
+      "tool": "read",
+      "args": {
+        "find": "2018"
+      },
+      "outcome": "ok",
+      "diff": {},
+      "ms": 5
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGYPRWM1WHF47PKAAGYEZQZ",
+      "seq": 9,
+      "ts": "2026-05-01T05:04:32.883639+00:00",
+      "step_id": "01KQGYPRWM1WHF47PKAAGYEZQZ:step-8",
+      "kind": "supervisor",
+      "trigger_event_seq": 0,
+      "classified_as": "premature_done",
+      "policy": "halt",
+      "attempt": 1
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGYPRWM1WHF47PKAAGYEZQZ",
+      "seq": 10,
+      "ts": "2026-05-01T05:04:51.489031+00:00",
+      "step_id": "01KQGYPRWM1WHF47PKAAGYEZQZ:step-9",
+      "kind": "act",
+      "tool": "read",
+      "args": {
+        "intent": "the 2018 Turing Award recipients section"
+      },
+      "outcome": "error",
+      "diff": {},
+      "ms": 0
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGYPRWM1WHF47PKAAGYEZQZ",
+      "seq": 11,
+      "ts": "2026-05-01T05:05:14.958951+00:00",
+      "step_id": "01KQGYPRWM1WHF47PKAAGYEZQZ:step-10",
+      "kind": "supervisor",
+      "trigger_event_seq": 0,
+      "classified_as": "premature_done",
+      "policy": "halt",
+      "attempt": 1
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGYPRWM1WHF47PKAAGYEZQZ",
+      "seq": 12,
+      "ts": "2026-05-01T05:05:27.326309+00:00",
+      "step_id": "01KQGYPRWM1WHF47PKAAGYEZQZ:step-11",
+      "kind": "act",
+      "tool": "read",
+      "args": {},
+      "outcome": "ok",
+      "diff": {},
+      "ms": 4
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGYPRWM1WHF47PKAAGYEZQZ",
+      "seq": 13,
+      "ts": "2026-05-01T05:05:52.632953+00:00",
+      "step_id": "01KQGYPRWM1WHF47PKAAGYEZQZ:step-12",
+      "kind": "supervisor",
+      "trigger_event_seq": 0,
+      "classified_as": "premature_done",
+      "policy": "halt",
+      "attempt": 1
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGYPRWM1WHF47PKAAGYEZQZ",
+      "seq": 14,
+      "ts": "2026-05-01T05:06:06.346043+00:00",
+      "step_id": "01KQGYPRWM1WHF47PKAAGYEZQZ:step-13",
+      "kind": "act",
+      "tool": "read",
+      "args": {
+        "find": "2018"
+      },
+      "outcome": "ok",
+      "diff": {},
+      "ms": 4
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGYPRWM1WHF47PKAAGYEZQZ",
+      "seq": 15,
+      "ts": "2026-05-01T05:06:32.100752+00:00",
+      "step_id": "01KQGYPRWM1WHF47PKAAGYEZQZ:step-14",
+      "kind": "supervisor",
+      "trigger_event_seq": 0,
+      "classified_as": "premature_done",
+      "policy": "halt",
+      "attempt": 1
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGYPRWM1WHF47PKAAGYEZQZ",
+      "seq": 16,
+      "ts": "2026-05-01T05:06:53.508031+00:00",
+      "step_id": "01KQGYPRWM1WHF47PKAAGYEZQZ:step-15",
+      "kind": "act",
+      "tool": "click",
+      "args": {
+        "intent": "the Recipients heading"
+      },
+      "outcome": "ok",
+      "diff": {},
+      "ms": 33
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGYPRWM1WHF47PKAAGYEZQZ",
+      "seq": 17,
+      "ts": "2026-05-01T05:07:18.685778+00:00",
+      "step_id": "01KQGYPRWM1WHF47PKAAGYEZQZ:step-16",
+      "kind": "act",
+      "tool": "done",
+      "args": {
+        "result": {
+          "winners": [
+            "Yoshua Bengio",
+            "Geoffrey Hinton",
+            "Yann LeCun"
+          ],
+          "year": 2018,
+          "citation": "for conceptual and engineering breakthroughs that have made deep neural networks a critical component of computing"
+        },
+        "evidence": {
+          "url": "https://en.wikipedia.org/wiki/Turing_Award",
+          "text_snippet": "2018\tYoshua Bengio\t\t\"for conceptual and engineering breakthroughs that have made deep neural networks a critical component of computing\"\tUniversité de Montréal, Mila\nGeoffrey Hinton\t\tUniversity of Toronto, Google Brain\nYann LeCun\t\tNew York University, Meta AI"
+        },
+        "evaluation_previous_action": "success",
+        "evaluation_reason": "The read action with find='2018' in step 14 successfully returned the complete list of 2018 Turing Award winners from the Wikipedia page.",
+        "next_goal": "report the final answer"
+      },
+      "outcome": "ok",
+      "diff": {},
+      "ms": 0
+    },
+    {
+      "type": "terminal",
+      "status": "done",
+      "reason": null,
+      "result": {
+        "winners": [
+          "Yoshua Bengio",
+          "Geoffrey Hinton",
+          "Yann LeCun"
+        ],
+        "year": 2018,
+        "citation": "for conceptual and engineering breakthroughs that have made deep neural networks a critical component of computing"
+      },
+      "evidence": {
+        "url": "https://en.wikipedia.org/wiki/Turing_Award",
+        "text_snippet": "2018\tYoshua Bengio\t\t\"for conceptual and engineering breakthroughs that have made deep neural networks a critical component of computing\"\tUniversité de Montréal, Mila\nGeoffrey Hinton\t\tUniversity of Toronto, Google Brain\nYann LeCun\t\tNew York University, Meta AI"
+      }
+    }
+  ]
+}

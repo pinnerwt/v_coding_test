@@ -1,0 +1,161 @@
+{
+  "summary": {
+    "case_id": "A3",
+    "run_id": "01KQGYDRZ0X7Q897PFRTQ7408T",
+    "task": "Book a flight from Taipei to Tokyo and return the cheapest fare.",
+    "ambiguous_expected": true,
+    "saw_ask_user": true,
+    "asked_questions": [
+      "What date do you want to travel from Taipei to Tokyo?"
+    ],
+    "terminal": {
+      "type": "terminal",
+      "status": "failed",
+      "reason": "no_progress",
+      "result": null,
+      "evidence": null
+    },
+    "elapsed_s": 114.9,
+    "n_events": 12
+  },
+  "events": [
+    {
+      "type": "trace",
+      "run_id": "01KQGYDRZ0X7Q897PFRTQ7408T",
+      "seq": 1,
+      "ts": "2026-05-01T04:58:18.749316+00:00",
+      "step_id": "01KQGYDRZ0X7Q897PFRTQ7408T:step-1",
+      "kind": "plan",
+      "reason": "started",
+      "steps": [
+        "Planning..."
+      ],
+      "llm_call_id": "bc02718f-6cd7-4061-bd98-13cb560c2d9f"
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGYDRZ0X7Q897PFRTQ7408T",
+      "seq": 2,
+      "ts": "2026-05-01T04:58:29.296693+00:00",
+      "step_id": "01KQGYDRZ0X7Q897PFRTQ7408T:step-1",
+      "kind": "plan",
+      "reason": "ask_user",
+      "steps": [
+        "Asking user: What date do you want to travel from Taipei to Tokyo?"
+      ],
+      "llm_call_id": "8fe4b0c7-e7c2-4308-983b-800434a3c54d"
+    },
+    {
+      "type": "ask_user",
+      "question": "What date do you want to travel from Taipei to Tokyo?"
+    },
+    {
+      "type": "answer",
+      "answer": "December 15, 2026, one-way"
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGYDRZ0X7Q897PFRTQ7408T",
+      "seq": 3,
+      "ts": "2026-05-01T04:58:37.281034+00:00",
+      "step_id": "01KQGYDRZ0X7Q897PFRTQ7408T:step-1",
+      "kind": "plan",
+      "reason": "initial",
+      "steps": [
+        "Book a flight from Taipei to Tokyo and return the cheapest fare."
+      ],
+      "llm_call_id": "077a4a7d-52c5-451b-8d09-ae162b3cf767"
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGYDRZ0X7Q897PFRTQ7408T",
+      "seq": 4,
+      "ts": "2026-05-01T04:58:43.607338+00:00",
+      "step_id": "01KQGYDRZ0X7Q897PFRTQ7408T:step-1",
+      "kind": "act",
+      "tool": "goto",
+      "args": {
+        "url": "https://www.google.com/flights"
+      },
+      "outcome": "ok",
+      "diff": {},
+      "ms": 452
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGYDRZ0X7Q897PFRTQ7408T",
+      "seq": 5,
+      "ts": "2026-05-01T04:59:08.570718+00:00",
+      "step_id": "01KQGYDRZ0X7Q897PFRTQ7408T:step-4",
+      "kind": "act",
+      "tool": "click",
+      "args": {
+        "intent": "Find flights from Taipei City (TPE) to Tokyo (NRT) from NT$6,344 button"
+      },
+      "outcome": "timeout",
+      "diff": {},
+      "ms": 5000
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGYDRZ0X7Q897PFRTQ7408T",
+      "seq": 6,
+      "ts": "2026-05-01T04:59:19.108874+00:00",
+      "step_id": "01KQGYDRZ0X7Q897PFRTQ7408T:step-5",
+      "kind": "act",
+      "tool": "read",
+      "args": {
+        "intent": "the flight price from Taipei to Tokyo"
+      },
+      "outcome": "error",
+      "diff": {},
+      "ms": 0
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGYDRZ0X7Q897PFRTQ7408T",
+      "seq": 7,
+      "ts": "2026-05-01T04:59:32.854679+00:00",
+      "step_id": "01KQGYDRZ0X7Q897PFRTQ7408T:step-6",
+      "kind": "supervisor",
+      "trigger_event_seq": 0,
+      "classified_as": "premature_done",
+      "policy": "halt",
+      "attempt": 1
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGYDRZ0X7Q897PFRTQ7408T",
+      "seq": 8,
+      "ts": "2026-05-01T04:59:47.903361+00:00",
+      "step_id": "01KQGYDRZ0X7Q897PFRTQ7408T:step-7",
+      "kind": "act",
+      "tool": "click",
+      "args": {
+        "intent": "Find flights from Taipei City (TPE) to Tokyo (NRT) from NT$6,344 button"
+      },
+      "outcome": "timeout",
+      "diff": {},
+      "ms": 5002
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGYDRZ0X7Q897PFRTQ7408T",
+      "seq": 9,
+      "ts": "2026-05-01T05:00:03.367094+00:00",
+      "step_id": "01KQGYDRZ0X7Q897PFRTQ7408T:step-8",
+      "kind": "supervisor",
+      "trigger_event_seq": 0,
+      "classified_as": "premature_done",
+      "policy": "halt",
+      "attempt": 1
+    },
+    {
+      "type": "terminal",
+      "status": "failed",
+      "reason": "no_progress",
+      "result": null,
+      "evidence": null
+    }
+  ]
+}

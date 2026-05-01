@@ -1,0 +1,130 @@
+{
+  "summary": {
+    "case_id": "A6",
+    "run_id": "01KQGT1FR4A8T5J6ACG9HB5W9Q",
+    "task": "Find the best ramen restaurant in Tokyo on Google Maps.",
+    "ambiguous_expected": true,
+    "saw_ask_user": false,
+    "asked_questions": [],
+    "terminal": {
+      "type": "terminal",
+      "status": "failed",
+      "reason": null,
+      "result": null,
+      "evidence": null
+    },
+    "elapsed_s": 79.9,
+    "n_events": 8
+  },
+  "events": [
+    {
+      "type": "trace",
+      "run_id": "01KQGT1FR4A8T5J6ACG9HB5W9Q",
+      "seq": 1,
+      "ts": "2026-05-01T03:41:41.791090+00:00",
+      "step_id": "01KQGT1FR4A8T5J6ACG9HB5W9Q:step-1",
+      "kind": "plan",
+      "reason": "started",
+      "steps": [
+        "Planning..."
+      ],
+      "llm_call_id": "eb08be53-7b7a-45d6-9863-c3aaf30a6982"
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGT1FR4A8T5J6ACG9HB5W9Q",
+      "seq": 2,
+      "ts": "2026-05-01T03:42:01.647051+00:00",
+      "step_id": "01KQGT1FR4A8T5J6ACG9HB5W9Q:step-1",
+      "kind": "plan",
+      "reason": "initial",
+      "steps": [
+        "Navigate to Google Maps (maps.google.com)",
+        "Search for 'ramen restaurant in Tokyo' in the search bar",
+        "Review the search results sorted by rating/relevance",
+        "Identify the top-rated ramen restaurant from the results",
+        "Click on the best ramen restaurant to view its details"
+      ],
+      "llm_call_id": "5b090d2a-7796-48e3-aefb-afc803da5dec"
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGT1FR4A8T5J6ACG9HB5W9Q",
+      "seq": 3,
+      "ts": "2026-05-01T03:42:07.813780+00:00",
+      "step_id": "01KQGT1FR4A8T5J6ACG9HB5W9Q:step-1",
+      "kind": "act",
+      "tool": "goto",
+      "args": {
+        "url": "https://maps.google.com"
+      },
+      "outcome": "ok",
+      "diff": {},
+      "ms": 420
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGT1FR4A8T5J6ACG9HB5W9Q",
+      "seq": 4,
+      "ts": "2026-05-01T03:42:20.529435+00:00",
+      "step_id": "01KQGT1FR4A8T5J6ACG9HB5W9Q:step-3",
+      "kind": "locate",
+      "intent": "the search textbox",
+      "tier": "L1_ax",
+      "outcome": "miss",
+      "candidates": [],
+      "chosen": null,
+      "cache_action": null,
+      "ms": 0
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGT1FR4A8T5J6ACG9HB5W9Q",
+      "seq": 5,
+      "ts": "2026-05-01T03:42:20.537608+00:00",
+      "step_id": "01KQGT1FR4A8T5J6ACG9HB5W9Q:step-3",
+      "kind": "supervisor",
+      "trigger_event_seq": 4,
+      "classified_as": "LocatorMiss",
+      "policy": "next_tier",
+      "attempt": 1
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGT1FR4A8T5J6ACG9HB5W9Q",
+      "seq": 6,
+      "ts": "2026-05-01T03:42:20.547748+00:00",
+      "step_id": "01KQGT1FR4A8T5J6ACG9HB5W9Q:step-3",
+      "kind": "locate",
+      "intent": "the search textbox",
+      "tier": "L2_dom",
+      "outcome": "miss",
+      "candidates": [],
+      "chosen": null,
+      "cache_action": null,
+      "ms": 0
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGT1FR4A8T5J6ACG9HB5W9Q",
+      "seq": 7,
+      "ts": "2026-05-01T03:43:01.355017+00:00",
+      "step_id": "01KQGT1FR4A8T5J6ACG9HB5W9Q:step-6",
+      "kind": "act",
+      "tool": "fail",
+      "args": {
+        "reason": "Unable to interact with Google Maps search field due to locator issues. The page is in Chinese (Taiwan) and shows a combobox element '搜尋 Google 地圖' but all attempts to click or type into it failed because the locator system couldn't parse certain characters or role tokens. Tried: 'the search box', 'the search textbox', 'the search combobox', and 'the search field that says 搜尋 Google 地圖'. Need either a different approach to locate the search input (perhaps using a simpler intent like just 'search') or additional budget to try alternative navigation paths."
+      },
+      "outcome": "ok",
+      "diff": {},
+      "ms": 0
+    },
+    {
+      "type": "terminal",
+      "status": "failed",
+      "reason": null,
+      "result": null,
+      "evidence": null
+    }
+  ]
+}
