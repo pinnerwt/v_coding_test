@@ -3,14 +3,17 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import sqlite3
+import time
+import uuid
 from collections.abc import Generator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import httpx
-from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, field_validator
 from ulid import ULID
@@ -29,8 +32,15 @@ from api.sessions import (
 )
 
 logger = logging.getLogger(__name__)
+access_logger = logging.getLogger("api.access")
 
 _AGENT_VERSION = "0.1.0"
+
+# Routes that embed a run_id under their second path segment. A regex over
+# `request.url.path` is enough — FastAPI's matched-route metadata isn't
+# populated until after dispatch and we want to emit one log line per
+# request whether the route was matched or 404'd.
+_RUN_ID_PATH_RE = re.compile(r"^/(?:tasks|sessions)/([^/]+)")
 
 _ZERO_TOTALS: dict[str, Any] = {
     "steps": 0,
@@ -42,6 +52,44 @@ _ZERO_TOTALS: dict[str, Any] = {
 }
 
 app = FastAPI()
+
+
+@app.middleware("http")
+async def access_log_middleware(request: Request, call_next):
+    """Per-request structured access log.
+
+    Emits exactly one JSON line on `api.access` after the response is
+    formed, with `request_id`, `route`, `method`, `status`, `latency_ms`,
+    `run_id` (if the path embeds one), and `token_id` (placeholder until
+    auth lands). The `request_id` is also surfaced as the `x-request-id`
+    response header — clients can quote it in support tickets and we
+    can correlate without grepping logs by timestamp.
+
+    Honors a client-supplied `x-request-id` so upstream tracers (an LB,
+    another service) can thread their id through unchanged. Otherwise
+    we mint a UUID4.
+    """
+    incoming_rid = request.headers.get("x-request-id")
+    request_id = incoming_rid if incoming_rid else str(uuid.uuid4())
+    started = time.perf_counter()
+    response = await call_next(request)
+    latency_ms = (time.perf_counter() - started) * 1000.0
+    response.headers["x-request-id"] = request_id
+
+    run_id_match = _RUN_ID_PATH_RE.match(request.url.path)
+    payload = {
+        "request_id": request_id,
+        "method": request.method,
+        "route": request.url.path,
+        "status": response.status_code,
+        "latency_ms": round(latency_ms, 3),
+        "run_id": run_id_match.group(1) if run_id_match else None,
+        # Reserved for the auth middleware (see plan.md security section);
+        # emitting now keeps the log schema stable across that change.
+        "token_id": None,
+    }
+    access_logger.info(json.dumps(payload, ensure_ascii=False))
+    return response
 
 
 def _probe_db() -> bool:
