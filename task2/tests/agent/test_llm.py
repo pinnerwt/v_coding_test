@@ -592,3 +592,117 @@ def test_chat_invalid_temperature_env_falls_back_to_zero(monkeypatch):
 
     body = json.loads(route.calls.last.request.content)
     assert body["temperature"] == 0.0
+
+
+# ---------------------------------------------------------------------------
+# LLM_CALL_LOG: when the env var points at a file, every chat() call appends
+# a JSONL line capturing messages/tools/response so a planner regression can
+# be diagnosed after the fact. Default-off (no env var → no file written).
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+def test_llm_call_log_disabled_by_default(tmp_path, monkeypatch):
+    monkeypatch.delenv("LLM_CALL_LOG", raising=False)
+    target = tmp_path / "should-not-be-written.jsonl"
+    respx.post(f"http://localhost:8090{CHAT_PATH}").mock(
+        return_value=httpx.Response(200, json=_ok_payload())
+    )
+
+    chat(messages=[{"role": "user", "content": "hi"}], model="m")
+
+    assert not target.exists()
+
+
+@respx.mock
+def test_llm_call_log_writes_one_jsonl_line_per_chat(tmp_path, monkeypatch):
+    log_path = tmp_path / "llm_calls.jsonl"
+    monkeypatch.setenv("LLM_CALL_LOG", str(log_path))
+    respx.post(f"http://localhost:8090{CHAT_PATH}").mock(
+        return_value=httpx.Response(
+            200,
+            json=_ok_payload(
+                content="",
+                tool_calls=[
+                    {
+                        "id": "tc-1",
+                        "type": "function",
+                        "function": {
+                            "name": "ask_user",
+                            "arguments": '{"questions":["q?"]}',
+                        },
+                    }
+                ],
+            ),
+        )
+    )
+
+    msgs = [{"role": "user", "content": "hi"}]
+    tools = [{"type": "function", "function": {"name": "ask_user"}}]
+    chat(messages=msgs, model="m", tools=tools)
+
+    assert log_path.exists()
+    lines = log_path.read_text().strip().splitlines()
+    assert len(lines) == 1
+    entry = json.loads(lines[0])
+    assert entry["messages"] == msgs
+    assert entry["tools"] == tools
+    assert entry["model"] == "m"
+    resp = entry["response"]
+    assert resp["content"] in ("", None)
+    assert resp["tool_calls"][0]["name"] == "ask_user"
+    assert resp["tool_calls"][0]["arguments"] == '{"questions":["q?"]}'
+    assert resp["finish_reason"] == "stop"
+    assert "ts" in entry
+    assert "elapsed_ms" in entry
+    assert "error" not in entry
+
+
+@respx.mock
+def test_llm_call_log_appends_across_multiple_calls(tmp_path, monkeypatch):
+    log_path = tmp_path / "calls.jsonl"
+    monkeypatch.setenv("LLM_CALL_LOG", str(log_path))
+    respx.post(f"http://localhost:8090{CHAT_PATH}").mock(
+        return_value=httpx.Response(200, json=_ok_payload(content="A"))
+    )
+
+    chat(messages=[{"role": "user", "content": "1"}], model="m")
+    chat(messages=[{"role": "user", "content": "2"}], model="m")
+
+    lines = log_path.read_text().strip().splitlines()
+    assert len(lines) == 2
+    assert json.loads(lines[0])["messages"][0]["content"] == "1"
+    assert json.loads(lines[1])["messages"][0]["content"] == "2"
+
+
+@respx.mock
+def test_llm_call_log_records_http_errors(tmp_path, monkeypatch):
+    log_path = tmp_path / "calls.jsonl"
+    monkeypatch.setenv("LLM_CALL_LOG", str(log_path))
+    respx.post(f"http://localhost:8090{CHAT_PATH}").mock(
+        return_value=httpx.Response(500, text="boom")
+    )
+
+    with pytest.raises(LLMError):
+        chat(messages=[{"role": "user", "content": "hi"}], model="m")
+
+    lines = log_path.read_text().strip().splitlines()
+    assert len(lines) == 1
+    entry = json.loads(lines[0])
+    assert entry["error"]["kind"] == "http"
+    assert entry["error"]["status"] == 500
+    assert "response" not in entry or entry.get("response") is None
+
+
+def test_llm_call_log_silently_skips_when_path_unwritable(tmp_path, monkeypatch):
+    """Logging failure must NOT raise out of chat() — the LLM call's success
+    is what matters; the log is best-effort."""
+    monkeypatch.setenv("LLM_CALL_LOG", str(tmp_path / "no" / "such" / "dir" / "x.jsonl"))
+
+    with respx.mock:
+        respx.post(f"http://localhost:8090{CHAT_PATH}").mock(
+            return_value=httpx.Response(200, json=_ok_payload())
+        )
+        result = chat(messages=[{"role": "user", "content": "hi"}], model="m")
+
+    assert isinstance(result, ChatResponse)

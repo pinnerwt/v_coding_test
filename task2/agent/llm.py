@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import dataclasses
+import json
 import os
+import time
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 import httpx
@@ -148,30 +152,48 @@ class LLMClient:
             headers["Authorization"] = f"Bearer {self._api_key}"
 
         url = f"{self._base_url}{_CHAT_PATH}"
+        log_path = os.environ.get("LLM_CALL_LOG")
+        started = time.monotonic()
         try:
             response = self._client.post(url, json=body, headers=headers)
         except httpx.HTTPError as exc:
-            raise LLMError(f"transport error: {exc}", kind="transport", cause=exc) from exc
+            err = LLMError(f"transport error: {exc}", kind="transport", cause=exc)
+            _maybe_log_call(
+                log_path, messages, tools, resolved_model, started, response=None, error=err
+            )
+            raise err from exc
 
         if response.status_code >= 400:
-            raise LLMError(
+            err = LLMError(
                 f"http {response.status_code}",
                 kind="http",
                 status=response.status_code,
                 body=response.text,
             )
+            _maybe_log_call(
+                log_path, messages, tools, resolved_model, started, response=None, error=err
+            )
+            raise err
 
         try:
             payload = response.json()
         except ValueError as exc:
-            raise LLMError(
+            err = LLMError(
                 "response body is not valid JSON",
                 kind="decode",
                 body=response.text,
                 cause=exc,
-            ) from exc
+            )
+            _maybe_log_call(
+                log_path, messages, tools, resolved_model, started, response=None, error=err
+            )
+            raise err from exc
 
-        return _parse_response(payload, price_table=self._get_price_table(), model=resolved_model)
+        parsed = _parse_response(payload, price_table=self._get_price_table(), model=resolved_model)
+        _maybe_log_call(
+            log_path, messages, tools, resolved_model, started, response=parsed, error=None
+        )
+        return parsed
 
 
 def _parse_response(
@@ -234,6 +256,51 @@ def _parse_response(
         raw=payload,
         usd=usd,
     )
+
+
+def _maybe_log_call(
+    path: str | None,
+    messages: list[dict],
+    tools: list[dict] | None,
+    model: str,
+    started_monotonic: float,
+    *,
+    response: ChatResponse | None,
+    error: LLMError | None,
+) -> None:
+    """Append a single JSON line describing this chat() call. Best-effort:
+    never raise out of the LLM call path. Activated by `LLM_CALL_LOG=<path>`."""
+    if not path:
+        return
+    elapsed_ms = int((time.monotonic() - started_monotonic) * 1000)
+    entry: dict[str, Any] = {
+        "ts": datetime.now(tz=UTC).isoformat(),
+        "elapsed_ms": elapsed_ms,
+        "model": model,
+        "messages": messages,
+        "tools": tools,
+    }
+    if response is not None:
+        entry["response"] = {
+            "content": response.content,
+            "tool_calls": [dataclasses.asdict(tc) for tc in response.tool_calls],
+            "finish_reason": response.finish_reason,
+            "usage": dataclasses.asdict(response.usage),
+        }
+    if error is not None:
+        entry["error"] = {
+            "kind": error.kind,
+            "status": error.status,
+            "message": str(error),
+            "body": error.body,
+        }
+    try:
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(entry, ensure_ascii=False))
+            fh.write("\n")
+    except OSError:
+        # Logging is debug aid; never block a real LLM call on disk failure.
+        return
 
 
 def chat(
