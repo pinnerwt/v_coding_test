@@ -16,6 +16,8 @@ unmatched routes (404s) so the cardinality stays bounded.
 
 from __future__ import annotations
 
+import threading
+
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
     Counter,
@@ -90,6 +92,64 @@ def _classify_failure(*, status: str, verifier: dict | None) -> str | None:
             if head:
                 return head
     return status or "unknown"
+
+
+# Cost attribution. Tokens and USD are reported in the LLMCallEvent
+# payload streamed through the trace writer's on_event callback —
+# every llm_call routes through there, which is the natural seam to
+# update Prometheus counters without coupling metrics to the loop.
+llm_tokens_total = Counter(
+    "llm_tokens_total",
+    "Cumulative LLM tokens consumed, labeled by direction.",
+    labelnames=("kind",),
+)
+
+llm_usd_total = Counter(
+    "llm_usd_total",
+    "Cumulative LLM USD spend across all runs.",
+)
+
+
+# In-memory cost accumulator. Mirrors the Prometheus counters so the
+# `/usage` endpoint can report a process-lifetime snapshot without
+# scraping its own metrics or aggregating the trace DB. Persistent
+# cost history lives in the trace store; this is the live counter.
+_usage_lock = threading.Lock()
+_usage_state: dict[str, float] = {
+    "prompt_tokens": 0.0,
+    "completion_tokens": 0.0,
+    "usd": 0.0,
+}
+
+
+def record_llm_call(*, prompt_tokens: int, completion_tokens: int, usd: float) -> None:
+    """Record one LLM call's cost contribution.
+
+    Counters are monotonic — never decrement, never reset. A single
+    call adds its prompt-side tokens, completion-side tokens, and USD
+    to their respective totals.
+    """
+    if prompt_tokens > 0:
+        llm_tokens_total.labels(kind="prompt").inc(prompt_tokens)
+    if completion_tokens > 0:
+        llm_tokens_total.labels(kind="completion").inc(completion_tokens)
+    if usd > 0:
+        llm_usd_total.inc(usd)
+    with _usage_lock:
+        _usage_state["prompt_tokens"] += prompt_tokens
+        _usage_state["completion_tokens"] += completion_tokens
+        _usage_state["usd"] += usd
+
+
+def get_usage_snapshot() -> dict[str, float]:
+    """Return a snapshot of cumulative token / USD usage in this process.
+
+    The numbers match the `llm_tokens_total` / `llm_usd_total` counter
+    increments, but the snapshot is a plain dict so the `/usage` route
+    handler doesn't have to reach into prom-client internals.
+    """
+    with _usage_lock:
+        return dict(_usage_state)
 
 
 def record_task_terminal(

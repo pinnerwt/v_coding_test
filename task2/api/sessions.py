@@ -239,7 +239,19 @@ def _worker(
     locale: str | None,
 ) -> None:
     cb = _make_ask_user_callback(session)
-    on_event = lambda payload: emit_event(session, {"type": "trace", **payload})  # noqa: E731
+
+    def on_event(payload: dict[str, Any]) -> None:
+        # Cost-attribution metrics: every llm_call event flows here on
+        # its way to SSE, so this is the single seam that covers both
+        # /tasks and /sessions paths without coupling metrics to the loop.
+        if payload.get("kind") == "llm_call":
+            tokens = payload.get("tokens") or {}
+            metrics.record_llm_call(
+                prompt_tokens=int(tokens.get("prompt_tokens", 0) or 0),
+                completion_tokens=int(tokens.get("completion_tokens", 0) or 0),
+                usd=float(payload.get("usd", 0.0) or 0.0),
+            )
+        emit_event(session, {"type": "trace", **payload})
 
     loop_done = threading.Event()
 

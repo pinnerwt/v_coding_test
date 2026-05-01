@@ -145,6 +145,18 @@ def metrics_endpoint() -> Response:
     return Response(content=body, media_type=content_type)
 
 
+@app.get("/usage")
+def usage_endpoint() -> dict[str, Any]:
+    """Cumulative LLM cost snapshot for this process.
+
+    Returns prompt/completion token counts and total USD spend. A token
+    holder calls this to self-check before being rate-limited. The
+    numbers match the `llm_tokens_total` / `llm_usd_total` Prometheus
+    counters; persistent history lives in the trace store.
+    """
+    return metrics.get_usage_snapshot()
+
+
 @app.get("/healthz")
 def healthz() -> dict[str, Any]:
     """Bare liveness probe — process is up and responsive.
