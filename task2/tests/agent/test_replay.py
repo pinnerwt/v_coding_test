@@ -79,7 +79,9 @@ def _live_user_content(
     plan_lines = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(plan))
     plan_prefix = f"Plan progress:\n{plan_lines}\n\n"
     digest = compute_dom_digest(prev_obs, observation) if prev_obs is not None else ""
-    digest_prefix = f"DOM change since last step: {digest}\n\n" if digest else ""
+    digest_prefix = (
+        f"DOM change since last step: {digest}\n\n" if digest and digest != "unchanged" else ""
+    )
     return f"{budget_prefix}{plan_prefix}{digest_prefix}Current state: {json.dumps(observation)}"
 
 

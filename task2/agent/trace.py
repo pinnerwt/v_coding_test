@@ -31,7 +31,6 @@ class ObservationEvent(EventBase):
     screenshot_ref: str
     viewport: dict[str, Any]
     last_actions: list[dict] = []
-    dom_digest: str = ""
 
 
 class PlanEvent(EventBase):

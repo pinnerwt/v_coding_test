@@ -255,6 +255,9 @@ _NO_TOOL_CALL_K: int = 3
 _NO_PROGRESS_K: int = 4
 # T4: how many consecutive off-plan steps trigger an auto-replan.
 _OFF_PLAN_REPLAN_THRESHOLD: int = 2
+# T4: action tools that carry plan_cursor / plan_cursor_reason.
+_PLAN_CURSOR_TOOLS: frozenset[str] = frozenset({"goto", "click", "type", "read"})
+_OFF_PLAN_SENTINEL: str = "off-plan"
 
 # T1: words in a `next_goal` that signal the agent still has work to do
 # (browse / interact) rather than report a final answer. Matched as
@@ -1372,24 +1375,20 @@ def loop(
         _step_id = f"{run_id}:step-{step_num}" if run_id is not None else None
         any_action_succeeded_this_step: bool = False
         replanned_this_step: bool = False
-        # T4: per-step plan_cursor classification.
         step_saw_on_plan: bool = False
         step_saw_off_plan: bool = False
         step_off_plan_reason: str | None = None
 
-        raw_observation = observe.build_observation(browser, last_actions)
-        # T5: compute the verbal DOM-mutation digest against the previous
-        # observation so the agent knows what changed since the last step.
-        # Build a fresh dict (don't mutate the one build_observation returned —
-        # tests mock it to return a shared constant dict). Some tests mock
-        # build_observation to return a non-dict; treat that as a no-op for
-        # digest purposes.
-        if isinstance(raw_observation, dict):
-            observation = dict(raw_observation)
-            observation["dom_digest"] = observe.compute_dom_digest(_prev_observation, observation)
-            _prev_observation = {k: v for k, v in observation.items() if k != "dom_digest"}
+        observation = observe.build_observation(browser, last_actions)
+        # T5: digest is kept as a step-local; we do NOT stash it on
+        # `observation` because that would leak into trace events and the
+        # state JSON sent to the LLM (which would also break replay-fixture
+        # round-trips).
+        if isinstance(observation, dict):
+            dom_digest_value = observe.compute_dom_digest(_prev_observation, observation)
+            _prev_observation = observation
         else:
-            observation = raw_observation
+            dom_digest_value = ""
         last_actions = []
 
         if step_num == 1:
@@ -1462,19 +1461,13 @@ def loop(
         else:
             budget_prefix = f"Step {step_num}/{max_steps}.\n\n"
         _force_done_next = False
-        # T5: surface the DOM-mutation digest as a labeled prefix so the
-        # agent can see "what changed" without bloating the state JSON
-        # (which would also break replay-fixture round-trips).
-        if isinstance(observation, dict):
-            dom_digest_value = observation.get("dom_digest") or ""
-            state_for_llm = {k: v for k, v in observation.items() if k != "dom_digest"}
-            state_payload = json.dumps(state_for_llm)
+        # Skip the digest prefix when nothing changed — "unchanged" is
+        # already implied by repeated ax_fingerprint and just costs tokens.
+        if dom_digest_value and dom_digest_value != "unchanged":
+            digest_prefix = f"DOM change since last step: {dom_digest_value}\n\n"
         else:
-            dom_digest_value = ""
-            state_payload = json.dumps(observation)
-        digest_prefix = (
-            f"DOM change since last step: {dom_digest_value}\n\n" if dom_digest_value else ""
-        )
+            digest_prefix = ""
+        state_payload = json.dumps(observation)
         messages.append(
             {
                 "role": "user",
@@ -1569,12 +1562,11 @@ def loop(
                 )
                 continue
 
-            # T4: classify plan_cursor on action tools.
-            if tool_call.name in {"goto", "click", "type", "read"}:
+            if tool_call.name in _PLAN_CURSOR_TOOLS:
                 cursor = args.get("plan_cursor")
                 if isinstance(cursor, int) and cursor >= 1:
                     step_saw_on_plan = True
-                elif cursor == "off-plan":
+                elif cursor == _OFF_PLAN_SENTINEL:
                     step_saw_off_plan = True
                     if step_off_plan_reason is None:
                         reason = args.get("plan_cursor_reason")
@@ -1907,11 +1899,8 @@ def loop(
                         step_breakdown=step_breakdown,
                     )
 
-        # T4: classify the step against the plan.
-        # An on-plan signal anywhere in the step resets the consecutive
-        # off-plan counter; a step that only emitted off-plan declarations
-        # increments it. Steps without any cursor (legacy / no plan_cursor)
-        # are neutral and leave the counter alone.
+        # On-plan resets the counter; only-off-plan increments it; steps
+        # without any cursor (legacy / no plan_cursor) are neutral.
         if step_saw_on_plan:
             _consecutive_off_plan_steps = 0
         elif step_saw_off_plan:
