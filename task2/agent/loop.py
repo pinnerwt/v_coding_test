@@ -1803,6 +1803,24 @@ def loop(
                             step_off_plan_reason = reason
 
             if tool_call.name == "done":
+                # I4: when the agent's `done` payload self-reports a known
+                # failure / soft-failure status, trust that admission and
+                # bypass the premature_done halt and superlative-mismatch
+                # replan. Otherwise F10 fires "do more work" and the loop
+                # keeps iterating (A1 round-10: F10 halted, the LLM emitted
+                # another click in the next step, and the run leaked past
+                # what should have been a terminal `done`). F5/F21 below
+                # handle the actual status downgrade to failed/unverified.
+                _self_failure_admitted = False
+                _result_payload_for_status = args.get("result")
+                if isinstance(_result_payload_for_status, dict):
+                    _self_status = _result_payload_for_status.get("status")
+                    if isinstance(_self_status, str):
+                        _normalized = _self_status.lower()
+                        _self_failure_admitted = (
+                            _normalized in _SELF_FAILURE_STATUSES
+                            or _normalized in _SELF_SOFT_FAILURE_STATUSES
+                        )
                 # T1 self-eval gate: reject `done` when the agent's own
                 # evaluation_previous_action / next_goal indicate it has not
                 # actually done the work yet. This catches the goto→done
@@ -1870,6 +1888,12 @@ def loop(
                     # (plan_cursor, next_goal verbs, etc.) misclassify this
                     # as premature on extraction tasks where the answer is
                     # already on the page. Downgrade halt → accept.
+                    premature_reason = None
+                if premature_reason is not None and _self_failure_admitted:
+                    # I4: agent has admitted partial/incomplete/failed in
+                    # result.status; nagging it via premature_done halt only
+                    # leaks more tool calls. Skip to F21 self-status
+                    # downgrade below.
                     premature_reason = None
                 if premature_reason is not None:
                     use_writer = trace_writer is not None and run_id is not None
@@ -1960,7 +1984,11 @@ def loop(
                     _build_observation_tape(messages),
                     args.get("result"),
                 )
-                if _f20_reason is not None and supervisor.can_replan("unsupported_superlative"):
+                if (
+                    _f20_reason is not None
+                    and not _self_failure_admitted
+                    and supervisor.can_replan("unsupported_superlative")
+                ):
                     if trace_writer is not None and run_id is not None:
                         sup_seq = trace_writer.next_seq(run_id)
                         trace_writer.append_event(

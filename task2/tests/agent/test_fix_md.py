@@ -1473,3 +1473,94 @@ def test_f29_dispatch_missing_required_arg_emits_act_event():
     )
     for ev in by_tool.values():
         assert ev.outcome == "error", (ev.tool, ev.outcome)
+
+
+# ---------------------------------------------------------------------------
+# I4 — self-reported failure status on `done` short-circuits premature halt
+# ---------------------------------------------------------------------------
+
+
+def test_i4_done_with_partial_status_terminates_even_after_two_failures(
+    fixture_server, playwright_chromium
+):
+    """A1 round-10 shape: agent reports `result.status="partial"` after two
+    consecutive click failures. F7 would otherwise classify this as
+    `premature_done` and halt the `done`, telling the LLM to keep trying.
+    The loop then dispatched another click in the next step (the "leak"
+    documented in I4). When the agent has self-admitted partial completion,
+    the loop must trust that admission, return `unverified`, and stop
+    dispatching further tool calls.
+    """
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+    from agent.trace import ActEvent, SupervisorEvent
+    from tests.agent.test_loop import _FakeLLMClient
+
+    bogus_click_1 = _tool_call(
+        "click",
+        {"intent": "the 訂位確認 button"},
+        call_id="tc-c1",
+    )
+    bogus_click_2 = _tool_call(
+        "click",
+        {"intent": "the 訂位確認 link"},
+        call_id="tc-c2",
+    )
+    partial_done = _tool_call(
+        "done",
+        {
+            "result": {
+                "status": "partial",
+                "message": "Could not access reservation interface for the requested branch",
+            },
+            "evidence": {"url": fixture_url, "text_snippet": "Hello, loop"},
+            "evaluation_previous_action": "partial",
+            "evaluation_reason": "found the system but could not finish booking",
+            "next_goal": "report final answer",
+        },
+        call_id="tc-done",
+    )
+    leaked_click = _tool_call("click", {"intent": "first textbox"}, call_id="tc-leak")
+
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-g")),
+        _response_with_tool_call(bogus_click_1),
+        _response_with_tool_call(bogus_click_2),
+        _response_with_tool_call(partial_done),
+        # If the loop incorrectly halts the `done`, the LLM gets another
+        # turn — it would emit this click, mirroring the A1 round-10 leak.
+        _response_with_tool_call(leaked_click),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+    events: list = []
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop("task", browser, fake_llm, max_steps=8, events=events)
+
+    assert result.status == "unverified", (
+        "I4: done with result.status='partial' must downgrade to 'unverified' "
+        "even when prior actions failed; "
+        f"got {result.status!r}"
+    )
+
+    sup_classes = [e.classified_as for e in events if isinstance(e, SupervisorEvent)]
+    assert "premature_done" not in sup_classes, (
+        "I4: agent self-admitted partial — F10 premature_done halt must not "
+        f"fire; sup events: {sup_classes!r}"
+    )
+
+    # No tool dispatch may follow the self-admitted `done`. The trace must
+    # not contain the "leaked" click that would only get dispatched if the
+    # loop re-entered after the done.
+    act_tools_after_done = []
+    seen_done = False
+    for e in events:
+        if not isinstance(e, ActEvent):
+            continue
+        if e.tool == "done":
+            seen_done = True
+            continue
+        if seen_done:
+            act_tools_after_done.append(e.tool)
+    assert not act_tools_after_done, (
+        "I4: no tool calls may be dispatched after a self-admitted `done`; "
+        f"saw {act_tools_after_done!r}"
+    )
