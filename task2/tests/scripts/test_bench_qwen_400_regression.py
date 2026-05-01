@@ -48,7 +48,7 @@ class _RecordingStubLLM:
     def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
         if tools is None or _is_planner_call(messages):
             return ChatResponse(
-                content='{"steps": ["do the task"], "expected_end_state": "done"}',
+                content='{"steps": ["do the task", "verify"], "expected_end_state": "done"}',
                 tool_calls=[],
                 finish_reason="stop",
                 model="fake",

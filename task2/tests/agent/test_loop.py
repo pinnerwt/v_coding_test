@@ -61,7 +61,9 @@ def _response_no_tool_call() -> ChatResponse:
     )
 
 
-_PLAN_STUB = '{"steps": ["complete the task"], "expected_end_state": "task complete"}'
+_PLAN_STUB = (
+    '{"steps": ["start the task", "complete the task"], "expected_end_state": "task complete"}'
+)
 
 
 def _plan_stub_response() -> ChatResponse:
@@ -1293,8 +1295,8 @@ def test_supervisor_halt_triggers_replan_event(fixture_server, playwright_chromi
 
 
 def test_second_supervisor_halt_returns_failed(fixture_server, playwright_chromium):
-    plan_json = '{"steps": ["step 1"], "expected_end_state": "done"}'
-    replan_json = '{"steps": ["alt step"], "expected_end_state": "alt done"}'
+    plan_json = '{"steps": ["step 1", "step 2"], "expected_end_state": "done"}'
+    replan_json = '{"steps": ["alt step 1", "alt step 2"], "expected_end_state": "alt done"}'
 
     class _DoubleHaltLLM:
         def __init__(self):
@@ -1341,7 +1343,7 @@ def test_planner_tokens_included_in_run_metrics(fixture_server, playwright_chrom
             self._call_index += 1
             if idx == 0:
                 return ChatResponse(
-                    content='{"steps": ["go"], "expected_end_state": "done"}',
+                    content='{"steps": ["go", "verify"], "expected_end_state": "done"}',
                     tool_calls=[],
                     finish_reason="stop",
                     model="fake",
@@ -1376,8 +1378,8 @@ def test_loop_does_not_terminally_fail_on_unrelated_error_after_replan(
     fixture_server, playwright_chromium
 ):
     fixture_url = f"{fixture_server}/index.html"
-    plan_json = '{"steps": ["step 1"], "expected_end_state": "done"}'
-    replan_json = '{"steps": ["alt step"], "expected_end_state": "alt done"}'
+    plan_json = '{"steps": ["step 1", "step 2"], "expected_end_state": "done"}'
+    replan_json = '{"steps": ["alt step 1", "alt step 2"], "expected_end_state": "alt done"}'
 
     class _HaltThenGotoEmptyThenDoneLLM:
         def __init__(self):
@@ -1431,8 +1433,8 @@ def test_replan_does_not_leave_orphan_tool_call_in_message_history(
 ):
     """OpenAI-compatible servers reject with HTTP 400 on unmatched tool_call IDs."""
     fixture_url = f"{fixture_server}/index.html"
-    plan_json = '{"steps": ["step 1"], "expected_end_state": "done"}'
-    replan_json = '{"steps": ["alt step"], "expected_end_state": "alt done"}'
+    plan_json = '{"steps": ["step 1", "step 2"], "expected_end_state": "done"}'
+    replan_json = '{"steps": ["alt step 1", "alt step 2"], "expected_end_state": "alt done"}'
 
     class _HaltReplanCapturingLLM:
         def __init__(self):
@@ -3668,7 +3670,7 @@ class _RecordingLLMClient:
     def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
         if tools is None or _is_planner_call(messages):
             return ChatResponse(
-                content='{"steps": ["do the task"], "expected_end_state": "done"}',
+                content='{"steps": ["do the task", "verify"], "expected_end_state": "done"}',
                 tool_calls=[],
                 finish_reason="stop",
                 model="fake",
@@ -4125,7 +4127,7 @@ class _AlwaysGotoClient:
     def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
         if tools is None or _is_planner_call(messages):
             return ChatResponse(
-                content='{"steps": ["do the task"], "expected_end_state": "done"}',
+                content='{"steps": ["do the task", "verify"], "expected_end_state": "done"}',
                 tool_calls=[],
                 finish_reason="stop",
                 model="fake",
@@ -4163,7 +4165,7 @@ class _AlternatingGotoClient:
     def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
         if tools is None or _is_planner_call(messages):
             return ChatResponse(
-                content='{"steps": ["do the task"], "expected_end_state": "done"}',
+                content='{"steps": ["do the task", "verify"], "expected_end_state": "done"}',
                 tool_calls=[],
                 finish_reason="stop",
                 model="fake",
@@ -4266,7 +4268,7 @@ class _AlwaysNoToolCallClient:
     def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
         if tools is None or _is_planner_call(messages):
             return ChatResponse(
-                content='{"steps": ["do the task"], "expected_end_state": "done"}',
+                content='{"steps": ["do the task", "verify"], "expected_end_state": "done"}',
                 tool_calls=[],
                 finish_reason="stop",
                 model="fake",
@@ -4301,7 +4303,7 @@ class _NoToolCallThenGotoClient:
     def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
         if tools is None or _is_planner_call(messages):
             return ChatResponse(
-                content='{"steps": ["do the task"], "expected_end_state": "done"}',
+                content='{"steps": ["do the task", "verify"], "expected_end_state": "done"}',
                 tool_calls=[],
                 finish_reason="stop",
                 model="fake",
@@ -4757,7 +4759,7 @@ def test_loop_passes_run_context_with_locale_to_planner(monkeypatch):
         ),
     )
     plan_resp = ChatResponse(
-        content='{"steps": ["x"], "expected_end_state": "done"}',
+        content='{"steps": ["x", "y"], "expected_end_state": "done"}',
         tool_calls=[],
         finish_reason="stop",
         model="fake",

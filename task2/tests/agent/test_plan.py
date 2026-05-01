@@ -250,7 +250,7 @@ def test_plan_handles_ask_user_with_no_callback_gracefully():
     """If the planner emits ask_user but no callback is wired, plan() must not
     crash; it should feed back an error tool message and let the planner fall
     back to its best-effort plan on the next turn."""
-    payload = json.dumps({"steps": ["best effort"], "expected_end_state": "done"})
+    payload = json.dumps({"steps": ["best effort", "verify"], "expected_end_state": "done"})
     llm = _ScriptedLLM(
         [
             _tool_call_response("ask_user", {"question": "which?"}, call_id="tc-ask"),
@@ -260,7 +260,7 @@ def test_plan_handles_ask_user_with_no_callback_gracefully():
 
     result, _ = plan(task="t", observation={}, llm=llm, ask_user_callback=None)
 
-    assert result.steps == ["best effort"]
+    assert result.steps == ["best effort", "verify"]
 
 
 def test_plan_signature_accepts_ask_user_callback_kwarg():
@@ -321,7 +321,7 @@ def test_plan_signature_accepts_context_kwarg():
 def test_plan_omits_run_context_block_when_none():
     """When no context is provided, the planner user message must NOT contain
     a 'Run context:' block — preserves the no-context behavior."""
-    payload = json.dumps({"steps": ["x"], "expected_end_state": "done"})
+    payload = json.dumps({"steps": ["x", "y"], "expected_end_state": "done"})
     llm = _ScriptedLLM([_fake_response(payload)])
 
     plan(task="t", observation={}, llm=llm)

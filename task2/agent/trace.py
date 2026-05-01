@@ -54,7 +54,7 @@ class DecisionEvent(EventBase):
 class LocateEvent(EventBase):
     kind: Literal["locate"] = "locate"
     intent: str
-    tier: Literal["cache", "L1_ax", "L2_dom", "L3_rerank", "L4_vision"]
+    tier: Literal["cache", "L1_ax", "L2_dom", "L_textmatch", "L3_rerank", "L4_vision"]
     outcome: Literal["hit", "miss", "ambiguous", "error"]
     candidates: list[dict[str, Any]]
     chosen: dict[str, Any] | None

@@ -29,7 +29,10 @@ def _is_planner_call(messages: list[dict]) -> bool:
 
 def _plan_stub() -> ChatResponse:
     return ChatResponse(
-        content='{"steps": ["complete the task"], "expected_end_state": "task complete"}',
+        content=(
+            '{"steps": ["start the task", "complete the task"],'
+            ' "expected_end_state": "task complete"}'
+        ),
         tool_calls=[],
         finish_reason="stop",
         model="fake",

@@ -116,7 +116,7 @@ def test_f1_synthetic_answer_tells_llm_to_stop_asking():
     def _cb(_q: str) -> str:
         return "first answer"
 
-    final_plan = json.dumps({"steps": ["x"], "expected_end_state": "y"})
+    final_plan = json.dumps({"steps": ["x", "y"], "expected_end_state": "z"})
     llm = _ScriptedLLM(
         [
             _tool_call_response("ask_user", {"question": "Which one?"}, call_id="tc-1"),
@@ -468,3 +468,93 @@ def test_f8_cjk_fallback_for_role_button_without_accessible_name(
 
     assert result is not None
     assert result.selector
+
+
+# --- F11 (plan must contain at least two steps) ---------------------------
+
+
+def test_f11_one_step_plan_triggers_replan_request():
+    """Round-4 A3 evidence: after `ask_user` round-trip, the planner returned
+    `steps=["Book a flight from Taipei to Tokyo and return the cheapest fare."]`
+    — one bullet that just restates the task. The agent then ran without a
+    real plan and stalled. `plan()` must reject a 1-step plan and re-call
+    the LLM once for a longer plan."""
+    short_plan = json.dumps({"steps": ["Book a flight."], "expected_end_state": "booked"})
+    long_plan = json.dumps(
+        {
+            "steps": [
+                "Navigate to a flight search site",
+                "Enter origin, destination, date",
+                "Read the cheapest fare from results",
+            ],
+            "expected_end_state": "fare retrieved",
+        }
+    )
+    llm = _ScriptedLLM([_fake_response(short_plan), _fake_response(long_plan)])
+
+    result, _ = plan(task="Book a flight TPE→NRT", observation={}, llm=llm)
+
+    assert len(result.steps) >= 2, f"final plan must have >=2 steps; got {result.steps!r}"
+    assert result.steps[0].startswith("Navigate")
+    assert len(llm.calls) == 2, (
+        f"planner must re-call LLM once on a too-short plan; got {len(llm.calls)} calls"
+    )
+
+
+def test_f11_two_step_plan_does_not_replan():
+    """A plan with >= 2 steps is acceptable; the planner must NOT re-call."""
+    plan_json = json.dumps({"steps": ["go to site", "click button"], "expected_end_state": "done"})
+    llm = _ScriptedLLM([_fake_response(plan_json)])
+
+    result, _ = plan(task="t", observation={}, llm=llm)
+
+    assert result.steps == ["go to site", "click button"]
+    assert len(llm.calls) == 1
+
+
+# --- F14 (verify L_textmatch fires through the loop's ladder) -------------
+
+
+def test_f14_loop_ladder_emits_l_textmatch_event_on_l1_l2_miss(fixture_server, playwright_chromium):
+    """Round-4 smoke evidence (A1 trace) showed L1_ax and L2_dom miss
+    events on a CJK-link intent, then terminal failure — no L_textmatch
+    event ever fired. The loop's `_locate_via_ladder` must invoke the
+    textmatch tier after L2 miss (and emit a corresponding LocateEvent)
+    before giving up. Asserts:
+      - L1_ax miss event
+      - L2_dom miss event
+      - L_textmatch hit event with a non-empty selector
+    """
+    from agent.loop import _locate_via_ladder
+    from agent.trace import LocateEvent
+    from tests.agent.test_loop import (  # type: ignore[no-untyped-import]
+        _make_mock_supervisor_next_tier,
+        _make_writer_with_run,
+    )
+
+    run_id = "f14-textmatch"
+    writer = _make_writer_with_run(run_id)
+    supervisor = _make_mock_supervisor_next_tier()
+
+    fixture_url = f"{fixture_server}/locate_cjk_fallback.html"
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        browser.goto(fixture_url)
+        result = _locate_via_ladder(
+            browser._page,
+            "網路訂位 link",
+            supervisor,
+            trace_writer=writer,
+            run_id=run_id,
+            step_id=f"{run_id}:step-1",
+        )
+
+    assert result is not None
+    assert result.tier == "L_textmatch"
+    assert result.selector
+
+    locate_events = [e for e in writer.iter_events(run_id) if isinstance(e, LocateEvent)]
+    tiers_outcomes = [(e.tier, e.outcome) for e in locate_events]
+    assert ("L1_ax", "miss") in tiers_outcomes
+    assert ("L2_dom", "miss") in tiers_outcomes
+    assert ("L_textmatch", "hit") in tiers_outcomes
+    writer.close()

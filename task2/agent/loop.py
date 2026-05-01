@@ -19,6 +19,7 @@ from agent.locate import (
     _canonical_ax_fingerprint,
     locate_l1,
     locate_l2,
+    locate_l_textmatch,
     parse_intent,
 )
 from agent.locator_cache import CacheEntry, _origin_from_url
@@ -837,7 +838,34 @@ def _locate_via_ladder(
                 chosen=None,
                 step_id=step_id,
             )
-            raise
+            # F8: verbatim textContent substring match against clickable-ish
+            # elements. Catches CJK / non-English DOM where role-based tiers
+            # miss because the accessible name is the inner text.
+            try:
+                tm_result = locate_l_textmatch(page, role=role, name=name)
+            except LocatorMiss:
+                _emit_locate_event(
+                    trace_writer=trace_writer,
+                    run_id=run_id,
+                    intent=intent,
+                    tier="L_textmatch",
+                    outcome="miss",
+                    cache_action=None,
+                    chosen=None,
+                    step_id=step_id,
+                )
+                raise
+            _emit_locate_event(
+                trace_writer=trace_writer,
+                run_id=run_id,
+                intent=intent,
+                tier="L_textmatch",
+                outcome="hit",
+                cache_action=None,
+                chosen={"role": tm_result.role, "selector": tm_result.selector},
+                step_id=step_id,
+            )
+            return tm_result
         _emit_locate_event(
             trace_writer=trace_writer,
             run_id=run_id,
@@ -856,7 +884,7 @@ def _emit_locate_event(
     trace_writer: TraceWriter | None,
     run_id: str | None,
     intent: str,
-    tier: Literal["cache", "L1_ax", "L2_dom", "L3_rerank", "L4_vision"],
+    tier: Literal["cache", "L1_ax", "L2_dom", "L_textmatch", "L3_rerank", "L4_vision"],
     outcome: Literal["hit", "miss", "ambiguous", "error"],
     cache_action: Literal["read", "write", "invalidate"] | None,
     chosen: dict[str, Any] | None,

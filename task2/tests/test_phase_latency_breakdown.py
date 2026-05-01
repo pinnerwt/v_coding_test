@@ -9,7 +9,9 @@ from agent.loop import loop
 
 _DUMMY_USAGE = Usage(prompt_tokens=1, completion_tokens=1, total_tokens=2)
 
-_PLAN_STUB = '{"steps": ["complete the task"], "expected_end_state": "task complete"}'
+_PLAN_STUB = (
+    '{"steps": ["start the task", "complete the task"], "expected_end_state": "task complete"}'
+)
 
 
 def _plan_stub_response() -> ChatResponse:

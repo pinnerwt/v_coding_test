@@ -23,6 +23,7 @@ SessionStatus = Literal["running", "awaiting_user", "done", "failed"]
 
 _AGENT_VERSION = "0.1.0"
 
+
 def _terminal_status_label(loop_status: str) -> str:
     """Map RunResult.status to the terminal-event status surface.
 

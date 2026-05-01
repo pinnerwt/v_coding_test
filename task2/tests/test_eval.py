@@ -1260,7 +1260,7 @@ def test_maintenance_drift_rename_real_loop_cache_invalidation(playwright_chromi
             usd=0.0,
         )
 
-    plan_stub = '{"steps": ["read submit button"], "expected_end_state": "done"}'
+    plan_stub = '{"steps": ["read submit button", "click it"], "expected_end_state": "done"}'
 
     def _make_llm(version_url: str):
         class _ScopedLLM:

@@ -77,6 +77,12 @@ _ASK_USER_TOOL = {
 }
 
 _MAX_ASK_USER_ROUNDS = 3
+_MIN_PLAN_STEPS = 2
+_TOO_SHORT_PLAN_MESSAGE = (
+    "Your previous plan had fewer than 2 concrete steps. A plan that "
+    "just restates the task is not actionable. Produce a new plan with "
+    "at least 2 distinct navigation/interaction steps."
+)
 
 
 @dataclass(frozen=True)
@@ -203,12 +209,22 @@ def plan(
     ]
     last_response: Any = None
     asked_fingerprints: set[str] = set()
+    short_plan_retried = False
     for _ in range(_MAX_ASK_USER_ROUNDS + 1):
         response = llm.chat(messages, tools=[_ASK_USER_TOOL])
         last_response = response
         ask_calls = [tc for tc in (response.tool_calls or []) if tc.name == "ask_user"]
         if not ask_calls:
-            return _parse_plan(response.content, task), response
+            parsed = _parse_plan(response.content, task)
+            # F11: a 1-step plan that just restates the task is not actionable.
+            # Re-call the LLM once with a "plan too short" message; accept on
+            # the second try regardless of length to avoid infinite retries.
+            if len(parsed.steps) < _MIN_PLAN_STEPS and not short_plan_retried:
+                short_plan_retried = True
+                messages.append({"role": "assistant", "content": response.content or ""})
+                messages.append({"role": "user", "content": _TOO_SHORT_PLAN_MESSAGE})
+                continue
+            return parsed, response
         messages.append(
             {
                 "role": "assistant",

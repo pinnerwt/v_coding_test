@@ -314,9 +314,7 @@ def _run_case(
             if isinstance(exc, LLMError):
                 body_snippet = (exc.body or "")[:512]
                 msg_snippet = str(exc)[:512]
-                cause_snippet = (
-                    f"{type(exc.cause).__name__}: {exc.cause}" if exc.cause else None
-                )
+                cause_snippet = f"{type(exc.cause).__name__}: {exc.cause}" if exc.cause else None
                 failure_detail = (
                     f"LLMError(kind={exc.kind!r}, status={exc.status}, "
                     f"msg={msg_snippet!r}, body={body_snippet!r}, cause={cause_snippet!r})"
