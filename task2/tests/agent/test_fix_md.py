@@ -307,7 +307,18 @@ def test_f3_planner_prompt_has_concrete_superlative_example():
     # by-what?-style ask. Allow a flexible window so the example can be
     # phrased naturally.
     superlatives = ["best", "cheapest", "nearest", "top", "most"]
-    asks = ["by what", "by which", "what criteria", "what criterion", "ranked by", "rated by"]
+    asks = [
+        "by what",
+        "by which",
+        "what criteria",
+        "what criterion",
+        "which criteria",
+        "which criterion",
+        "ranking criterion",
+        "criterion or constraint",
+        "ranked by",
+        "rated by",
+    ]
     found = False
     for sup in superlatives:
         i = 0
