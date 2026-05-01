@@ -9,8 +9,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import httpx
 from fastapi import BackgroundTasks, FastAPI, HTTPException
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, field_validator
 from ulid import ULID
 
@@ -41,6 +42,66 @@ _ZERO_TOTALS: dict[str, Any] = {
 }
 
 app = FastAPI()
+
+
+def _probe_db() -> bool:
+    """Open a short connection to the trace DB and run a no-op query.
+
+    Cheap: SQLite open + `SELECT 1` is sub-millisecond on a healthy disk.
+    Raises on any sqlite3 error; the caller treats that as `db: False`.
+    """
+    with sqlite3.connect(get_db_path(), timeout=1.0) as conn:
+        conn.execute("SELECT 1").fetchone()
+    return True
+
+
+def _probe_llm() -> bool:
+    """HEAD the configured LLM_BASE_URL with a tight timeout.
+
+    Any 2xx/3xx/4xx is treated as "endpoint is up" — the LLM's own auth
+    or routing might 404 a HEAD, but the network path is healthy and the
+    upstream is responding. Connection refused / DNS error / timeout
+    raises and the caller treats that as `llm: False`. Kept under 1 s so
+    a stuck endpoint doesn't dominate the probe budget.
+    """
+    base_url = os.environ.get("LLM_BASE_URL", "http://localhost:8090")
+    with httpx.Client(timeout=1.0) as client:
+        client.head(base_url)
+    return True
+
+
+@app.get("/healthz")
+def healthz() -> dict[str, Any]:
+    """Bare liveness probe — process is up and responsive.
+
+    Intentionally dependency-free: a flaky DB or LLM endpoint must not
+    trigger a process-restart loop. Use `/readyz` for traffic admission.
+    """
+    return {"status": "ok"}
+
+
+@app.get("/readyz")
+def readyz() -> JSONResponse:
+    """Readiness probe — DB and LLM endpoint reachable.
+
+    Returns 200 with each dependency's status when all green; 503 with
+    the same payload when any check fails. A deploy controller reads
+    this to drain old pods before flipping traffic.
+    """
+    checks: dict[str, bool] = {}
+    try:
+        checks["db"] = _probe_db()
+    except Exception:
+        checks["db"] = False
+    try:
+        checks["llm"] = _probe_llm()
+    except Exception:
+        checks["llm"] = False
+    all_ok = all(checks.values())
+    return JSONResponse(
+        status_code=200 if all_ok else 503,
+        content={"status": "ready" if all_ok else "not_ready", "checks": checks},
+    )
 
 
 class TaskRequest(BaseModel):
