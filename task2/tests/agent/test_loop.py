@@ -869,6 +869,69 @@ def test_done_tool_schema_advertises_self_eval_fields():
 
 
 # ---------------------------------------------------------------------------
+# I2: structural completeness on `done` (complete: bool, missing: list[str])
+# ---------------------------------------------------------------------------
+
+
+def test_done_tool_schema_advertises_complete_field():
+    """The `done` tool schema must declare a required `complete` boolean and
+    an optional `missing` array, so the LLM expresses self-doubt structurally
+    instead of narrating it in `result`."""
+    from agent.loop import TOOLS
+
+    done_schema = next(t for t in TOOLS if t["function"]["name"] == "done")
+    props = done_schema["function"]["parameters"]["properties"]
+    assert "complete" in props
+    assert props["complete"].get("type") == "boolean"
+    assert "missing" in props
+    assert props["missing"].get("type") == "array"
+    items = props["missing"].get("items", {})
+    assert items.get("type") == "string"
+    required = done_schema["function"]["parameters"].get("required", [])
+    assert "complete" in required
+    assert "missing" not in required
+
+
+def test_loop_done_with_complete_false_is_unverified(fixture_server, playwright_chromium):
+    """A `done` call with complete=False must downgrade to unverified, even
+    when evidence is well-formed — the agent itself disclaimed completion."""
+    result = _run_done(
+        lambda url: {
+            "result": {"heading": "Hello, loop"},
+            "evidence": {"url": url, "text_snippet": "Hello, loop"},
+            "complete": False,
+            "missing": ["dates not applied"],
+        },
+        fixture_server,
+        playwright_chromium,
+    )
+
+    assert result.status == "unverified"
+    assert result.verifier is not None
+    assert result.verifier["ok"] is False
+    assert any("self_reported_incomplete" in r for r in result.verifier["reasons"])
+    assert any("dates not applied" in r for r in result.verifier["reasons"])
+
+
+def test_loop_done_with_complete_true_succeeds(fixture_server, playwright_chromium):
+    """Negative regression: complete=True with valid evidence still succeeds.
+    Guards against the gate over-firing on well-formed runs."""
+    result = _run_done(
+        lambda url: {
+            "result": {"heading": "Hello, loop"},
+            "evidence": {"url": url, "text_snippet": "Hello, loop"},
+            "complete": True,
+            "missing": [],
+        },
+        fixture_server,
+        playwright_chromium,
+    )
+
+    assert result.status == "succeeded"
+    assert result.verifier == {"ok": True, "reasons": []}
+
+
+# ---------------------------------------------------------------------------
 # Metrics: 2-step run accumulates tokens, usd, latency
 # ---------------------------------------------------------------------------
 

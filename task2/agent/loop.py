@@ -173,6 +173,26 @@ TOOLS: list[dict] = [
                             "call the appropriate tool instead."
                         ),
                     },
+                    "complete": {
+                        "type": "boolean",
+                        "description": (
+                            "true ONLY if every piece of information the task asked for is "
+                            "present in `result` and was confirmed against the live page. "
+                            "false if you ran out of budget, hit a wall, skipped a constraint "
+                            "the user asked about, or are reporting a placeholder/homepage "
+                            "value because you could not complete the actual search. When "
+                            "false, list the missing items in `missing`."
+                        ),
+                    },
+                    "missing": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "Short phrases naming what is missing or unsatisfied when "
+                            "complete=false (e.g. 'dates not applied', 'Shinjuku constraint "
+                            "not used'). Empty list when complete=true."
+                        ),
+                    },
                 },
                 "required": [
                     "result",
@@ -180,6 +200,7 @@ TOOLS: list[dict] = [
                     "evaluation_previous_action",
                     "evaluation_reason",
                     "next_goal",
+                    "complete",
                 ],
             },
         },
@@ -2160,6 +2181,35 @@ def loop(
                             status = "failed"
                         elif _normalized in _SELF_SOFT_FAILURE_STATUSES:
                             status = "unverified"
+                # I2: structural completeness gate. The `done` tool schema
+                # requires `complete: bool`; when the agent itself sets it
+                # to false, downgrade to "unverified" regardless of the
+                # verifier verdict — the agent disclaimed completion via
+                # the contract, and we trust that admission. `missing`
+                # entries are echoed into verifier reasons so traces and
+                # SSE consumers see what was unsatisfied. Absence of the
+                # field is treated as legacy/True for back-compat with
+                # callers (and existing tests) that predate this contract.
+                _complete = args.get("complete")
+                if _complete is False:
+                    _missing = args.get("missing")
+                    _missing_str = (
+                        ", ".join(str(m) for m in _missing)
+                        if isinstance(_missing, list) and _missing
+                        else ""
+                    )
+                    _reason = (
+                        f"self_reported_incomplete: {_missing_str}"
+                        if _missing_str
+                        else "self_reported_incomplete"
+                    )
+                    status = "unverified"
+                    _existing_reasons = (
+                        list(verifier.get("reasons", [])) if isinstance(verifier, dict) else []
+                    )
+                    if _reason not in _existing_reasons:
+                        _existing_reasons.append(_reason)
+                    verifier = {"ok": False, "reasons": _existing_reasons}
                 _emit_act_event(
                     trace_writer=trace_writer,
                     run_id=run_id,
