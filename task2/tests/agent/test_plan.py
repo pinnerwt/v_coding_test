@@ -374,6 +374,70 @@ def test_plan_accepts_first_post_answer_plan_without_validation_retry():
     ]
 
 
+def test_plan_second_llm_call_contains_task_and_qa_block_after_ask_user():
+    """End-to-end wiring: after ask_user resolves, the second LLM call's
+    `messages` must contain (a) the original task verbatim, (b) the
+    assistant message that emitted the tool_call, and (c) the tool-role
+    message with the literal questions and the literal answers — that's
+    the channel the LLM uses to incorporate the answer into the plan."""
+
+    canned = {"Which date?": "December 15, 2026", "How many guests?": "two"}
+
+    def _cb(q: str) -> str:
+        return canned[q]
+
+    plan_json = json.dumps(
+        {
+            "steps": ["Open booking site", "Pick Dec 15 with two guests", "Confirm"],
+            "expected_end_state": "booked",
+        }
+    )
+    llm = _ScriptedLLM(
+        [
+            _tool_call_response(
+                "ask_user",
+                {"questions": ["Which date?", "How many guests?"]},
+                call_id="tc-multi",
+            ),
+            _fake_response(plan_json),
+        ]
+    )
+
+    plan(
+        task="Book a table at the restaurant.",
+        observation={"url": "about:blank"},
+        llm=llm,
+        ask_user_callback=_cb,
+    )
+
+    # First call: just system + user(task).
+    first = llm.calls[0]["messages"]
+    assert first[0]["role"] == "system"
+    assert first[1]["role"] == "user"
+    assert "Book a table at the restaurant." in first[1]["content"]
+
+    # Second call: must contain the same user task message, the assistant
+    # tool_call, and a tool message bearing the Q&A block.
+    second = llm.calls[1]["messages"]
+    roles = [m["role"] for m in second]
+    assert roles[:2] == ["system", "user"]
+    assert "Book a table at the restaurant." in second[1]["content"]
+    assert "assistant" in roles
+    assert "tool" in roles
+
+    asst = next(m for m in second if m["role"] == "assistant")
+    assert asst.get("tool_calls"), asst
+    assert asst["tool_calls"][0]["function"]["name"] == "ask_user"
+
+    tool_msg = next(m for m in second if m["role"] == "tool")
+    assert tool_msg["tool_call_id"] == "tc-multi"
+    body = tool_msg["content"]
+    # Both questions appear, both answers appear, in a Q&A-numbered block.
+    assert "Which date?" in body and "How many guests?" in body, body
+    assert "December 15, 2026" in body and "two" in body, body
+    assert "Q1:" in body and "A1:" in body and "Q2:" in body and "A2:" in body, body
+
+
 # ---------------------------------------------------------------------------
 # I1: ask_user takes a list of questions, not a single bundled string. The
 # planner declares all missing slots up front; the callback is invoked once
