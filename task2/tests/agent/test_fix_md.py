@@ -871,3 +871,77 @@ def test_f9_done_with_result_not_in_read_still_classified_premature():
         "F9 must NOT downgrade premature_done when result text is not "
         "grounded in any read content; otherwise fabricated answers slip through"
     )
+
+
+# --- F15 (locator name-fallback for non-English accessible names) ----------
+
+
+def test_f15_l1_role_singleton_fallback_when_name_misses(
+    fixture_server, playwright_chromium
+):
+    """Round-5 U1/A6 evidence: page renders search input as
+    `role=combobox aria-label="搜尋"` but the agent's intent is "the search
+    textbox" (English token). L1's name= filter substring-matches "search"
+    against accessible name "搜尋" → 0 matches at every alias.
+
+    F15: when name-filtered match returns 0 across all role aliases AND the
+    union of role-aliases without name returns exactly 1 element on the
+    page, locate_l1 must return that singleton with confidence=0.7 and a
+    `name_fallback="role_singleton"` flag for trace auditability.
+    """
+    from agent.locate import locate_l1
+
+    fixture_url = f"{fixture_server}/locate_cjk_combobox.html"
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        browser.goto(fixture_url)
+        result = locate_l1(browser._page, role="textbox", name="search")
+
+    assert result.tier == "L1_ax"
+    assert result.role == "combobox"
+    assert result.confidence == 0.7
+    assert result.name_fallback == "role_singleton"
+
+
+def test_f15_l1_role_singleton_fallback_does_not_fire_when_ambiguous(
+    fixture_server, playwright_chromium
+):
+    """Negative: two unnamed comboboxes on the page → role-without-name has
+    count=2, so F15 must NOT fire and the original LocatorMiss(zero_matches)
+    must propagate so the ladder can fall through to L_textmatch / vision."""
+    from agent.locate import LocatorMiss, locate_l1
+
+    fixture_url = f"{fixture_server}/locate_two_unnamed_comboboxes.html"
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        browser.goto(fixture_url)
+        try:
+            locate_l1(browser._page, role="textbox", name="search")
+        except LocatorMiss as miss:
+            assert miss.match_count == 0 or miss.reason == "ambiguous"
+        else:
+            raise AssertionError(
+                "F15 fallback must not fire for ambiguous role-only counts; "
+                "got a successful LocateResult with two candidates"
+            )
+
+
+def test_f15_full_locate_resolves_cjk_combobox_at_l1(
+    fixture_server, playwright_chromium
+):
+    """End-to-end: `locate(intent="the search textbox")` on a CJK-named
+    combobox page must resolve at L1_ax (not fall through to L_textmatch
+    or L4_vision)."""
+    from agent.locate import locate
+
+    fixture_url = f"{fixture_server}/locate_cjk_combobox.html"
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        browser.goto(fixture_url)
+        result = locate(browser._page, "the search textbox")
+
+    assert result.tier == "L1_ax"
+    assert result.role == "combobox"
+    assert result.name_fallback == "role_singleton"
+    # Selector must round-trip: re-resolve to exactly one element.
+    with Browser(playwright_browser=playwright_chromium) as b2:
+        b2.goto(fixture_url)
+        loc = b2._page.locator(result.selector)
+        assert loc.count() == 1

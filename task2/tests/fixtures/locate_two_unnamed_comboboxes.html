@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Two Comboboxes</title></head>
+<body>
+  <h1>Pick one</h1>
+  <!-- Negative fixture for F15: two role=combobox elements with no
+       accessible name. The role-singleton fallback MUST NOT fire here
+       because role alone is ambiguous (count != 1). -->
+  <div role="combobox" contenteditable="true" id="cb1"></div>
+  <div role="combobox" contenteditable="true" id="cb2"></div>
+</body>
+</html>

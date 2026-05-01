@@ -126,6 +126,11 @@ class LocateResult:
     ax_fingerprint: str
     confidence: float
     coords: tuple[int, int] | None = None
+    # F15: when L1 returns a role-only singleton because the name filter
+    # missed (typically: page accessible name is in a different language
+    # than the agent's intent token), this is "role_singleton". None means
+    # the result was a normal name-matched hit.
+    name_fallback: str | None = None
 
 
 def parse_intent(intent: str) -> tuple[str, str | None]:
@@ -159,6 +164,9 @@ def _l1_roles_to_try(role: str) -> tuple[str, ...]:
     return (role,)
 
 
+_L1_ROLE_SINGLETON_CONFIDENCE = 0.7
+
+
 def locate_l1(page: Page, *, role: str, name: str | None) -> LocateResult:
     last_miss: LocatorMiss | None = None
     for try_role in _l1_roles_to_try(role):
@@ -189,8 +197,48 @@ def locate_l1(page: Page, *, role: str, name: str | None) -> LocateResult:
             ax_fingerprint=fingerprint,
             confidence=1.0,
         )
+    # F15: name-filtered match missed across every role alias. Try the union
+    # of role aliases without the name filter — if exactly one element on the
+    # page carries any of those roles, return it as a role-singleton fallback.
+    # This unblocks pages whose accessible name is in a different language
+    # than the agent's intent token (page-shape rule, not locale-specific).
+    if name:
+        singleton = _l1_role_only_singleton(page, role)
+        if singleton is not None:
+            try_role, locator = singleton
+            matched_name_raw = locator.evaluate(_ACCESSIBLE_NAME_JS)
+            matched_name = matched_name_raw if isinstance(matched_name_raw, str) else ""
+            selector = _role_selector(try_role, None)
+            fingerprint = hashlib.sha256(f"{try_role}:{matched_name}".encode()).hexdigest()
+            return LocateResult(
+                tier="L1_ax",
+                role=try_role,
+                name=name,
+                selector=selector,
+                ax_fingerprint=fingerprint,
+                confidence=_L1_ROLE_SINGLETON_CONFIDENCE,
+                name_fallback="role_singleton",
+            )
     assert last_miss is not None  # at least one role tried
     raise last_miss
+
+
+def _l1_role_only_singleton(page: Page, role: str) -> tuple[str, Any] | None:
+    """Return (role, locator-of-the-one-element) if the union of role aliases
+    has exactly one matching element on the page. Otherwise None."""
+    matches: list[tuple[str, Any]] = []
+    total = 0
+    for try_role in _l1_roles_to_try(role):
+        locator = page.get_by_role(try_role)
+        c = locator.count()
+        total += c
+        if c == 1:
+            matches.append((try_role, locator.first))
+        elif c > 1:
+            return None
+    if total != 1 or len(matches) != 1:
+        return None
+    return matches[0]
 
 
 def locate_l2(page: Page, *, role: str, name: str | None) -> LocateResult:
