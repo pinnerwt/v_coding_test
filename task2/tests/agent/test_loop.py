@@ -5271,15 +5271,15 @@ def test_build_observation_tape_excludes_state_messages():
     assert STATE_MESSAGE_PREFIX not in tape
 
 
-def test_verify_done_prompt_biases_toward_supported():
-    """Prompt should default to supported and reject only on contradiction.
+def test_verify_done_prompt_biases_toward_unsupported_when_keys_missing():
+    """T3: prompt must default to UNSUPPORTED when key result fields (numbers,
+    dates, named entities) are not present in the observation tape.
 
-    Why: the prior prompt told the judge to reject "results that contain facts that
-    do not appear in observations" — a strict matching rule that triggered false
-    positives whenever tape truncation cut out the evidence. A bias-toward-supported
-    rule fires only when the judge can point to a contradiction.
+    Prior bias-toward-supported was lenient about chrome teasers and absent
+    evidence — let too many goto→done hallucinations through. Tighten so the
+    judge fires on absence-of-key-fields and on missing triggering action.
     """
-    judge = _CountingJudgeLLM(default_verdict="supported")
+    judge = _CountingJudgeLLM(default_verdict="unsupported")
     verify_done_with_llm(
         task="x",
         observation_tape="some unrelated text",
@@ -5290,9 +5290,18 @@ def test_verify_done_prompt_biases_toward_supported():
     assert len(judge.calls) == 1
     system_prompt = judge.calls[0][0]["content"]
     assert "[VERIFY DONE]" in system_prompt
-    assert "contradict" in system_prompt.lower()
-    assert "default to supported" in system_prompt.lower() or (
-        "only" in system_prompt.lower() and "contradict" in system_prompt.lower()
+    lowered = system_prompt.lower()
+    assert "default to unsupported" in lowered
+    assert (
+        "key result fields" in lowered
+        or "numbers, dates" in lowered
+        or "named entities" in lowered
+    )
+    # Must call out the missing-triggering-action heuristic
+    assert (
+        "produce the claimed result" in lowered
+        or "triggering action" in lowered
+        or "without a search" in lowered
     )
 
 

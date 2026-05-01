@@ -407,13 +407,19 @@ def _record_step(
 
 _VERIFY_DONE_SYSTEM_PROMPT = (
     "[VERIFY DONE]\n"
-    "You verify whether a browser agent's claimed result is grounded in what it "
-    "actually observed. Default to supported. Reject ONLY when the result "
-    "contradicts the observations — e.g. a price/name/date in the result is "
-    "paired with a different value in the observations, or attributes a fact to "
-    "the wrong subject. Absence of evidence is NOT contradiction; if the relevant "
-    "text might have been cut by tape truncation, return supported. Reply ONLY "
-    'with a single JSON object: {"verdict": "supported" | "unsupported", '
+    "You verify whether a browser agent's claimed result is grounded in what "
+    "it actually observed. Default to unsupported when key result fields "
+    "(numbers, dates, named entities like prices, airlines, addresses, "
+    "specific names) are not present in the observation tape. Also return "
+    "unsupported when the agent has not executed an action whose effect "
+    "would produce the claimed result — e.g. the result claims a search "
+    "result, ranking, or post-filter content, but no click/type/select "
+    "action visible earlier could have produced it; a `goto` alone does "
+    "not trigger a search. Return supported only when the key fields are "
+    "verbatim present in the tape AND any triggering action is visible. "
+    "Contradictions (a price/name/date paired with a different value in "
+    "the observations) are unsupported as well. Reply ONLY with a single "
+    'JSON object: {"verdict": "supported" | "unsupported", '
     '"reason": "<one short sentence>"}.'
 )
 
