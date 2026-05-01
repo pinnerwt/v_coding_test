@@ -169,3 +169,42 @@ def test_session_failed_status_when_loop_raises(client, monkeypatch):
     from api.sessions import get_session
 
     assert _wait_for(lambda: get_session(run_id).status == "failed")
+
+
+def test_invoke_loop_plumbs_run_budget_seconds_and_steps_to_loop(temp_db, monkeypatch):
+    """I3: _invoke_loop must pass RunBudget.seconds and RunBudget.steps through
+    to loop() as budget_seconds / max_steps. Without this, loop() never honors
+    the wall-clock budget, runs until max_steps default exhaustion, and the
+    runner's harness times out before terminal SSE fires (round-10 A1)."""
+    captured: dict = {}
+
+    def fake_loop(task, browser, llm_client, **kw):
+        captured.update(kw)
+        return _DONE_RESULT
+
+    class _NoopCM:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr("api.sessions.loop", fake_loop)
+    monkeypatch.setattr("api.sessions.Browser", lambda *a, **kw: _NoopCM())
+    monkeypatch.setattr("api.sessions.LLMClient", lambda *a, **kw: _NoopCM())
+
+    from api.sessions import _invoke_loop
+
+    _invoke_loop(
+        task="t",
+        run_id="r-i3",
+        expect_schema=None,
+        ask_user_callback=lambda q: "x",
+    )
+
+    assert captured.get("budget_seconds") == 300, (
+        f"budget_seconds must be plumbed from RunBudget; got {captured!r}"
+    )
+    assert captured.get("max_steps") == 20, (
+        f"max_steps must be plumbed from RunBudget; got {captured!r}"
+    )

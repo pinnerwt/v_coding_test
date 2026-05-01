@@ -162,6 +162,8 @@ def _invoke_loop(
                 expect=expect_schema,
                 ask_user_callback=ask_user_callback,
                 locale=locale,
+                max_steps=run.budget.steps,
+                budget_seconds=run.budget.seconds,
             )
         writer.close_run(
             run_id,
