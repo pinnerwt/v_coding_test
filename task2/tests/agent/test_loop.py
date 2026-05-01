@@ -5294,3 +5294,156 @@ def test_verify_done_prompt_biases_toward_supported():
     assert "default to supported" in system_prompt.lower() or (
         "only" in system_prompt.lower() and "contradict" in system_prompt.lower()
     )
+
+
+# ---------------------------------------------------------------------------
+# T2: lexical short-circuit gated by interaction-recency / numeric / cluster
+# ---------------------------------------------------------------------------
+
+
+def _msg_assistant_tool(call_id: str, name: str, args: str = "{}") -> dict:
+    return {
+        "role": "assistant",
+        "content": None,
+        "tool_calls": [
+            {
+                "id": call_id,
+                "type": "function",
+                "function": {"name": name, "arguments": args},
+            }
+        ],
+    }
+
+
+def _msg_tool(call_id: str, content: str) -> dict:
+    return {"role": "tool", "tool_call_id": call_id, "content": content}
+
+
+def test_grounded_rejects_numeric_leaf_with_no_preceding_interaction():
+    """Numeric leaves (price/date) must NOT short-circuit as supported when
+    no click/type/select preceded the read that contains them. This is the
+    landing-page-teaser hallucination pattern — the price exists in chrome
+    but was never the result of a query. Forces the LLM judge to weigh in."""
+    from agent.loop import _result_grounded_in_tape
+
+    messages = [
+        {"role": "system", "content": "..."},
+        _msg_assistant_tool("tc-goto", "goto", '{"url": "https://example.com"}'),
+        _msg_tool("tc-goto", "navigated to https://example.com"),
+        _msg_assistant_tool("tc-read", "read"),
+        _msg_tool(
+            "tc-read",
+            "Suggested trips: From NT$6,352 Tokyo · From NT$8,200 Seoul",
+        ),
+    ]
+    result = {"route": "Taipei to Tokyo", "starting_price": "NT$6,352"}
+
+    assert _result_grounded_in_tape(result, messages) is False
+
+
+def test_grounded_passes_numeric_leaf_after_click_and_post_click_read():
+    """When the agent has clicked (search) and a subsequent read contains
+    the price, the lexical short-circuit may pass — the price is now the
+    result of an interaction, not chrome."""
+    from agent.loop import _result_grounded_in_tape
+
+    messages = [
+        {"role": "system", "content": "..."},
+        _msg_assistant_tool("tc-goto", "goto"),
+        _msg_tool("tc-goto", "navigated"),
+        _msg_assistant_tool("tc-type", "type", '{"intent": "search", "text": "TPE-NRT"}'),
+        _msg_tool("tc-type", "typed search query"),
+        _msg_assistant_tool("tc-click", "click", '{"intent": "search button"}'),
+        _msg_tool("tc-click", "clicked search button"),
+        _msg_assistant_tool("tc-read", "read"),
+        _msg_tool(
+            "tc-read",
+            "Results for Taipei to Tokyo: cheapest NT$6,352 on Thai Airways",
+        ),
+    ]
+    result = {"route": "Taipei to Tokyo", "starting_price": "NT$6,352"}
+
+    assert _result_grounded_in_tape(result, messages) is True
+
+
+def test_grounded_rejects_short_leaves_without_clustering():
+    """Short string leaves (TPE, NRT) on their own are weak signal —
+    they appear all over a landing page. Require co-occurrence with at
+    least one longer leaf within a small character window."""
+    from agent.loop import _result_grounded_in_tape
+
+    messages = [
+        {"role": "system", "content": "..."},
+        _msg_assistant_tool("tc-read", "read"),
+        # TPE and NRT appear far apart in chrome / unrelated contexts
+        _msg_tool(
+            "tc-read",
+            "Welcome to FlightHub. Popular: TPE flights → "
+            + ("padding " * 200)
+            + "Daily NRT departures. Cheapest fares from US$120.",
+        ),
+    ]
+    result = {
+        "from_code": "TPE",
+        "to_code": "NRT",
+        "headline": "Daily flights nonstop schedule",
+    }
+
+    assert _result_grounded_in_tape(result, messages) is False
+
+
+def test_grounded_passes_short_leaves_with_clustering():
+    """Short leaves are accepted when they appear within a window of a
+    longer leaf — that's evidence the cluster is talking about the same
+    subject."""
+    from agent.loop import _result_grounded_in_tape
+
+    messages = [
+        {"role": "system", "content": "..."},
+        _msg_assistant_tool("tc-type", "type"),
+        _msg_tool("tc-type", "typed"),
+        _msg_assistant_tool("tc-click", "click"),
+        _msg_tool("tc-click", "clicked"),
+        _msg_assistant_tool("tc-read", "read"),
+        _msg_tool(
+            "tc-read",
+            "Search result heading: Daily flights nonstop schedule from TPE to NRT",
+        ),
+    ]
+    result = {
+        "from_code": "TPE",
+        "to_code": "NRT",
+        "headline": "Daily flights nonstop schedule",
+    }
+
+    assert _result_grounded_in_tape(result, messages) is True
+
+
+def test_grounded_passes_text_only_leaves_without_interaction():
+    """Pure text answers (titles, headings) can still ground without an
+    interaction — `goto` + `read` is the right shape for "what is the
+    title of example.com" tasks. Don't over-tighten."""
+    from agent.loop import _result_grounded_in_tape
+
+    messages = [
+        {"role": "system", "content": "..."},
+        _msg_assistant_tool("tc-goto", "goto"),
+        _msg_tool("tc-goto", "navigated"),
+        _msg_assistant_tool("tc-read", "read"),
+        _msg_tool("tc-read", "Example Domain — This domain is for use in illustrative examples"),
+    ]
+    result = {"title": "Example Domain"}
+
+    assert _result_grounded_in_tape(result, messages) is True
+
+
+def test_grounded_legacy_string_tape_preserved():
+    """Backward-compat: when called with a plain string tape (legacy API),
+    behave like the original substring rule. Existing call sites that don't
+    plumb messages must keep working until they migrate."""
+    from agent.loop import _result_grounded_in_tape
+
+    tape = "Some page text including the phrase 'Hello, loop' as observed."
+    result = {"heading": "Hello, loop"}
+
+    assert _result_grounded_in_tape(result, tape) is True

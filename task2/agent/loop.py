@@ -454,18 +454,140 @@ def _iter_string_leaves(value: Any) -> Iterable[str]:
             yield from _iter_string_leaves(v)
 
 
-def _result_grounded_in_tape(result: Any, tape: str) -> bool:
-    norm_tape = _normalize_for_match(tape)
-    if not norm_tape:
+_INTERACTION_TOOLS: frozenset[str] = frozenset({"click", "type", "select"})
+
+# T2: numeric leaves (price, ISO/slash dates, comma-thousands, decimals) are
+# the highest-risk hallucination targets — they are easy to invent and easy
+# to surface as landing-page chrome (teaser cards). Match conservatively:
+# require a currency prefix, a thousand-separator, a 2-decimal price form,
+# or a date pattern. Plain integers like "42" are NOT numeric-flagged.
+_NUMERIC_LEAF_RE = re.compile(
+    r"(?:\$|NT\$|US\$|HK\$|JP¥|€|£|¥)\s?\d"  # currency-prefixed
+    r"|\b\d{1,3}(?:,\d{3})+(?:\.\d+)?\b"  # thousand-separated
+    r"|\b\d+\.\d{2}\b"  # 2-decimal (price-like)
+    r"|\b\d{4}-\d{2}-\d{2}\b"  # ISO date
+    r"|\b\d{1,4}/\d{1,2}/\d{1,4}\b"  # slash date
+)
+_SHORT_LEAF_THRESHOLD = 6
+_SHORT_LEAF_WINDOW_CHARS = 200
+
+
+def _classify_tool_outputs(messages: list[dict]) -> list[tuple[str | None, str]]:
+    """Walk messages and return (tool_name, content) for each non-error tool result.
+
+    Tool name is recovered from the assistant message that emitted the
+    matching tool_call_id. Returns in message order.
+    """
+    name_by_id: dict[str, str] = {}
+    for m in messages:
+        if m.get("role") != "assistant":
+            continue
+        for tc in m.get("tool_calls") or []:
+            tc_id = tc.get("id")
+            fn_name = ((tc.get("function") or {}).get("name")) or None
+            if isinstance(tc_id, str) and isinstance(fn_name, str):
+                name_by_id[tc_id] = fn_name
+    out: list[tuple[str | None, str]] = []
+    for m in messages:
+        if m.get("role") != "tool":
+            continue
+        content = m.get("content")
+        if not isinstance(content, str) or content.startswith("Error:"):
+            continue
+        out.append((name_by_id.get(m.get("tool_call_id", "")), content))
+    return out
+
+
+def _post_interaction_tape(messages: list[dict]) -> str:
+    """Concatenated tool outputs that came strictly AFTER the most recent
+    click/type/select tool call. Empty string when no interaction happened."""
+    classified = _classify_tool_outputs(messages)
+    last_idx = -1
+    for i, (name, _) in enumerate(classified):
+        if name in _INTERACTION_TOOLS:
+            last_idx = i
+    if last_idx == -1:
+        return ""
+    return "\n".join(c for _, c in classified[last_idx + 1 :])
+
+
+def _is_numeric_leaf(leaf: str) -> bool:
+    return bool(_NUMERIC_LEAF_RE.search(leaf))
+
+
+def _short_leaves_cluster_with_long(
+    short_norms: list[str], long_norms: list[str], norm_tape: str
+) -> bool:
+    """Each short leaf must appear within ±_SHORT_LEAF_WINDOW_CHARS of at
+    least one long leaf in the (normalised) tape."""
+    for n_short in short_norms:
+        clustered = False
+        for n_long in long_norms:
+            if not n_long:
+                continue
+            idx = norm_tape.find(n_long)
+            if idx == -1:
+                continue
+            start = max(0, idx - _SHORT_LEAF_WINDOW_CHARS)
+            end = min(len(norm_tape), idx + len(n_long) + _SHORT_LEAF_WINDOW_CHARS)
+            if n_short in norm_tape[start:end]:
+                clustered = True
+                break
+        if not clustered:
+            return False
+    return True
+
+
+def _result_grounded_in_tape(result: Any, source: str | list[dict]) -> bool:
+    """Strict lexical short-circuit for the verifier.
+
+    `source` accepts either a plain tape string (legacy call sites) or the
+    full message list (new call sites — enables interaction-recency gating).
+
+    Rules:
+    - Every result string leaf must appear (case/whitespace-normalised) in
+      the full tape.
+    - If any leaf is numeric (price/date), it must additionally appear in
+      the tape segment that comes AFTER the most recent click/type/select
+      interaction. No interaction → numeric leaves cannot ground.
+    - Short leaves (<6 chars) must co-occur with at least one longer leaf
+      within a 200-char window — anchors the cluster to a real subject.
+    - Legacy string-tape callers skip the interaction gate (no message
+      context), preserving existing behaviour.
+    """
+    if isinstance(source, str):
+        full_tape = source
+        post_tape: str | None = None  # legacy path: skip interaction gate
+    else:
+        full_tape = _build_observation_tape(source)
+        post_tape = _post_interaction_tape(source)
+    norm_full = _normalize_for_match(full_tape)
+    if not norm_full:
         return False
     leaves = list(_iter_string_leaves(result))
     if not leaves:
         return False
-    for leaf in leaves:
-        norm_leaf = _normalize_for_match(leaf)
-        if not norm_leaf:
-            continue
-        if norm_leaf not in norm_tape:
+
+    if post_tape is not None:
+        norm_post = _normalize_for_match(post_tape)
+        for leaf in leaves:
+            if _is_numeric_leaf(leaf):
+                norm_leaf = _normalize_for_match(leaf)
+                if not norm_leaf:
+                    continue
+                if not norm_post or norm_leaf not in norm_post:
+                    return False
+
+    norm_pairs = [(leaf, _normalize_for_match(leaf)) for leaf in leaves]
+    short_norms = [n for _, n in norm_pairs if 0 < len(n) < _SHORT_LEAF_THRESHOLD]
+    long_norms = [n for _, n in norm_pairs if len(n) >= _SHORT_LEAF_THRESHOLD]
+    if short_norms and long_norms and not _short_leaves_cluster_with_long(
+        short_norms, long_norms, norm_full
+    ):
+        return False
+
+    for _, norm_leaf in norm_pairs:
+        if norm_leaf and norm_leaf not in norm_full:
             return False
     return True
 
@@ -473,19 +595,26 @@ def _result_grounded_in_tape(result: Any, tape: str) -> bool:
 def verify_done_with_llm(
     *,
     task: str,
-    observation_tape: str,
     result: Any,
     evidence: Any,
     llm_client: LLMClient,
+    observation_tape: str | None = None,
+    messages: list[dict] | None = None,
 ) -> tuple[Literal["supported", "unsupported"], str, Any]:
-    if _result_grounded_in_tape(result, observation_tape):
+    if messages is not None:
+        full_tape = _build_observation_tape(messages)
+        ground_source: str | list[dict] = messages
+    else:
+        full_tape = observation_tape or ""
+        ground_source = full_tape
+    if _result_grounded_in_tape(result, ground_source):
         return "supported", "every result string appears in the observation tape", None
     user_msg = (
         f"Task: {task}\n\n"
         f"Claimed result:\n{json.dumps(result, ensure_ascii=False)}\n\n"
         f"Claimed evidence:\n{json.dumps(evidence, ensure_ascii=False)}\n\n"
         f"Observations (read outputs during the run):\n"
-        f"{observation_tape[:8000]}"
+        f"{full_tape[:8000]}"
     )
     response = llm_client.chat(
         [
@@ -1415,10 +1544,9 @@ def loop(
                 verifier = _check_evidence(evidence)
 
                 if verifier["ok"]:
-                    tape = _build_observation_tape(messages)
                     verdict, reason, judge_resp = verify_done_with_llm(
                         task=task,
-                        observation_tape=tape,
+                        messages=messages,
                         result=args.get("result"),
                         evidence=evidence,
                         llm_client=llm_client,
