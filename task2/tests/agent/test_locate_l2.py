@@ -53,6 +53,45 @@ def test_locate_l2_ambiguous(fixture_server, playwright_chromium):
         assert excinfo.value.match_count == 2
 
 
+def test_locate_l2_visible_first_picks_visible_when_one_match_is_display_none(
+    fixture_server, playwright_chromium
+):
+    """L2 multi-match where exactly one match is visible should return the
+    visible one instead of raising ambiguous.
+
+    Why this matters: L2's button-text-contains path uses a raw CSS taxonomy
+    (`page.locator("button, [class*='btn'], …")`) which — unlike `get_by_role`
+    — does NOT filter display:none / visibility:hidden. Multi-match is
+    therefore common when sites ship duplicated CTAs in hidden mobile menus
+    alongside the visible desktop CTA. The supervisor would otherwise
+    escalate to L3-rerank or L4-vision for what is actually an unambiguous
+    visible target.
+
+    Page-shape rule: multiple raw matches, exactly one visible — pick that
+    one. Not site-specific.
+    """
+    with Browser(playwright_browser=playwright_chromium) as b:
+        b.goto(f"{fixture_server}/locate_l2_visible_first.html")
+        result = locate_l2(b._page, role="button", name="Submit form")
+        assert result.tier == "L2_dom"
+        assert result.role == "button"
+        assert result.name == "Submit form"
+
+
+def test_locate_l2_visible_first_still_ambiguous_when_two_visible(
+    fixture_server, playwright_chromium
+):
+    """Visible-first relaxation must NOT mask genuine ambiguity: when multiple
+    visible matches exist, still raise LocatorMiss(ambiguous) so the supervisor
+    escalates."""
+    with Browser(playwright_browser=playwright_chromium) as b:
+        b.goto(f"{fixture_server}/locate_l2_visible_first.html")
+        with pytest.raises(LocatorMiss) as excinfo:
+            locate_l2(b._page, role="button", name="Update item")
+        assert excinfo.value.reason == "ambiguous"
+        assert excinfo.value.match_count == 2
+
+
 def test_locate_l2_zero_matches(fixture_server, playwright_chromium):
     with Browser(playwright_browser=playwright_chromium) as b:
         b.goto(f"{fixture_server}/locate_l2_placeholder.html")

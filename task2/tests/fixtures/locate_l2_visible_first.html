@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>locate.py L2 visible-first fixture</title>
+  </head>
+  <body>
+    <h1>L2 visible-first multi-match</h1>
+
+    <!--
+      L2 button taxonomy (button, input[type=button|submit], [role=button],
+      [class*="btn"], …) is matched via raw `page.locator(taxonomy)` which —
+      unlike `get_by_role` — does NOT filter display:none / visibility:hidden.
+
+      Real-app pattern: a duplicated CTA in a hidden mobile menu that
+      still ships in the DOM but is display:none on desktop, plus the
+      visible desktop CTA. Both contain "Submit form"; raw L2 sees count=2
+      and would raise ambiguous. After the visible-first relaxation, the
+      visible sibling wins and L2 returns a hit.
+    -->
+    <div class="btn" style="display:none">Submit form (mobile, hidden)</div>
+    <div class="btn">Submit form</div>
+
+    <!-- Sanity case: two visible siblings stay ambiguous (must not mask
+         real ambiguity — the supervisor still needs to escalate). -->
+    <section aria-label="Two visible">
+      <div class="btn">Update item</div>
+      <div class="btn">Update item</div>
+    </section>
+  </body>
+</html>

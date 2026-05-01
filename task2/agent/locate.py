@@ -277,6 +277,22 @@ def locate_l2(page: Page, *, role: str, name: str | None) -> LocateResult:
             confidence=0.7,
         )
     if count > 1:
+        # Visible-first relaxation: L2 uses raw `page.locator(taxonomy)` which
+        # does not filter display:none / visibility:hidden. Multi-match is
+        # therefore common when sites duplicate CTAs in hidden mobile menus.
+        # If exactly one match is visible, treat that as the unambiguous
+        # target instead of escalating to L3-rerank or L4-vision.
+        visible_locator = locator.filter(visible=True)
+        if visible_locator.count() == 1:
+            fingerprint = hashlib.sha256(f"{role}:{name}:{strategy}:visible".encode()).hexdigest()
+            return LocateResult(
+                tier="L2_dom",
+                role=role,
+                name=name,
+                selector=selector,
+                ax_fingerprint=fingerprint,
+                confidence=0.7,
+            )
         raise LocatorMiss(reason="ambiguous", match_count=count)
     raise LocatorMiss(reason="zero_matches", match_count=0)
 
