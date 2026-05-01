@@ -716,3 +716,158 @@ def test_f10_premature_done_emits_act_event_before_supervisor_halt(
     )
     # Order: act event must precede the supervisor halt in the trace.
     assert halt_act.seq < sup.seq
+
+
+# --- F9 (done with substring-supported result is not premature) -----------
+
+
+def test_f9_done_with_result_supported_by_recent_read_is_accepted(
+    fixture_server, playwright_chromium
+):
+    """Round-4 evidence (U1: 5 consecutive premature_done halts on the
+    Wikipedia Turing Award page). The supervisor halt heuristic doesn't see
+    the proposed `result` payload — when the LLM has the answer in context
+    after a successful read, it correctly proposes `done`, but a heuristic
+    (e.g. plan_cursor mismatch) fires anyway. The fix: when any non-trivial
+    leaf string in `result` appears as a substring in the latest read tool
+    output, downgrade premature_done → accept.
+    """
+    from agent.trace import SupervisorEvent
+    from tests.agent.test_loop import (  # type: ignore[no-untyped-import]
+        _FakeLLMClient,
+        _make_writer_with_run,
+        _response_with_tool_call,
+        _tool_call,
+    )
+
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+    # Sequence: goto → read → done with result supported by the read content.
+    # The `done` carries a navigation-verb-shaped next_goal which would
+    # normally trip the supervisor; but the result text is grounded in the
+    # latest read snapshot, so F9 must accept.
+    goto_call = _tool_call("goto", {"url": fixture_url}, call_id="tc-goto")
+    read_call = _tool_call("read", {}, call_id="tc-read")
+    grounded_done = _tool_call(
+        "done",
+        {
+            "result": {"answer": "Hello, loop"},
+            "evidence": {"url": fixture_url, "text_snippet": "Hello, loop"},
+            "evaluation_previous_action": "success",
+            "evaluation_reason": "read returned the page heading",
+            "next_goal": "search for more details",
+        },
+        call_id="tc-done",
+    )
+    fake_llm = _FakeLLMClient(
+        [
+            _response_with_tool_call(goto_call),
+            _response_with_tool_call(read_call),
+            _response_with_tool_call(grounded_done),
+        ]
+    )
+
+    run_id = "f9-grounded-done"
+    writer = _make_writer_with_run(run_id)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop(
+            "task",
+            browser,
+            fake_llm,
+            max_steps=5,
+            trace_writer=writer,
+            run_id=run_id,
+        )
+
+    events = list(writer.iter_events(run_id))
+    premature_halts = [
+        e
+        for e in events
+        if isinstance(e, SupervisorEvent) and e.classified_as == "premature_done"
+    ]
+    writer.close()
+
+    assert not premature_halts, (
+        f"a `done` whose result substring appears in the latest read content "
+        f"must NOT trigger premature_done; got halts: {premature_halts!r}"
+    )
+    # The done should have flowed through to a terminal status (succeeded or
+    # the verifier may flag as unverified — both indicate F9 accepted the done).
+    assert result.status in {"succeeded", "failed"}, (
+        f"loop must terminate cleanly after grounded `done`; got {result.status!r}"
+    )
+
+
+def test_f9_done_with_result_not_in_read_still_classified_premature():
+    """Symmetric: F9 must NOT bypass premature_done when the result has no
+    grounding in any recent read. Avoids regressing the F2/T1 gates for
+    fabricated answers."""
+    from unittest.mock import patch
+
+    from agent.trace import SupervisorEvent
+    from tests.agent.test_loop import (  # type: ignore[no-untyped-import]
+        _FakeLLMClient,
+        _make_writer_with_run,
+        _response_with_tool_call,
+        _tool_call,
+    )
+
+    bad_done = _tool_call(
+        "done",
+        {
+            "result": {"answer": "totally-fabricated-string-not-on-page"},
+            "evidence": {"url": "http://stub.local/", "text_snippet": "ok"},
+            "evaluation_previous_action": "no_action_yet",
+            "evaluation_reason": "I have not interacted with the page",
+            "next_goal": "report final answer",
+        },
+        call_id="tc-bad",
+    )
+    follow_up = _tool_call("fail", {"reason": "halt"}, call_id="tc-fail")
+    fake_llm = _FakeLLMClient(
+        [
+            _response_with_tool_call(bad_done),
+            _response_with_tool_call(follow_up),
+        ]
+    )
+
+    run_id = "f9-fabricated-done"
+    writer = _make_writer_with_run(run_id)
+
+    class _StubBrowser:
+        def __init__(self):
+            self._page = None
+            self._cdp_sessions: dict = {}
+
+        def goto(self, _url: str) -> None:
+            pass
+
+    obs = {
+        "url": "http://stub.local/",
+        "title": "Stub",
+        "ax_tree_digest": "",
+        "ax_fingerprint": "f" * 64,
+        "last_actions": [],
+    }
+    with patch("agent.loop.observe.build_observation", return_value=obs):
+        loop(
+            "task",
+            _StubBrowser(),
+            fake_llm,
+            max_steps=5,
+            trace_writer=writer,
+            run_id=run_id,
+        )
+
+    events = list(writer.iter_events(run_id))
+    premature = [
+        e
+        for e in events
+        if isinstance(e, SupervisorEvent) and e.classified_as == "premature_done"
+    ]
+    writer.close()
+
+    assert premature, (
+        "F9 must NOT downgrade premature_done when result text is not "
+        "grounded in any read content; otherwise fabricated answers slip through"
+    )

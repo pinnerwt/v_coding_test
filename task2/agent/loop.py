@@ -296,6 +296,42 @@ def _next_goal_is_navigation(next_goal: Any) -> bool:
     return any(verb in lowered for verb in _NEXT_GOAL_NAV_VERBS)
 
 
+_F9_MIN_LEAF_LEN = 4
+
+
+def _result_leaf_strings(payload: Any) -> list[str]:
+    """Yield non-trivial leaf strings from a freeform `done.result` payload.
+    Used by F9 to ground the agent's proposed answer against page content."""
+    out: list[str] = []
+
+    def _walk(node: Any) -> None:
+        if isinstance(node, str):
+            if len(node.strip()) >= _F9_MIN_LEAF_LEN:
+                out.append(node.strip())
+        elif isinstance(node, dict):
+            for v in node.values():
+                _walk(v)
+        elif isinstance(node, (list, tuple)):
+            for v in node:
+                _walk(v)
+
+    _walk(payload)
+    return out
+
+
+def _result_grounded_in_read(result: Any, latest_read: str) -> bool:
+    """F9: True iff any non-trivial leaf string from `result` is a substring
+    of `latest_read` (case-insensitive). Empty `latest_read` ⇒ False so the
+    pre-existing premature_done gates are unchanged when no read has happened."""
+    if not latest_read:
+        return False
+    haystack = latest_read.lower()
+    for leaf in _result_leaf_strings(result):
+        if leaf.lower() in haystack:
+            return True
+    return False
+
+
 _ELIDED_AX_TREE_MARKER = "[elided — see latest observation]"
 _KEEP_RECENT_AX_TREES = 2
 
@@ -1396,6 +1432,10 @@ def loop(
     # recent goto/click/type/read calls. Used to reject `done` after
     # consecutive failures.
     _recent_outcomes: list[str] = []
+    # F9: most recent successful read tool result (body / window / element
+    # text). Used to ground a `done` result against actual page content
+    # before classifying it as premature.
+    _latest_read_content: str = ""
     # F6: per-(tool, classification) halt counter; circuit-breaker fires
     # after _CIRCUIT_BREAKER_THRESHOLD halts on the same key.
     _halt_counts: dict[tuple[str, str], int] = {}
@@ -1680,6 +1720,15 @@ def loop(
                             f"{plan_len} plan steps — execute the remaining steps "
                             "(fill forms, click search, read results) before `done`"
                         )
+                if premature_reason is not None and _result_grounded_in_read(
+                    args.get("result"), _latest_read_content
+                ):
+                    # F9: the proposed result has substring evidence in the
+                    # most recent read content. The pre-existing heuristics
+                    # (plan_cursor, next_goal verbs, etc.) misclassify this
+                    # as premature on extraction tasks where the answer is
+                    # already on the page. Downgrade halt → accept.
+                    premature_reason = None
                 if premature_reason is not None:
                     use_writer = trace_writer is not None and run_id is not None
                     # F10: emit an `act` event for the rejected `done` so the
@@ -1983,6 +2032,10 @@ def loop(
                 any_action_succeeded_this_step = True
             elif tool_call.name in {"goto", "read"} and not is_error:
                 any_action_succeeded_this_step = True
+            # F9: remember the most recent successful read content so a
+            # subsequent `done` can be grounded against actual page text.
+            if tool_call.name == "read" and not is_error:
+                _latest_read_content = tool_result
             # F7: track outcomes of *interaction* actions only (click/type)
             # for the consecutive-failures gate on `done`. `goto` is network /
             # nav and `read` is info-retrieval — failures there are normal
