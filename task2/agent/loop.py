@@ -43,6 +43,29 @@ STATE_MESSAGE_PREFIX = "Current state: "
 _BODY_TEXT_JS = "() => document.body.innerText"
 _BODY_TEXT_LIMIT = 2000
 
+# T4 plan-progress pointer: every non-terminal action tool advertises
+# `plan_cursor` so the LLM has to declare which plan step it's executing.
+# Two consecutive off-plan declarations auto-trigger a replan.
+_PLAN_CURSOR_PROPERTY: dict = {
+    "description": (
+        "1-based index of the current plan step you're executing, or the "
+        'literal string "off-plan" if no current plan step matches what '
+        "you're doing (in which case set plan_cursor_reason)."
+    ),
+    "anyOf": [
+        {"type": "integer", "minimum": 1},
+        {"type": "string", "enum": ["off-plan"]},
+    ],
+}
+_PLAN_CURSOR_REASON_PROPERTY: dict = {
+    "type": "string",
+    "description": (
+        'When plan_cursor="off-plan", briefly explain why no plan step '
+        "applies. Two consecutive off-plan declarations will trigger a "
+        "supervisor-initiated replan."
+    ),
+}
+
 TOOLS: list[dict] = [
     {
         "type": "function",
@@ -52,7 +75,9 @@ TOOLS: list[dict] = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "url": {"type": "string", "description": "Absolute URL to navigate to"}
+                    "url": {"type": "string", "description": "Absolute URL to navigate to"},
+                    "plan_cursor": _PLAN_CURSOR_PROPERTY,
+                    "plan_cursor_reason": _PLAN_CURSOR_REASON_PROPERTY,
                 },
                 "required": ["url"],
             },
@@ -88,6 +113,8 @@ TOOLS: list[dict] = [
                             "Mutually exclusive with 'intent'."
                         ),
                     },
+                    "plan_cursor": _PLAN_CURSOR_PROPERTY,
+                    "plan_cursor_reason": _PLAN_CURSOR_REASON_PROPERTY,
                 },
                 "required": [],
             },
@@ -166,7 +193,9 @@ TOOLS: list[dict] = [
                     "intent": {
                         "type": "string",
                         "description": "Describe the element to click (e.g. 'the Submit button').",
-                    }
+                    },
+                    "plan_cursor": _PLAN_CURSOR_PROPERTY,
+                    "plan_cursor_reason": _PLAN_CURSOR_REASON_PROPERTY,
                 },
                 "required": ["intent"],
             },
@@ -196,6 +225,8 @@ TOOLS: list[dict] = [
                             "located via `click`."
                         ),
                     },
+                    "plan_cursor": _PLAN_CURSOR_PROPERTY,
+                    "plan_cursor_reason": _PLAN_CURSOR_REASON_PROPERTY,
                 },
                 "required": ["intent", "text"],
             },
@@ -222,6 +253,8 @@ _DEFAULT_CONTEXT_CHAR_BUDGET: int = 80_000
 _STUCK_REPEAT_K: int = 3
 _NO_TOOL_CALL_K: int = 3
 _NO_PROGRESS_K: int = 4
+# T4: how many consecutive off-plan steps trigger an auto-replan.
+_OFF_PLAN_REPLAN_THRESHOLD: int = 2
 
 # T1: words in a `next_goal` that signal the agent still has work to do
 # (browse / interact) rather than report a final answer. Matched as
@@ -587,8 +620,10 @@ def _result_grounded_in_tape(result: Any, source: str | list[dict]) -> bool:
     norm_pairs = [(leaf, _normalize_for_match(leaf)) for leaf in leaves]
     short_norms = [n for _, n in norm_pairs if 0 < len(n) < _SHORT_LEAF_THRESHOLD]
     long_norms = [n for _, n in norm_pairs if len(n) >= _SHORT_LEAF_THRESHOLD]
-    if short_norms and long_norms and not _short_leaves_cluster_with_long(
-        short_norms, long_norms, norm_full
+    if (
+        short_norms
+        and long_norms
+        and not _short_leaves_cluster_with_long(short_norms, long_norms, norm_full)
     ):
         return False
 
@@ -709,6 +744,12 @@ def _build_system_prompt(task: str, *, expect: dict | None = None) -> str:
         "you are not done yet — execute that action first. If `evaluation_"
         "previous_action` would honestly be 'no_action_yet' (you have only "
         "navigated, not interacted), do not call `done` — interact first. "
+        "Every action call (`goto`, `click`, `type`, `read`) MUST set "
+        "`plan_cursor` to the 1-based plan-step index it advances. If no "
+        "current plan step matches what you're about to do, set "
+        'plan_cursor="off-plan" with a brief plan_cursor_reason. Two '
+        "consecutive off-plan declarations will force a replan, so prefer "
+        "to align with the plan when possible. "
     )
     if expect and expect.get("schema"):
         schema = expect["schema"]
@@ -1303,6 +1344,7 @@ def loop(
     _stuck_buf: list[str] = []
     _no_progress_buf: list[tuple[str | None, bool]] = []
     _consecutive_no_tool_call_steps: int = 0
+    _consecutive_off_plan_steps: int = 0
     _force_done_next: bool = False
     _no_progress_warned: bool = False
     _budget = int(os.environ.get("LLM_CONTEXT_CHAR_BUDGET", _DEFAULT_CONTEXT_CHAR_BUDGET))
@@ -1329,6 +1371,10 @@ def loop(
         _step_id = f"{run_id}:step-{step_num}" if run_id is not None else None
         any_action_succeeded_this_step: bool = False
         replanned_this_step: bool = False
+        # T4: per-step plan_cursor classification.
+        step_saw_on_plan: bool = False
+        step_saw_off_plan: bool = False
+        step_off_plan_reason: str | None = None
 
         observation = observe.build_observation(browser, last_actions)
         last_actions = []
@@ -1495,6 +1541,18 @@ def loop(
                     }
                 )
                 continue
+
+            # T4: classify plan_cursor on action tools.
+            if tool_call.name in {"goto", "click", "type", "read"}:
+                cursor = args.get("plan_cursor")
+                if isinstance(cursor, int) and cursor >= 1:
+                    step_saw_on_plan = True
+                elif cursor == "off-plan":
+                    step_saw_off_plan = True
+                    if step_off_plan_reason is None:
+                        reason = args.get("plan_cursor_reason")
+                        if isinstance(reason, str) and reason:
+                            step_off_plan_reason = reason
 
             if tool_call.name == "done":
                 # T1 self-eval gate: reject `done` when the agent's own
@@ -1821,6 +1879,51 @@ def loop(
                         latency_ms_per_step=latency_ms_per_step,
                         step_breakdown=step_breakdown,
                     )
+
+        # T4: classify the step against the plan.
+        # An on-plan signal anywhere in the step resets the consecutive
+        # off-plan counter; a step that only emitted off-plan declarations
+        # increments it. Steps without any cursor (legacy / no plan_cursor)
+        # are neutral and leave the counter alone.
+        if step_saw_on_plan:
+            _consecutive_off_plan_steps = 0
+        elif step_saw_off_plan:
+            _consecutive_off_plan_steps += 1
+            if (
+                not replanned_this_step
+                and active_plan is not None
+                and not supervisor.replan_used
+                and _consecutive_off_plan_steps >= _OFF_PLAN_REPLAN_THRESHOLD
+            ):
+                feedback_reason = (
+                    "off-plan: " + step_off_plan_reason
+                    if step_off_plan_reason
+                    else "off-plan for two consecutive steps"
+                )
+                new_plan, replan_resp = plan_module.replan(
+                    task,
+                    observation,
+                    active_plan,
+                    feedback_reason,
+                    llm_client,
+                )
+                cum_prompt_tokens += replan_resp.usage.prompt_tokens
+                cum_completion_tokens += replan_resp.usage.completion_tokens
+                cum_usd += replan_resp.usd
+                supervisor.replan_used = True
+                active_plan = new_plan
+                _no_progress_buf.clear()
+                _consecutive_off_plan_steps = 0
+                replanned_this_step = True
+                _emit_plan_event(
+                    events,
+                    "replan",
+                    new_plan.steps,
+                    str(uuid.uuid4()),
+                    trace_writer=trace_writer,
+                    run_id=run_id,
+                    step_id=_step_id,
+                )
 
         if not replanned_this_step:
             _post_obs = observe.build_observation(browser, [])

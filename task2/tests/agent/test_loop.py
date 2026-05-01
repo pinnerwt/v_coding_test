@@ -764,9 +764,7 @@ def test_loop_done_with_valid_evidence(fixture_server, playwright_chromium):
 # ---------------------------------------------------------------------------
 
 
-def test_loop_rejects_done_with_no_action_yet_at_step_1(
-    fixture_server, playwright_chromium
-):
+def test_loop_rejects_done_with_no_action_yet_at_step_1(fixture_server, playwright_chromium):
     """When the agent emits `done` at step 1 with evaluation_previous_action=
     "no_action_yet", the loop must reject it (premature_done supervisor event)
     instead of returning. Mirrors `premature_fail` for the symmetric case."""
@@ -782,9 +780,7 @@ def test_loop_rejects_done_with_no_action_yet_at_step_1(
         },
         call_id="tc-bad",
     )
-    follow_up_fail = _tool_call(
-        "fail", {"reason": "login wall"}, call_id="tc-fail"
-    )
+    follow_up_fail = _tool_call("fail", {"reason": "login wall"}, call_id="tc-fail")
     responses = [
         _response_with_tool_call(bad_done),
         _response_with_tool_call(follow_up_fail),
@@ -796,15 +792,12 @@ def test_loop_rejects_done_with_no_action_yet_at_step_1(
         result = loop("task", browser, fake_llm, max_steps=5, events=events)
 
     assert any(
-        isinstance(e, SupervisorEvent) and e.classified_as == "premature_done"
-        for e in events
+        isinstance(e, SupervisorEvent) and e.classified_as == "premature_done" for e in events
     ), f"expected premature_done supervisor event, got {events!r}"
     assert result.status == "failed"
 
 
-def test_loop_rejects_done_with_navigation_verb_next_goal(
-    fixture_server, playwright_chromium
-):
+def test_loop_rejects_done_with_navigation_verb_next_goal(fixture_server, playwright_chromium):
     """When the agent emits `done` with a next_goal that lexically resembles
     a navigation/search verb (e.g. "search for cheap flights"), the loop must
     reject it — the agent has more work to do, not a final answer."""
@@ -820,9 +813,7 @@ def test_loop_rejects_done_with_navigation_verb_next_goal(
         },
         call_id="tc-bad",
     )
-    follow_up_fail = _tool_call(
-        "fail", {"reason": "login wall"}, call_id="tc-fail"
-    )
+    follow_up_fail = _tool_call("fail", {"reason": "login wall"}, call_id="tc-fail")
     responses = [
         _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-0")),
         _response_with_tool_call(bad_done),
@@ -835,8 +826,7 @@ def test_loop_rejects_done_with_navigation_verb_next_goal(
         result = loop("task", browser, fake_llm, max_steps=5, events=events)
 
     assert any(
-        isinstance(e, SupervisorEvent) and e.classified_as == "premature_done"
-        for e in events
+        isinstance(e, SupervisorEvent) and e.classified_as == "premature_done" for e in events
     ), f"expected premature_done supervisor event, got {events!r}"
     assert result.status == "failed"
 
@@ -853,9 +843,7 @@ def test_done_tool_schema_advertises_self_eval_fields():
     evaluation_reason, and next_goal so the LLM is prompted to fill them."""
     from agent.loop import TOOLS
 
-    done_schema = next(
-        t for t in TOOLS if t["function"]["name"] == "done"
-    )
+    done_schema = next(t for t in TOOLS if t["function"]["name"] == "done")
     props = done_schema["function"]["parameters"]["properties"]
     assert "evaluation_previous_action" in props
     assert "evaluation_reason" in props
@@ -4635,17 +4623,13 @@ def test_loop_emits_planner_started_before_initial_plan():
 
     plan_events = [e for e in events if isinstance(e, PlanEvent)]
     reasons = [e.reason for e in plan_events]
-    assert reasons[0] == "started", (
-        f"first plan event must be reason='started'; got {reasons!r}"
-    )
+    assert reasons[0] == "started", f"first plan event must be reason='started'; got {reasons!r}"
     assert "initial" in reasons, (
         f"after planner returns, reason='initial' must follow; got {reasons!r}"
     )
     started_idx = reasons.index("started")
     initial_idx = reasons.index("initial")
-    assert started_idx < initial_idx, (
-        f"started must come before initial; got order {reasons!r}"
-    )
+    assert started_idx < initial_idx, f"started must come before initial; got order {reasons!r}"
 
 
 def test_loop_emits_plan_event_when_planner_asks_user():
@@ -5293,9 +5277,7 @@ def test_verify_done_prompt_biases_toward_unsupported_when_keys_missing():
     lowered = system_prompt.lower()
     assert "default to unsupported" in lowered
     assert (
-        "key result fields" in lowered
-        or "numbers, dates" in lowered
-        or "named entities" in lowered
+        "key result fields" in lowered or "numbers, dates" in lowered or "named entities" in lowered
     )
     # Must call out the missing-triggering-action heuristic
     assert (
@@ -5444,6 +5426,101 @@ def test_grounded_passes_text_only_leaves_without_interaction():
     result = {"title": "Example Domain"}
 
     assert _result_grounded_in_tape(result, messages) is True
+
+
+def test_loop_replans_after_two_consecutive_off_plan_declarations(
+    fixture_server, playwright_chromium
+):
+    """T4: when the agent emits plan_cursor='off-plan' on two consecutive
+    steps, the loop must auto-trigger a replan (and emit a PlanEvent with
+    reason='replan'), without needing a verifier-driven trigger."""
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+    off_plan_args = {
+        "url": fixture_url,
+        "plan_cursor": "off-plan",
+        "plan_cursor_reason": "current page lacks needed elements",
+    }
+    final_done = _tool_call(
+        "done",
+        {
+            "result": {"heading": "Hello, loop"},
+            "evidence": {"url": fixture_url, "text_snippet": "Hello, loop"},
+            "evaluation_previous_action": "success",
+            "evaluation_reason": "navigated to fixture",
+            "next_goal": "report final answer",
+        },
+        call_id="tc-done",
+    )
+    responses = [
+        _response_with_tool_call(_tool_call("goto", off_plan_args, call_id="tc-1")),
+        _response_with_tool_call(_tool_call("goto", off_plan_args, call_id="tc-2")),
+        _response_with_tool_call(final_done),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+    events: list = []
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop("task", browser, fake_llm, max_steps=6, events=events)
+
+    replan_events = [e for e in events if isinstance(e, PlanEvent) and e.reason == "replan"]
+    assert replan_events, (
+        "expected a PlanEvent(reason='replan') after two consecutive off-plan "
+        f"declarations, got events={events!r}"
+    )
+    assert result.status in {"succeeded", "unverified", "timeout"}
+
+
+def test_loop_resets_off_plan_counter_on_valid_cursor(fixture_server, playwright_chromium):
+    """A valid plan_cursor integer between off-plan declarations must reset
+    the consecutive counter — the agent has reoriented and shouldn't be
+    penalised for an interleaved valid step."""
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+    off_plan_args = {
+        "url": fixture_url,
+        "plan_cursor": "off-plan",
+        "plan_cursor_reason": "lost",
+    }
+    on_plan_args = {"url": fixture_url, "plan_cursor": 1}
+    final_done = _tool_call(
+        "done",
+        {
+            "result": {"heading": "Hello, loop"},
+            "evidence": {"url": fixture_url, "text_snippet": "Hello, loop"},
+            "evaluation_previous_action": "success",
+            "evaluation_reason": "navigated to fixture",
+            "next_goal": "report final answer",
+        },
+        call_id="tc-done",
+    )
+    responses = [
+        _response_with_tool_call(_tool_call("goto", off_plan_args, call_id="tc-1")),
+        _response_with_tool_call(_tool_call("goto", on_plan_args, call_id="tc-2")),
+        _response_with_tool_call(_tool_call("goto", off_plan_args, call_id="tc-3")),
+        _response_with_tool_call(final_done),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+    events: list = []
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        loop("task", browser, fake_llm, max_steps=6, events=events)
+
+    # Only one off-plan strike at a time should never reach the threshold of 2.
+    replan_events = [e for e in events if isinstance(e, PlanEvent) and e.reason == "replan"]
+    assert not replan_events, f"unexpected replan after interleaved on-plan reset, got {events!r}"
+
+
+def test_action_tool_schemas_advertise_plan_cursor():
+    """Each non-terminal action tool must declare plan_cursor in its schema
+    so the LLM is prompted to track which plan step it's executing."""
+    from agent.loop import TOOLS
+
+    cursor_required_tools = {"goto", "click", "type", "read"}
+    for spec in TOOLS:
+        fn = spec["function"]
+        if fn["name"] not in cursor_required_tools:
+            continue
+        props = fn["parameters"]["properties"]
+        assert "plan_cursor" in props, f"{fn['name']} missing plan_cursor"
 
 
 def test_grounded_legacy_string_tape_preserved():
