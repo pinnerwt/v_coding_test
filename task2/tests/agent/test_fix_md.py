@@ -558,3 +558,77 @@ def test_f14_loop_ladder_emits_l_textmatch_event_on_l1_l2_miss(fixture_server, p
     assert ("L2_dom", "miss") in tiers_outcomes
     assert ("L_textmatch", "hit") in tiers_outcomes
     writer.close()
+
+
+# --- F13 (textbox locator must match role=combobox inputs) ----------------
+
+
+def test_f13_textbox_intent_matches_combobox_role_at_l1(fixture_server, playwright_chromium):
+    """Round-4 A6/U1 evidence: Google Maps and google.com homepage render
+    their search input as `role=combobox`, not `role=textbox`. The agent's
+    `intent="the search textbox"` therefore L1+L2 missed and stalled.
+    L1_ax must accept either role for textbox-shaped intents."""
+    from agent.locate import locate_l1
+
+    fixture_url = f"{fixture_server}/locate_combobox.html"
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        browser.goto(fixture_url)
+        result = locate_l1(browser._page, role="textbox", name="Search")
+
+    assert result is not None
+    assert result.tier == "L1_ax"
+    assert result.role in {"textbox", "combobox"}
+
+
+def test_f13_textbox_intent_matches_combobox_via_full_locate(
+    fixture_server, playwright_chromium
+):
+    """End-to-end through `locate()`: intent 'Search textbox' on a page that
+    only has a `role=combobox` editable div must resolve to that element."""
+    from agent.locate import locate
+
+    fixture_url = f"{fixture_server}/locate_combobox.html"
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        browser.goto(fixture_url)
+        result = locate(browser._page, "Search textbox")
+
+    assert result is not None
+    assert result.selector
+    # Selector must resolve to the combobox div on the live page.
+    with Browser(playwright_browser=playwright_chromium) as b2:
+        b2.goto(fixture_url)
+        loc = b2._page.locator(result.selector)
+        assert loc.count() == 1
+        attr = loc.first.evaluate("el => el.getAttribute('role')")
+        assert attr == "combobox"
+
+
+# --- F12 (read(intent=) auto-falls back to read() on locate error) ---------
+
+
+def test_f12_read_intent_unlocatable_falls_back_to_body(fixture_server, playwright_chromium):
+    """Round-4 U1/U4 evidence: `read intent="..."` reliably errored on dense
+    pages; the LLM then re-issued `read(find=...)` or `read()` and burned a
+    full LLM round-trip per occurrence. When intent-locate fails, the
+    dispatcher must internally fall back to a no-args body read so the LLM
+    sees usable text on the first try, not an error."""
+    from agent.loop import _dispatch
+    from agent.supervisor import Supervisor
+
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        browser.goto(fixture_url)
+        # An intent that has no matching role on the page — should NOT bubble
+        # the locator error back to the LLM; it should return body text.
+        out = _dispatch(
+            "read",
+            {"intent": "the nonexistent_zzzqq button"},
+            browser,
+            Supervisor(),
+        )
+
+    assert not out.lower().startswith("error"), (
+        f"read(intent=) on an unlocatable element must auto-fall-back, not error; got {out!r}"
+    )
+    # Body text must contain the heading from the fixture.
+    assert "Hello" in out

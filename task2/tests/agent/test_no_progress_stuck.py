@@ -52,7 +52,8 @@ class _StubBrowser:
 
 
 class _ReadEachStepClient:
-    """Emits read(intent=f'x{i}') each step — different args every step (no stuck_repeat)."""
+    """Emits read(find=f'x{i}') each step — different args every step (no stuck_repeat),
+    and the find query is not present in the empty stub body so each read errors."""
 
     def __init__(self):
         self._step = 0
@@ -67,7 +68,7 @@ class _ReadEachStepClient:
                 ToolCall(
                     id=f"tc-{self._step}",
                     name="read",
-                    arguments=json.dumps({"intent": f"x{self._step}"}),
+                    arguments=json.dumps({"find": f"missing-needle-{self._step}"}),
                 )
             ],
             finish_reason="tool_calls",

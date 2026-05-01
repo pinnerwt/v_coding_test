@@ -942,7 +942,7 @@ def test_replay_run_intent_read_with_recorded_text_reports_prompt_drift(tmp_path
     SHALL report prompt drift, not silent match.
 
     The stub locator surface always resolves to zero matches and `browser.read`
-    always returns "", so loop dispatches an "Error: could not locate ..."
+    always returns "", so loop's F12 fallback dispatches an empty body-text
     tool message. A recording captured against a real browser would have the
     actual page text in that slot — so prompt comparison must surface the
     difference rather than coerce them to look equal. This test pins that
@@ -966,11 +966,11 @@ def test_replay_run_intent_read_with_recorded_text_reports_prompt_drift(tmp_path
         obj = json.loads(line)
         if obj.get("kind") == "llm_call":
             for msg in obj.get("prompt", {}).get("messages", []):
-                if msg.get("role") == "tool" and msg.get("content", "").startswith("Error:"):
+                if msg.get("role") == "tool" and msg.get("content", "") == "":
                     msg["content"] = "Real Heading Text From Browser"
                     swapped = True
         mutated.append(json.dumps(obj))
-    assert swapped, "Expected to find a tool error message to swap"
+    assert swapped, "Expected to find an empty-body read tool message to swap"
     fixture_path.write_text("\n".join(mutated) + "\n")
 
     result = replay_run(fixture_path)

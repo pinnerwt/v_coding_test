@@ -146,26 +146,51 @@ def parse_intent(intent: str) -> tuple[str, str | None]:
     return role, name
 
 
+# F13: textbox-shaped intents must also match `role=combobox` inputs. Sites
+# like google.com and Google Maps render their search input as a combobox
+# (per ARIA combobox-with-listbox pattern), so a `role=textbox` query alone
+# misses the only entry point on the page.
+_TEXTBOX_ROLE_ALIASES: tuple[str, ...] = ("textbox", "combobox")
+
+
+def _l1_roles_to_try(role: str) -> tuple[str, ...]:
+    if role == "textbox":
+        return _TEXTBOX_ROLE_ALIASES
+    return (role,)
+
+
 def locate_l1(page: Page, *, role: str, name: str | None) -> LocateResult:
-    locator = page.get_by_role(role, name=name, exact=False) if name else page.get_by_role(role)
-    count = locator.count()
-    if count == 0:
-        raise LocatorMiss(reason="zero_matches", match_count=0)
-    if count > 1:
-        raise LocatorMiss(reason="ambiguous", match_count=count)
-    matched_name_raw = locator.first.evaluate(_ACCESSIBLE_NAME_JS)
-    matched_name: str | None = matched_name_raw if isinstance(matched_name_raw, str) else None
-    selector = _role_selector(role, name)
-    fingerprint_name = matched_name if matched_name is not None else (name or "")
-    fingerprint = hashlib.sha256(f"{role}:{fingerprint_name}".encode()).hexdigest()
-    return LocateResult(
-        tier="L1_ax",
-        role=role,
-        name=name,
-        selector=selector,
-        ax_fingerprint=fingerprint,
-        confidence=1.0,
-    )
+    last_miss: LocatorMiss | None = None
+    for try_role in _l1_roles_to_try(role):
+        locator = (
+            page.get_by_role(try_role, name=name, exact=False)
+            if name
+            else page.get_by_role(try_role)
+        )
+        count = locator.count()
+        if count == 0:
+            last_miss = LocatorMiss(reason="zero_matches", match_count=0)
+            continue
+        if count > 1:
+            last_miss = LocatorMiss(reason="ambiguous", match_count=count)
+            continue
+        matched_name_raw = locator.first.evaluate(_ACCESSIBLE_NAME_JS)
+        matched_name: str | None = (
+            matched_name_raw if isinstance(matched_name_raw, str) else None
+        )
+        selector = _role_selector(try_role, name)
+        fingerprint_name = matched_name if matched_name is not None else (name or "")
+        fingerprint = hashlib.sha256(f"{try_role}:{fingerprint_name}".encode()).hexdigest()
+        return LocateResult(
+            tier="L1_ax",
+            role=try_role,
+            name=name,
+            selector=selector,
+            ax_fingerprint=fingerprint,
+            confidence=1.0,
+        )
+    assert last_miss is not None  # at least one role tried
+    raise last_miss
 
 
 def locate_l2(page: Page, *, role: str, name: str | None) -> LocateResult:

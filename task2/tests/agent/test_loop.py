@@ -1277,7 +1277,7 @@ class _HaltReplanLLM:
                 )
             )
         return _response_with_tool_call(
-            _tool_call("read", {"intent": "Submit button"}, call_id=f"tc-r{idx}")
+            _tool_call("click", {"intent": "Submit button"}, call_id=f"tc-r{idx}")
         )
 
 
@@ -1314,7 +1314,7 @@ def test_second_supervisor_halt_returns_failed(fixture_server, playwright_chromi
                 self._replan_done = True
                 return _fake_text_response(replan_json)
             return _response_with_tool_call(
-                _tool_call("read", {"intent": "Submit button"}, call_id=f"tc-r{idx}")
+                _tool_call("click", {"intent": "Submit button"}, call_id=f"tc-r{idx}")
             )
 
     llm = _DoubleHaltLLM()
@@ -1398,7 +1398,7 @@ def test_loop_does_not_terminally_fail_on_unrelated_error_after_replan(
 
             if self._state == "read":
                 return _response_with_tool_call(
-                    _tool_call("read", {"intent": "Submit button"}, call_id="tc-read")
+                    _tool_call("click", {"intent": "Submit button"}, call_id="tc-read")
                 )
             if self._state == "goto_empty":
                 self._state = "done"
@@ -1424,7 +1424,9 @@ def test_loop_does_not_terminally_fail_on_unrelated_error_after_replan(
     with Browser(playwright_browser=playwright_chromium) as browser:
         result = loop("click the Submit button", browser, llm, max_steps=20)
 
-    assert result.status == "succeeded"
+    assert result.status == "succeeded", (
+        f"status={result.status!r}, reason={result.reason!r}, steps={result.steps}"
+    )
     assert result.steps >= 3
 
 
@@ -1465,7 +1467,7 @@ def test_replan_does_not_leave_orphan_tool_call_in_message_history(
                     )
                 )
             return _response_with_tool_call(
-                _tool_call("read", {"intent": "Submit button"}, call_id=f"tc-r{idx}")
+                _tool_call("click", {"intent": "Submit button"}, call_id=f"tc-r{idx}")
             )
 
     def _assert_tool_calls_have_responses(messages: list[dict]) -> None:
@@ -4240,7 +4242,7 @@ class _StubBrowserWithMissPage:
 def test_loop_stuck_repeat_does_not_preempt_supervisor_halt():
     read_tc = [
         _response_with_tool_call(
-            _tool_call("read", {"intent": "Submit button"}, call_id=f"tc-r{i}")
+            _tool_call("click", {"intent": "Submit button"}, call_id=f"tc-r{i}")
         )
         for i in range(1, 5)
     ]

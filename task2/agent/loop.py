@@ -771,7 +771,9 @@ def _build_system_prompt(task: str, *, expect: dict | None = None) -> str:
     return base
 
 
-def _body_text(page: Page) -> str:
+def _body_text(page: Page | None) -> str:
+    if page is None:
+        return ""
     return page.evaluate(_BODY_TEXT_JS)[:_BODY_TEXT_LIMIT]
 
 
@@ -1171,7 +1173,7 @@ def _dispatch(
             if not isinstance(find, str) or not find.strip():
                 _emit_read("error", {"find": find})
                 return "Error: read 'find' must be a non-empty string"
-            full = page.evaluate(_BODY_TEXT_JS)
+            full = _body_text(page)
             window = _window_around(full, find)
             if window is None:
                 _emit_read("error", {"find": find})
@@ -1189,15 +1191,21 @@ def _dispatch(
                 step_id=step_id,
             )
             if isinstance(located, str):
-                _emit_read("error", {"intent": intent})
-                return located
+                # F12: fall back to a full-body read instead of returning an
+                # error. Round-4 U1/U4 traces showed the LLM consistently
+                # recovering from `read intent` errors by issuing a
+                # `read(find=...)` or no-args `read()` on the next turn —
+                # auto-doing the fallback saves one LLM round-trip.
+                _emit_read("ok", {"intent": intent, "fallback": "body"})
+                return _body_text(page)
             from agent.browser import ElementNotFound
 
             try:
                 result = browser.read(located.selector)
-            except ElementNotFound as exc:
-                _emit_read("error", {"intent": intent})
-                return f"Error: located element vanished before read for intent {intent!r} ({exc})"
+            except ElementNotFound:
+                # Same F12 rationale: vanished element ⇒ body read fallback.
+                _emit_read("ok", {"intent": intent, "fallback": "body"})
+                return _body_text(page)
             _emit_read("ok", {"intent": intent})
             return result
         body = _body_text(page)
@@ -2000,6 +2008,10 @@ def loop(
                     supervisor.record_replan("tool_error")
                     active_plan = new_plan
                     _no_progress_buf.clear()
+                    # F7: replan supersedes the prior plan; recent click/type
+                    # failures were against the old plan's targets, so they
+                    # should not block `done` on the new plan.
+                    _recent_outcomes.clear()
                     replanned_this_step = True
                     _emit_plan_event(
                         events,
