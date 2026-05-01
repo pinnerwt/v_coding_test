@@ -97,112 +97,6 @@ _TOO_SHORT_PLAN_MESSAGE = (
     "at least 2 distinct navigation/interaction steps."
 )
 
-# F19: when ask_user supplies an answer, the resulting plan must
-# substring-reference at least one non-stopword token from that answer.
-# Round-6 A3 trace showed the planner re-stating the raw task verbatim and
-# losing the user-supplied date entirely. Generic stopword set, no domain
-# vocabulary — this enforces "the answer made it into the plan" without
-# encoding any topic preferences.
-_ANSWER_STOPWORDS: frozenset[str] = frozenset(
-    {
-        "a",
-        "an",
-        "the",
-        "of",
-        "in",
-        "on",
-        "and",
-        "or",
-        "for",
-        "to",
-        "at",
-        "by",
-        "is",
-        "are",
-        "was",
-        "were",
-        "be",
-        "been",
-        "with",
-        "from",
-        "as",
-        "it",
-        "this",
-        "that",
-        "these",
-        "those",
-        "one",
-        "two",
-        "any",
-    }
-)
-
-
-def _answer_tokens(answer: str) -> list[str]:
-    """Split on whitespace, lowercase, strip non-alphanumeric edges, drop
-    stopwords. Returns the enforceable content tokens for the F19 check."""
-    raw = answer.lower().split()
-    out: list[str] = []
-    for tok in raw:
-        cleaned = tok.strip(" \t\r\n.?!,;:'\"()[]{}/")
-        if not cleaned or cleaned in _ANSWER_STOPWORDS:
-            continue
-        out.append(cleaned)
-    return out
-
-
-def _answer_has_numeric_token(answer: str) -> bool:
-    """True if any non-stopword token in the answer contains a digit. Used
-    by F28 to gate a second retry: date/price/id answers are easy for the
-    planner to silently drop, so they get one extra correction round."""
-    return any(any(ch.isdigit() for ch in tok) for tok in _answer_tokens(answer))
-
-
-def _plan_references_answer(plan: Plan, answer: str) -> bool:
-    """True if the plan references the user's answer.
-
-    F19 baseline: at least one non-stopword token from `answer` must appear
-    as a case-insensitive substring in any plan step or expected_end_state.
-
-    F28 stricter rule for digit-bearing answers: when the answer contains
-    any digit-bearing token (date/price/id), require at least one of THOSE
-    specifically — planners often retain a generic noun (e.g. 'order')
-    while silently dropping the actual number.
-
-    If the answer has no enforceable tokens after stopword removal, returns
-    True (no enforcement).
-    """
-    tokens = _answer_tokens(answer)
-    if not tokens:
-        return True
-    haystack = (" ".join(plan.steps) + " " + plan.expected_end_state).lower()
-    digit_tokens = [tok for tok in tokens if any(ch.isdigit() for ch in tok)]
-    if digit_tokens:
-        return any(tok in haystack for tok in digit_tokens)
-    return any(tok in haystack for tok in tokens)
-
-
-def _build_answer_not_incorporated_message(answers: list[str], plan_obj: Plan) -> str:
-    """F28: construct a retry message that names the literal answer text and
-    the specific non-stopword tokens that must appear in the next plan."""
-    haystack = (" ".join(plan_obj.steps) + " " + plan_obj.expected_end_state).lower()
-    parts = [
-        "The user's answer must be incorporated into the plan; the plan you "
-        "just produced does not reference it. Produce a new plan whose steps "
-        "explicitly use the user's answer."
-    ]
-    for ans in answers:
-        missing = [tok for tok in _answer_tokens(ans) if tok not in haystack]
-        if not missing:
-            continue
-        parts.append(
-            f' The user answered: "{ans}". '
-            f"Your next plan MUST contain at least one of these tokens "
-            f"verbatim: {', '.join(missing)}."
-        )
-    return "".join(parts)
-
-
 @dataclass(frozen=True)
 class Plan:
     steps: list[str]
@@ -280,8 +174,6 @@ def _handle_ask_user_tool_call(
     tool_call: ToolCall,
     ask_user_callback: Callable[[str], str] | None,
     asked_fingerprints: set[str],
-    received_answers: list[str],
-    dedup_emitted: list[bool],
 ) -> str:
     """Resolve an ask_user tool call into the string content for the tool message.
 
@@ -324,7 +216,6 @@ def _handle_ask_user_tool_call(
     for question in questions:
         fingerprint = _normalize_question(question)
         if fingerprint in asked_fingerprints:
-            dedup_emitted.append(True)
             qa_pairs.append((question, _DEDUP_SYNTHETIC_ANSWER))
             continue
         asked_fingerprints.add(fingerprint)
@@ -333,7 +224,6 @@ def _handle_ask_user_tool_call(
         except Exception as exc:  # noqa: BLE001
             qa_pairs.append((question, f"Error: ask_user callback raised: {exc}"))
             continue
-        received_answers.append(answer)
         qa_pairs.append((question, answer))
 
     return _format_qa_block(qa_pairs)
@@ -368,10 +258,7 @@ def plan(
     ]
     last_response: Any = None
     asked_fingerprints: set[str] = set()
-    received_answers: list[str] = []
-    dedup_emitted: list[bool] = []
     short_plan_retried = False
-    answer_retries_used = 0
     for _ in range(_MAX_ASK_USER_ROUNDS + 2):
         response = llm.chat(messages, tools=[_ASK_USER_TOOL])
         last_response = response
@@ -386,28 +273,6 @@ def plan(
                 messages.append({"role": "assistant", "content": response.content or ""})
                 messages.append({"role": "user", "content": _TOO_SHORT_PLAN_MESSAGE})
                 continue
-            # F19/F28: if any ask_user answer was received during this plan()
-            # call and the produced plan does not reference any non-stopword
-            # token from any answer, retry the planner with a corrective note.
-            # F19 grants 1 retry. F28 grants a 2nd retry only when the answer
-            # contains a digit-bearing token (date/price/id) — those answers
-            # are structurally easy to drop. Cap at 2 retries; accept whatever
-            # comes back next. Skipped when dedup-synthetic was emitted: the
-            # LLM has already been told to "use sane defaults", so layering a
-            # competing "incorporate the answer" directive doesn't fit.
-            if (
-                received_answers
-                and not dedup_emitted
-                and not any(_plan_references_answer(parsed, ans) for ans in received_answers)
-            ):
-                allow_second = any(_answer_has_numeric_token(ans) for ans in received_answers)
-                retry_cap = 2 if allow_second else 1
-                if answer_retries_used < retry_cap:
-                    answer_retries_used += 1
-                    retry_msg = _build_answer_not_incorporated_message(received_answers, parsed)
-                    messages.append({"role": "assistant", "content": response.content or ""})
-                    messages.append({"role": "user", "content": retry_msg})
-                    continue
             return parsed, response
         messages.append(
             {
@@ -429,8 +294,6 @@ def plan(
                     tc,
                     ask_user_callback,
                     asked_fingerprints,
-                    received_answers,
-                    dedup_emitted,
                 )
             else:
                 content = f"Error: tool {tc.name!r} not available in planning."

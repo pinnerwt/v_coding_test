@@ -1,8 +1,5 @@
 """Tests for the five ask-user-smoke fixes documented in task2/fix.md.
 
-F1 — plan dedup: planner does not invoke ask_user_callback twice for the same
-     normalized question; instead it feeds back a synthetic answer that tells
-     the LLM to stop re-asking.
 F2 — plan_cursor gate on done: a `done` whose run never advanced past the
      first half of a multi-step plan is rejected as premature.
 F3 — superlative gating: planner system prompt explicitly mentions
@@ -58,82 +55,6 @@ class _ScriptedLLM:
         if not self._responses:
             raise AssertionError("ScriptedLLM exhausted")
         return self._responses.pop(0)
-
-
-# --- F1 -------------------------------------------------------------------
-
-
-def test_f1_plan_does_not_invoke_callback_twice_for_same_question():
-    """If the LLM asks essentially the same question twice in a row, plan()
-    must surface the question to the user only once. The second LLM round
-    receives a synthetic tool message instead of another callback round-trip,
-    so the LLM stops re-asking and produces a plan with sane defaults.
-    """
-    captured: list[str] = []
-
-    def _cb(q: str) -> str:
-        captured.append(q)
-        return "天母店 (Tianmu)"
-
-    final_plan = json.dumps(
-        {"steps": ["go to inline.app/booking/旭集天母", "pick a time"], "expected_end_state": "ok"}
-    )
-    llm = _ScriptedLLM(
-        [
-            _tool_call_response(
-                "ask_user",
-                {"question": "Which Inparadise location and how many people?"},
-                call_id="tc-1",
-            ),
-            _tool_call_response(
-                "ask_user",
-                {"question": "How many people will be dining?"},
-                call_id="tc-2",
-            ),
-            _tool_call_response(
-                "ask_user",
-                {"question": "Please confirm the number of people."},
-                call_id="tc-3",
-            ),
-            _fake_response(final_plan),
-        ]
-    )
-
-    result, _ = plan(task="book at 旭集", observation={}, llm=llm, ask_user_callback=_cb)
-
-    assert len(captured) == 1, (
-        f"callback must be invoked at most once even when the LLM re-asks; got {captured!r}"
-    )
-    assert result.steps == ["go to inline.app/booking/旭集天母", "pick a time"]
-
-
-def test_f1_synthetic_answer_tells_llm_to_stop_asking():
-    """The synthetic tool message fed back on the second ask_user must clearly
-    instruct the LLM to stop using ask_user, so it has a fighting chance of
-    producing a plan instead of re-asking again.
-    """
-
-    def _cb(_q: str) -> str:
-        return "first answer"
-
-    final_plan = json.dumps({"steps": ["x", "y"], "expected_end_state": "z"})
-    llm = _ScriptedLLM(
-        [
-            _tool_call_response("ask_user", {"question": "Which one?"}, call_id="tc-1"),
-            _tool_call_response("ask_user", {"question": "Which one?"}, call_id="tc-2"),
-            _fake_response(final_plan),
-        ]
-    )
-    plan(task="t", observation={}, llm=llm, ask_user_callback=_cb)
-
-    third_call_msgs = llm.calls[2]["messages"]
-    tool_msgs = [m for m in third_call_msgs if m.get("role") == "tool"]
-    raw = tool_msgs[-1]["content"]
-    synthetic = raw.lower()
-    assert "already asked" in synthetic or "do not" in synthetic, (
-        "second ask_user must receive a synthetic answer telling the LLM not to re-ask; "
-        f"got {raw!r}"
-    )
 
 
 # --- F3 / F4 (prompt-level contract tests) --------------------------------

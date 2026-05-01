@@ -4757,7 +4757,7 @@ def test_loop_emits_plan_event_when_planner_asks_user():
         content=None,
         tool_calls=[
             ToolCall(
-                id="tc-ask", name="ask_user", arguments=_json.dumps({"question": "Which one?"})
+                id="tc-ask", name="ask_user", arguments=_json.dumps({"questions": ["Which one?"]})
             )
         ],
         finish_reason="tool_calls",
