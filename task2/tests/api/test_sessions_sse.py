@@ -194,6 +194,67 @@ def test_terminal_event_forwards_timeout_status(client, monkeypatch):
     assert terminal.get("reason") == "seconds_budget"
 
 
+def test_session_watchdog_emits_terminal_when_loop_hangs(client, monkeypatch):
+    """I2: if the loop hangs past the session deadline, the SSE consumer must
+    still receive a `terminal` event. Round-17 A1 reproduced the contract
+    violation: 365 s of silence from the SSE stream while the loop kept
+    running server-side. The watchdog is the safety net for "loop ignored
+    its own deadline" — the contract is "every run gets a terminal", not
+    "the loop will eventually return".
+    """
+    import threading
+
+    monkeypatch.setenv("SESSION_DEADLINE_SECONDS", "0.3")
+
+    started = threading.Event()
+    release = threading.Event()
+
+    def hanging_loop(*a, **kw):
+        started.set()
+        release.wait(timeout=10.0)  # would hang well past deadline
+        return _DONE_RESULT
+
+    monkeypatch.setattr("api.sessions._invoke_loop", hanging_loop)
+    run_id = client.post("/sessions", json={"task": "stuck"}).json()["id"]
+    assert started.wait(timeout=2.0)
+
+    from api.sessions import get_session
+
+    session = get_session(run_id)
+    assert _wait_for(
+        lambda: any(e.get("type") == "terminal" for e in session.event_log),
+        timeout=2.0,
+    ), f"no terminal emitted within deadline; events={session.event_log!r}"
+
+    terminals = [e for e in session.event_log if e.get("type") == "terminal"]
+    assert len(terminals) == 1, f"expected exactly one terminal, got {terminals!r}"
+    assert terminals[0]["status"] == "timeout"
+    assert terminals[0].get("reason") == "session_deadline"
+
+    release.set()  # unblock the worker thread
+
+
+def test_session_watchdog_does_not_double_emit_terminal(client, monkeypatch):
+    """I2: when the loop returns normally before the watchdog fires, the
+    watchdog must NOT emit a second terminal. The SSE contract is exactly
+    one terminal per run.
+    """
+    monkeypatch.setenv("SESSION_DEADLINE_SECONDS", "5.0")
+    monkeypatch.setattr("api.sessions._invoke_loop", lambda *a, **kw: _DONE_RESULT)
+
+    run_id = client.post("/sessions", json={"task": "fast"}).json()["id"]
+    from api.sessions import get_session
+
+    session = get_session(run_id)
+    assert _wait_for(lambda: session.status == "done")
+
+    # Give the watchdog more than enough time to fire if it were going to.
+    time.sleep(0.2)
+    terminals = [e for e in session.event_log if e.get("type") == "terminal"]
+    assert len(terminals) == 1, f"expected exactly one terminal, got {terminals!r}"
+    assert terminals[0]["status"] == "done"
+
+
 def test_post_sessions_locale_optional(client, monkeypatch):
     """Locale is optional; omitting it must not break session creation."""
     captured: dict = {}

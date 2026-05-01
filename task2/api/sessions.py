@@ -23,6 +23,15 @@ SessionStatus = Literal["running", "awaiting_user", "done", "failed"]
 
 _AGENT_VERSION = "0.1.0"
 
+# Watchdog: hard upper bound for any session, in seconds. The loop has its own
+# `budget_seconds` (300 s by default) but only checks the deadline at the top
+# of each step, so a single slow step (long browser timeout, locator retry
+# storm, blocked answer queue) can leave the SSE consumer with no `terminal`
+# event for arbitrarily long. The watchdog is the safety net: if the loop has
+# not produced a terminal by the deadline, force-emit one so the SSE contract
+# ("every run ends with a terminal") holds even when the loop misbehaves.
+_DEFAULT_SESSION_DEADLINE_SECONDS = 330.0
+
 
 def _terminal_status_label(loop_status: str) -> str:
     """Map RunResult.status to the terminal-event status surface.
@@ -96,6 +105,21 @@ def unsubscribe_events(session: SessionState, q: queue.Queue[dict[str, Any]]) ->
             session.event_subscribers.remove(q)
         except ValueError:
             pass
+
+
+def _emit_terminal_once(session: SessionState, payload: dict[str, Any]) -> bool:
+    """Emit a terminal event iff none has been emitted yet. Returns True if
+    this call emitted, False if a terminal was already in the event log.
+    Guards the SSE contract of exactly one terminal per run when both the
+    loop's normal completion and the watchdog can race."""
+    with session.event_lock:
+        if any(e.get("type") == "terminal" for e in session.event_log):
+            return False
+        session.event_log.append(payload)
+        subs = list(session.event_subscribers)
+    for q in subs:
+        q.put(payload)
+    return True
 
 
 def _make_ask_user_callback(session: SessionState):
@@ -181,6 +205,16 @@ def _invoke_loop(
         writer.close()
 
 
+def _session_deadline_seconds() -> float:
+    raw = os.environ.get("SESSION_DEADLINE_SECONDS")
+    if raw is None:
+        return _DEFAULT_SESSION_DEADLINE_SECONDS
+    try:
+        return float(raw)
+    except ValueError:
+        return _DEFAULT_SESSION_DEADLINE_SECONDS
+
+
 def _worker(
     session: SessionState,
     task: str,
@@ -189,6 +223,36 @@ def _worker(
 ) -> None:
     cb = _make_ask_user_callback(session)
     on_event = lambda payload: emit_event(session, {"type": "trace", **payload})  # noqa: E731
+
+    loop_done = threading.Event()
+
+    def _watchdog() -> None:
+        if loop_done.wait(_session_deadline_seconds()):
+            return
+        # Loop did not finish in time. Emit terminal=timeout so the SSE
+        # consumer sees a clean end. The loop thread keeps running until it
+        # eventually returns (browser/LLM cleanup happens via the context
+        # managers); _emit_terminal_once ensures we don't double-emit.
+        emitted = _emit_terminal_once(
+            session,
+            {
+                "type": "terminal",
+                "status": "timeout",
+                "reason": "session_deadline",
+                "result": None,
+                "evidence": None,
+            },
+        )
+        if emitted:
+            session.status = "failed"
+
+    watchdog_thread = threading.Thread(
+        target=_watchdog,
+        name=f"session-watchdog-{session.run_id}",
+        daemon=True,
+    )
+    watchdog_thread.start()
+
     try:
         result = _invoke_loop(
             task,
@@ -199,8 +263,7 @@ def _worker(
             locale=locale,
         )
         session.result = result
-        session.status = "done" if result.status == "succeeded" else "failed"
-        emit_event(
+        emitted = _emit_terminal_once(
             session,
             {
                 "type": "terminal",
@@ -210,11 +273,19 @@ def _worker(
                 "evidence": result.evidence,
             },
         )
+        if emitted:
+            session.status = "done" if result.status == "succeeded" else "failed"
     except Exception as exc:
         logger.exception("session worker failed", extra={"run_id": session.run_id})
         session.error = str(exc)
-        session.status = "failed"
-        emit_event(session, {"type": "terminal", "status": "failed", "error": str(exc)})
+        emitted = _emit_terminal_once(
+            session,
+            {"type": "terminal", "status": "failed", "error": str(exc)},
+        )
+        if emitted:
+            session.status = "failed"
+    finally:
+        loop_done.set()
 
 
 def start_session(
