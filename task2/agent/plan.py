@@ -34,11 +34,11 @@ _PLAN_SYSTEM = (
     "Ask only what the task actually requires; do not over-ask. Do NOT "
     "guess the missing information. Do NOT include 'ask the user: ...' "
     "as a plan step — that step happens here, in planning, not during "
-    "navigation. After the user answers, you may call `ask_user` again "
-    "if the answer revealed a NEW ambiguity (a different slot you didn't "
-    "know about); but if you already asked about a particular slot once "
-    "and the answer did not fill it, do NOT ask again about that same "
-    "slot — pick a sane default and proceed. "
+    "navigation. You get exactly ONE round of `ask_user`: list every "
+    "missing slot you can see in that single call's `questions` array. "
+    "After the user answers, the `ask_user` tool will no longer be "
+    "available — produce a plan from the Q&A you have, picking sane "
+    "defaults for any still-missing fields. "
     "If information is SUFFICIENT, just produce the plan. "
     "Examples of when to ask vs. plan (described by shape, not by topic):\n"
     "  Ambiguous superlative without a comparator (best/cheapest/nearest/"
@@ -89,13 +89,14 @@ _ASK_USER_TOOL = {
     },
 }
 
-_MAX_ASK_USER_ROUNDS = 3
+_MAX_ASK_USER_ROUNDS = 1
 _MIN_PLAN_STEPS = 2
 _TOO_SHORT_PLAN_MESSAGE = (
     "Your previous plan had fewer than 2 concrete steps. A plan that "
     "just restates the task is not actionable. Produce a new plan with "
     "at least 2 distinct navigation/interaction steps."
 )
+
 
 @dataclass(frozen=True)
 class Plan:
@@ -259,8 +260,13 @@ def plan(
     last_response: Any = None
     asked_fingerprints: set[str] = set()
     short_plan_retried = False
+    asked_rounds = 0
     for _ in range(_MAX_ASK_USER_ROUNDS + 2):
-        response = llm.chat(messages, tools=[_ASK_USER_TOOL])
+        # After the planner has used its one ask_user round, drop the tool
+        # so the LLM cannot ask again — it must produce a plan from the
+        # Q&A already in the message stack.
+        tools_for_round = [_ASK_USER_TOOL] if asked_rounds < _MAX_ASK_USER_ROUNDS else []
+        response = llm.chat(messages, tools=tools_for_round)
         last_response = response
         ask_calls = [tc for tc in (response.tool_calls or []) if tc.name == "ask_user"]
         if not ask_calls:
@@ -290,11 +296,20 @@ def plan(
         )
         for tc in response.tool_calls:
             if tc.name == "ask_user":
-                content = _handle_ask_user_tool_call(
-                    tc,
-                    ask_user_callback,
-                    asked_fingerprints,
-                )
+                if asked_rounds >= _MAX_ASK_USER_ROUNDS:
+                    # ask_user was not advertised this round; the LLM
+                    # hallucinated it. Reject without firing the callback.
+                    content = (
+                        "Error: ask_user is not available after the first "
+                        "round. Produce a final plan now using the Q&A "
+                        "already provided."
+                    )
+                else:
+                    content = _handle_ask_user_tool_call(
+                        tc,
+                        ask_user_callback,
+                        asked_fingerprints,
+                    )
             else:
                 content = f"Error: tool {tc.name!r} not available in planning."
             messages.append(
@@ -304,6 +319,8 @@ def plan(
                     "content": content,
                 }
             )
+        if any(tc.name == "ask_user" for tc in response.tool_calls):
+            asked_rounds += 1
     # Hit round cap without a final plan; fall back.
     return _fallback(task), last_response
 

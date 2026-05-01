@@ -365,9 +365,7 @@ def test_plan_accepts_first_post_answer_plan_without_validation_retry():
         ask_user_callback=_cb,
     )
 
-    assert len(llm.calls) == 2, (
-        f"no validation retry expected; got {len(llm.calls)} LLM calls"
-    )
+    assert len(llm.calls) == 2, f"no validation retry expected; got {len(llm.calls)} LLM calls"
     assert result.steps == [
         "Open a flight search site",
         "Search Taipei to Tokyo and report the cheapest fare",
@@ -611,11 +609,11 @@ def test_i1_ask_user_runtime_caps_list_at_three():
     assert asked == [], f"runtime cap of 3 must reject 4-item list; callback fired for: {asked}"
 
 
-def test_i1_dedup_applies_per_list_item_when_a_question_was_already_asked():
-    """When a second ask_user round overlaps a question from the first round,
-    only the overlapping list items get the dedup-synthetic; new items still
-    invoke the callback. This preserves F18-style "ask once per slot" while
-    not throwing away the LLM's progress on the rest."""
+def test_i1_dedup_applies_per_list_item_within_a_single_ask_round():
+    """A single ask_user call may itself contain duplicate questions. The
+    second occurrence gets the dedup-synthetic; the first invokes the
+    callback. Cross-round dedup is no longer relevant because the planner
+    is restricted to a single ask_user round (see I-single-ask)."""
     asked: list[str] = []
 
     def _cb(q: str) -> str:
@@ -625,11 +623,10 @@ def test_i1_dedup_applies_per_list_item_when_a_question_was_already_asked():
     plan_json = json.dumps({"steps": ["Open site", "Continue"], "expected_end_state": "ok"})
     llm = _ScriptedLLM(
         [
-            _tool_call_response("ask_user", {"questions": ["Which branch?"]}, call_id="tc-1"),
             _tool_call_response(
                 "ask_user",
-                {"questions": ["Which branch?", "What date?"]},
-                call_id="tc-2",
+                {"questions": ["Which branch?", "Which branch?"]},
+                call_id="tc-dup",
             ),
             _fake_response(plan_json),
         ]
@@ -637,6 +634,62 @@ def test_i1_dedup_applies_per_list_item_when_a_question_was_already_asked():
 
     plan(task="t", observation={}, llm=llm, ask_user_callback=_cb)
 
-    # First round asked branch; second round overlaps on branch (dedup) and
-    # adds date (callback fires).
-    assert asked == ["Which branch?", "What date?"], asked
+    # Only the first occurrence of the duplicated question fires the callback.
+    assert asked == ["Which branch?"], asked
+
+
+def test_planner_drops_ask_user_tool_after_first_ask_round():
+    """After the planner emits one ask_user tool call (regardless of how many
+    questions it contains), the next chat() call must NOT advertise the
+    ask_user tool. The planner is forced to produce a plan from the Q&A it
+    already has, instead of being able to ask in a second round."""
+
+    def _cb(_q: str) -> str:
+        return "December 15, 2026"
+
+    plan_json = json.dumps({"steps": ["s1", "s2"], "expected_end_state": "ok"})
+    llm = _ScriptedLLM(
+        [
+            _tool_call_response("ask_user", {"questions": ["When?"]}, call_id="tc-1"),
+            _fake_response(plan_json),
+        ]
+    )
+
+    plan(task="Task", observation={}, llm=llm, ask_user_callback=_cb)
+
+    assert len(llm.calls) == 2
+    first_tools = llm.calls[0]["tools"] or []
+    assert any((t.get("function") or {}).get("name") == "ask_user" for t in first_tools), (
+        "first call should advertise ask_user"
+    )
+    second_tools = llm.calls[1]["tools"] or []
+    assert not any((t.get("function") or {}).get("name") == "ask_user" for t in second_tools), (
+        f"second call must NOT advertise ask_user; got tools={second_tools}"
+    )
+
+
+def test_planner_callback_not_fired_when_second_round_hallucinates_tool():
+    """If the LLM ignores the absent ask_user tool and emits one anyway in
+    round 2, plan() must NOT invoke the callback again. The next round
+    must produce a plan from the message stack."""
+    asked: list[str] = []
+
+    def _cb(q: str) -> str:
+        asked.append(q)
+        return "ans"
+
+    plan_json = json.dumps({"steps": ["s1", "s2"], "expected_end_state": "ok"})
+    llm = _ScriptedLLM(
+        [
+            _tool_call_response("ask_user", {"questions": ["Which?"]}, call_id="tc-1"),
+            # LLM hallucinates ask_user a second time despite tools=[].
+            _tool_call_response("ask_user", {"questions": ["Which again?"]}, call_id="tc-2"),
+            _fake_response(plan_json),
+        ]
+    )
+
+    result, _ = plan(task="task", observation={}, llm=llm, ask_user_callback=_cb)
+
+    assert asked == ["Which?"], f"second-round callback must not fire; asked={asked}"
+    assert isinstance(result, Plan)
+    assert result.steps == ["s1", "s2"]
