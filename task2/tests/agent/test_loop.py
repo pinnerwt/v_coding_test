@@ -3296,9 +3296,7 @@ def test_i3_click_playwright_error_retries_via_js_click(monkeypatch):
 
     fake_browser = types.SimpleNamespace(_page=_StubPage())
 
-    monkeypatch.setattr(
-        "agent.loop._locate_or_error_msg", lambda *_a, **_kw: locate_result
-    )
+    monkeypatch.setattr("agent.loop._locate_or_error_msg", lambda *_a, **_kw: locate_result)
 
     run_id = "i3-js-click-on-error"
     writer = _open_click_writer(run_id)
@@ -3330,6 +3328,109 @@ def test_i3_click_playwright_error_retries_via_js_click(monkeypatch):
     assert not result_str.lower().startswith("error"), (
         f"I3: dispatcher must not report error after JS-click recovery; got {result_str!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Locate-stage error emits a LocateEvent so SSE traces show *why* locate failed
+# ---------------------------------------------------------------------------
+
+
+def test_locate_or_error_msg_emits_locate_event_on_intent_parse_error(monkeypatch):
+    """When parse_intent rejects an intent (e.g. last token isn't a supported
+    role), _locate_or_error_msg currently returns an error string but emits
+    no LocateEvent — leaving SSE consumers (update_agent2 traces) with only
+    `act outcome=error ms=0` and no breadcrumb of why locate failed.
+
+    Round-20 A6/U4 traces showed exactly this hole: zero `kind=locate` rows
+    despite repeated locate failures, because intents like "the search bar at
+    the top of the page" parse to role='page' which raises IntentParseError
+    before any tier event is emitted.
+    """
+    from agent.locate import IntentParseError
+    from agent.loop import _locate_or_error_msg
+    from agent.supervisor import Supervisor
+
+    def boom(*_a, **_kw):
+        raise IntentParseError("unknown role token 'page' in intent 'the bar page'")
+
+    monkeypatch.setattr("agent.loop._locate_with_supervisor", boom)
+
+    run_id = "intent-parse-err"
+    writer = _open_click_writer(run_id)
+
+    result = _locate_or_error_msg(
+        None,
+        "the search bar at the top of the page",
+        Supervisor(),
+        cache=None,
+        trace_writer=writer,
+        run_id=run_id,
+        step_id=f"{run_id}:step-1",
+    )
+
+    assert isinstance(result, str) and result.startswith("Error: could not locate"), (
+        f"expected error string return, got {result!r}"
+    )
+
+    locate_events = [e for e in writer.iter_events(run_id) if isinstance(e, LocateEvent)]
+    assert locate_events, (
+        "expected a LocateEvent on IntentParseError so SSE traces show why "
+        "locate failed; without it, update_agent2 sees only act/outcome=error/ms=0"
+    )
+    err_events = [e for e in locate_events if e.outcome == "error"]
+    assert err_events, (
+        f"expected outcome=error LocateEvent, got outcomes {[e.outcome for e in locate_events]}"
+    )
+    ev = err_events[0]
+    assert ev.intent == "the search bar at the top of the page"
+    assert ev.step_id == f"{run_id}:step-1"
+    assert "unknown role" in (ev.reason or "") or "page" in (ev.reason or ""), (
+        f"LocateEvent.reason should carry the parse error message; got {ev.reason!r}"
+    )
+    writer.close()
+
+
+def test_locate_or_error_msg_emits_locate_event_on_terminal_locator_miss(monkeypatch):
+    """When the ladder exhausts and `_locate_with_supervisor` propagates
+    LocatorMiss (e.g. supervisor halts at L1_ax max_attempts), the per-tier
+    LocateEvents are already in the trace, but emit a final outcome=error
+    LocateEvent too so the trace consumer can see "this is the final verdict
+    on this intent" without scanning for which tier was the last one."""
+    from agent.locate import LocatorMiss
+    from agent.loop import _locate_or_error_msg
+    from agent.supervisor import Supervisor
+
+    def boom(*_a, **_kw):
+        raise LocatorMiss(reason="zero_matches", match_count=0)
+
+    monkeypatch.setattr("agent.loop._locate_with_supervisor", boom)
+
+    run_id = "locator-miss-terminal"
+    writer = _open_click_writer(run_id)
+
+    result = _locate_or_error_msg(
+        None,
+        "Submit button",
+        Supervisor(),
+        cache=None,
+        trace_writer=writer,
+        run_id=run_id,
+        step_id=f"{run_id}:step-1",
+    )
+
+    assert isinstance(result, str) and result.startswith("Error: could not locate")
+
+    err_events = [
+        e for e in writer.iter_events(run_id) if isinstance(e, LocateEvent) and e.outcome == "error"
+    ]
+    assert err_events, (
+        "expected a final outcome=error LocateEvent on terminal LocatorMiss so "
+        "trace consumers see the locate-stage verdict explicitly"
+    )
+    assert "zero_matches" in (err_events[0].reason or "") or "locator miss" in (
+        err_events[0].reason or ""
+    ), f"reason should carry LocatorMiss text; got {err_events[0].reason!r}"
+    writer.close()
 
 
 # ---------------------------------------------------------------------------
@@ -3642,9 +3743,7 @@ def test_loop_type_validation_guard_returns_error_without_locating(args, expecte
     # F29: validation guards now emit an act(outcome=error) so the trace stays
     # contiguous with step_id increments. Locate must still not run — verify
     # via the absence of locate events, not via the act-event count.
-    assert len(locate_events) == 0, (
-        f"locate must not run when {expected_field} guard fires"
-    )
+    assert len(locate_events) == 0, f"locate must not run when {expected_field} guard fires"
     assert len(act_events) == 1, (
         f"F29: validation guard must emit one act(error) event; got {act_events}"
     )

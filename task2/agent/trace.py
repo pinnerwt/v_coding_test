@@ -60,6 +60,10 @@ class LocateEvent(EventBase):
     chosen: dict[str, Any] | None
     cache_action: Literal["read", "write", "invalidate"] | None
     ms: int
+    # Free-form diagnostic for outcome=error: e.g. IntentParseError message,
+    # terminal LocatorMiss text. Helps SSE consumers (update_agent2) see *why*
+    # locate failed without having to reconstruct it from the per-tier trail.
+    reason: str | None = None
 
 
 class ActEvent(EventBase):

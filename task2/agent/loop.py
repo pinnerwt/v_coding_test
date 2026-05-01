@@ -984,6 +984,7 @@ def _emit_locate_event(
     cache_action: Literal["read", "write", "invalidate"] | None,
     chosen: dict[str, Any] | None,
     step_id: str | None = None,
+    reason: str | None = None,
 ) -> int | None:
     if trace_writer is None or run_id is None:
         return None
@@ -1000,6 +1001,7 @@ def _emit_locate_event(
         chosen=chosen,
         cache_action=cache_action,
         ms=0,
+        reason=reason,
     )
     trace_writer.append_event(event)
     return seq
@@ -1141,6 +1143,21 @@ def _locate_or_error_msg(
             llm_chat=llm_chat,
         )
     except (LocatorMiss, IntentParseError) as miss:
+        # Emit a terminal LocateEvent(outcome=error) so SSE consumers see *why*
+        # locate failed. IntentParseError otherwise produces no locate trail at
+        # all (raised before any tier runs); terminal LocatorMiss already has
+        # per-tier events but a final error event makes the verdict explicit.
+        _emit_locate_event(
+            trace_writer=trace_writer,
+            run_id=run_id,
+            intent=intent,
+            tier="L1_ax",
+            outcome="error",
+            cache_action=None,
+            chosen=None,
+            step_id=step_id,
+            reason=str(miss),
+        )
         return f"Error: could not locate element for intent {intent!r} ({miss})"
 
 
