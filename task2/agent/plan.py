@@ -54,6 +54,16 @@ _PLAN_SYSTEM = (
     "call."
 )
 
+_PLAN_SYSTEM_NO_ASK = (
+    "You are a planning assistant for a browser agent. The conversation "
+    "above already contains the user's clarifying answers (if any were "
+    "needed). The `ask_user` tool is no longer available — do not request "
+    "more information from the user. Produce a concrete step-by-step plan "
+    "now using the answers above plus sane defaults for any still-missing "
+    "fields. Respond with ONLY a JSON object: "
+    '{"steps": ["step 1", ...], "expected_end_state": "..."} — no tool call.'
+)
+
 _REPLAN_SYSTEM = (
     "You are a planning assistant. The prior plan failed partway through. "
     "Given the task, current state, prior steps, and failure reason, "
@@ -263,9 +273,14 @@ def plan(
     asked_rounds = 0
     for _ in range(_MAX_ASK_USER_ROUNDS + 2):
         # After the planner has used its one ask_user round, drop the tool
-        # so the LLM cannot ask again — it must produce a plan from the
-        # Q&A already in the message stack.
-        tools_for_round = [_ASK_USER_TOOL] if asked_rounds < _MAX_ASK_USER_ROUNDS else []
+        # AND swap the system prompt so it stops instructing the LLM to call
+        # ask_user. Otherwise prompt and tool list contradict.
+        ask_available = asked_rounds < _MAX_ASK_USER_ROUNDS
+        tools_for_round = [_ASK_USER_TOOL] if ask_available else []
+        messages[0] = {
+            "role": "system",
+            "content": _PLAN_SYSTEM if ask_available else _PLAN_SYSTEM_NO_ASK,
+        }
         response = llm.chat(messages, tools=tools_for_round)
         last_response = response
         ask_calls = [tc for tc in (response.tool_calls or []) if tc.name == "ask_user"]

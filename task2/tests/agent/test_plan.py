@@ -693,3 +693,45 @@ def test_planner_callback_not_fired_when_second_round_hallucinates_tool():
     assert asked == ["Which?"], f"second-round callback must not fire; asked={asked}"
     assert isinstance(result, Plan)
     assert result.steps == ["s1", "s2"]
+
+
+def test_planner_second_round_system_prompt_does_not_advertise_ask_user():
+    """When ask_user is no longer offered as a tool, the system prompt for that
+    round must also stop telling the LLM to call it. Otherwise the prompt and
+    the tool list contradict — the model is told to "call ask_user" but the
+    tool isn't available, which produces hallucinated tool calls or confused
+    plan output."""
+
+    def _cb(_q: str) -> str:
+        return "Tianmu"
+
+    plan_json = json.dumps({"steps": ["s1", "s2"], "expected_end_state": "ok"})
+    llm = _ScriptedLLM(
+        [
+            _tool_call_response("ask_user", {"questions": ["Which branch?"]}, call_id="tc-1"),
+            _fake_response(plan_json),
+        ]
+    )
+
+    plan(task="Book a table", observation={}, llm=llm, ask_user_callback=_cb)
+
+    assert len(llm.calls) == 2
+    first_sys = llm.calls[0]["messages"][0]
+    second_sys = llm.calls[1]["messages"][0]
+    assert first_sys["role"] == "system"
+    assert second_sys["role"] == "system"
+
+    # Round 0: ask_user is offered, prompt MUST instruct the LLM about it.
+    assert "ask_user" in first_sys["content"]
+    assert "call the `ask_user` tool" in first_sys["content"]
+
+    # Round 1: ask_user tool is dropped — the prompt must not direct the LLM
+    # to call it. No "call the `ask_user`" directive, no "If information is
+    # INSUFFICIENT" branch that instructs asking.
+    second = second_sys["content"]
+    assert "call the `ask_user` tool" not in second, second
+    assert "call `ask_user`" not in second, second
+    # The prompt should still tell the LLM to produce a plan.
+    assert "plan" in second.lower()
+    # And it should still constrain the response shape.
+    assert "JSON object" in second or "json object" in second.lower()
