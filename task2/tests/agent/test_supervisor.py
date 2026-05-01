@@ -120,6 +120,73 @@ def test_supervisor_last_policy_is_halt_after_exhaustion():
     assert sup.last_policy == "halt"
 
 
-def test_supervisor_replan_used_is_false_on_construction():
+def test_supervisor_replan_state_is_empty_on_construction():
     sup = Supervisor()
-    assert sup.replan_used is False
+    assert sup.replans_used == 0
+    assert sup.last_replan_classification is None
+
+
+# ---------------------------------------------------------------------------
+# T6 — multi-replan budget with monotone escalation
+# ---------------------------------------------------------------------------
+
+
+def test_can_replan_returns_true_for_first_replan_any_classification():
+    """With no prior replan, any classification is allowed."""
+    for cls in ("off_plan", "tool_error", "unsupported_done"):
+        sup = Supervisor()
+        assert sup.can_replan(cls) is True, f"first replan must be allowed for {cls!r}"
+
+
+def test_record_replan_increments_counter_and_stores_classification():
+    sup = Supervisor()
+    sup.record_replan("off_plan")
+    assert sup.replans_used == 1
+    assert sup.last_replan_classification == "off_plan"
+    sup.record_replan("tool_error")
+    assert sup.replans_used == 2
+    assert sup.last_replan_classification == "tool_error"
+
+
+def test_can_replan_rejects_repeat_of_same_classification():
+    """Oscillation guard: same classification twice in a row is rejected."""
+    sup = Supervisor()
+    sup.record_replan("off_plan")
+    assert sup.can_replan("off_plan") is False
+
+
+def test_can_replan_rejects_weaker_classification_after_stronger():
+    """Monotone: tool_error after unsupported_done is weaker, must be rejected."""
+    sup = Supervisor()
+    sup.record_replan("unsupported_done")
+    assert sup.can_replan("tool_error") is False
+    assert sup.can_replan("off_plan") is False
+
+
+def test_can_replan_accepts_strictly_stronger_classification():
+    """Escalation chain off_plan → tool_error → unsupported_done is allowed."""
+    sup = Supervisor()
+    sup.record_replan("off_plan")
+    assert sup.can_replan("tool_error") is True
+    sup.record_replan("tool_error")
+    assert sup.can_replan("unsupported_done") is True
+
+
+def test_can_replan_respects_budget_cap_of_three():
+    """Even under monotone escalation the cap of 3 holds."""
+    sup = Supervisor()
+    sup.record_replan("off_plan")
+    sup.record_replan("tool_error")
+    sup.record_replan("unsupported_done")
+    assert sup.replans_used == 3
+    # No classification stronger than unsupported_done exists, but the cap
+    # alone must already deny further replans.
+    assert sup.can_replan("unsupported_done") is False
+
+
+def test_can_replan_unknown_classification_is_treated_as_lowest_severity():
+    """Unknown classifications fall through to severity 0 — never strong enough
+    to escalate from any known prior classification."""
+    sup = Supervisor()
+    sup.record_replan("off_plan")
+    assert sup.can_replan("mystery") is False

@@ -5523,6 +5523,123 @@ def test_action_tool_schemas_advertise_plan_cursor():
         assert "plan_cursor" in props, f"{fn['name']} missing plan_cursor"
 
 
+def test_loop_replans_twice_when_classifications_escalate(
+    fixture_server, playwright_chromium
+):
+    """T6: with the budget raised to 3, a single run may replan more than
+    once provided each replan is triggered by a strictly stronger
+    classification than the previous one. Here off-plan (severity 1) fires
+    replan #1, then unsupported_done (severity 3) fires replan #2."""
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+    off_plan_args = {
+        "url": fixture_url,
+        "plan_cursor": "off-plan",
+        "plan_cursor_reason": "current page lacks needed elements",
+    }
+    final_done = _tool_call(
+        "done",
+        {
+            "result": {"heading": "Hello, loop"},
+            "evidence": {"url": fixture_url, "text_snippet": "Hello, loop"},
+            "evaluation_previous_action": "success",
+            "evaluation_reason": "navigated to fixture",
+            "next_goal": "report final answer",
+        },
+        call_id="tc-final",
+    )
+    responses = [
+        # Two consecutive off-plan declarations → replan #1 (off_plan).
+        _response_with_tool_call(_tool_call("goto", off_plan_args, call_id="tc-1")),
+        _response_with_tool_call(_tool_call("goto", off_plan_args, call_id="tc-2")),
+        # Then an unsupported `done` → replan #2 (unsupported_done, stronger).
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"price": "NT$8,710 from Taipei"},
+                    "evidence": {"url": fixture_url, "text_snippet": "Hello, loop"},
+                    "evaluation_previous_action": "success",
+                    "evaluation_reason": "saw price",
+                    "next_goal": "report final answer",
+                },
+                call_id="tc-3",
+            )
+        ),
+        # Finally a supported `done` to terminate.
+        _response_with_tool_call(final_done),
+    ]
+    fake_llm = _FakeLLMClient(
+        responses,
+        judge_responses=[
+            _judge_response("unsupported", "price not in observations"),
+            _judge_response("supported", "matches"),
+        ],
+    )
+
+    run_id = "test-t6-monotone-escalation"
+    writer = _make_writer_with_run(run_id)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        loop(
+            "t",
+            browser,
+            fake_llm,
+            max_steps=8,
+            trace_writer=writer,
+            run_id=run_id,
+        )
+
+    plan_events = [e for e in writer.iter_events(run_id) if isinstance(e, PlanEvent)]
+    replan_events = [e for e in plan_events if e.reason == "replan"]
+    assert len(replan_events) == 2, (
+        f"expected 2 replans (off_plan then unsupported_done), got {len(replan_events)}"
+    )
+    writer.close()
+
+
+def test_loop_does_not_replan_twice_for_same_classification(
+    fixture_server, playwright_chromium
+):
+    """T6 oscillation guard: the same classification firing twice in a row
+    must not produce a second replan, even if the run has budget left."""
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+    off_plan_args = {
+        "url": fixture_url,
+        "plan_cursor": "off-plan",
+        "plan_cursor_reason": "lost",
+    }
+    fail_call = _tool_call(
+        "fail",
+        {
+            "rationale": "stuck after replan",
+            "evaluation_previous_action": "failed",
+            "evaluation_reason": "still off-plan",
+            "next_goal": "give up",
+        },
+        call_id="tc-fail",
+    )
+    # Sequence: off_plan x2 → replan #1; off_plan x2 → would be replan #2
+    # but is rejected by monotone-escalation; loop must not emit a 2nd replan.
+    responses = [
+        _response_with_tool_call(_tool_call("goto", off_plan_args, call_id="tc-1")),
+        _response_with_tool_call(_tool_call("goto", off_plan_args, call_id="tc-2")),
+        _response_with_tool_call(_tool_call("goto", off_plan_args, call_id="tc-3")),
+        _response_with_tool_call(_tool_call("goto", off_plan_args, call_id="tc-4")),
+        _response_with_tool_call(fail_call),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+    events: list = []
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        loop("task", browser, fake_llm, max_steps=8, events=events)
+
+    replan_events = [e for e in events if isinstance(e, PlanEvent) and e.reason == "replan"]
+    assert len(replan_events) == 1, (
+        f"expected exactly 1 replan (oscillation guard blocks 2nd off_plan), "
+        f"got {len(replan_events)}"
+    )
+
+
 def test_grounded_legacy_string_tape_preserved():
     """Backward-compat: when called with a plain string tape (legacy API),
     behave like the original substring rule. Existing call sites that don't

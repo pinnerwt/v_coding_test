@@ -1658,7 +1658,7 @@ def loop(
                                     attempt=1,
                                 )
                             )
-                        if not supervisor.replan_used:
+                        if supervisor.can_replan("unsupported_done"):
                             messages.append(
                                 {
                                     "role": "tool",
@@ -1681,7 +1681,7 @@ def loop(
                             cum_prompt_tokens += replan_resp.usage.prompt_tokens
                             cum_completion_tokens += replan_resp.usage.completion_tokens
                             cum_usd += replan_resp.usd
-                            supervisor.replan_used = True
+                            supervisor.record_replan("unsupported_done")
                             active_plan = new_plan
                             _no_progress_buf.clear()
                             replanned_this_step = True
@@ -1854,14 +1854,14 @@ def loop(
 
             if is_error and supervisor.last_policy == "halt":
                 supervisor.last_policy = None
-                if not supervisor.replan_used:
+                if supervisor.can_replan("tool_error"):
                     new_plan, replan_resp = plan_module.replan(
                         task, observation, active_plan, tool_result, llm_client
                     )
                     cum_prompt_tokens += replan_resp.usage.prompt_tokens
                     cum_completion_tokens += replan_resp.usage.completion_tokens
                     cum_usd += replan_resp.usd
-                    supervisor.replan_used = True
+                    supervisor.record_replan("tool_error")
                     active_plan = new_plan
                     _no_progress_buf.clear()
                     replanned_this_step = True
@@ -1908,8 +1908,8 @@ def loop(
             if (
                 not replanned_this_step
                 and active_plan is not None
-                and not supervisor.replan_used
                 and _consecutive_off_plan_steps >= _OFF_PLAN_REPLAN_THRESHOLD
+                and supervisor.can_replan("off_plan")
             ):
                 feedback_reason = (
                     "off-plan: " + step_off_plan_reason
@@ -1926,7 +1926,7 @@ def loop(
                 cum_prompt_tokens += replan_resp.usage.prompt_tokens
                 cum_completion_tokens += replan_resp.usage.completion_tokens
                 cum_usd += replan_resp.usd
-                supervisor.replan_used = True
+                supervisor.record_replan("off_plan")
                 active_plan = new_plan
                 _no_progress_buf.clear()
                 _consecutive_off_plan_steps = 0
