@@ -944,12 +944,12 @@ def _emit_act_event(
     run_id: str | None,
     tool: str,
     args: dict[str, Any],
-    outcome: Literal["ok", "no_effect", "nav", "timeout", "error"],
+    outcome: Literal["ok", "no_effect", "nav", "timeout", "error", "halted_by_supervisor"],
     ms: int,
     step_id: str | None = None,
-) -> None:
+) -> int:
     if trace_writer is None or run_id is None:
-        return
+        return 0
     seq = trace_writer.next_seq(run_id)
     event = ActEvent(
         run_id=run_id,
@@ -963,6 +963,7 @@ def _emit_act_event(
         ms=ms,
     )
     trace_writer.append_event(event)
+    return seq
 
 
 def _locate_with_supervisor(
@@ -1681,13 +1682,27 @@ def loop(
                         )
                 if premature_reason is not None:
                     use_writer = trace_writer is not None and run_id is not None
+                    # F10: emit an `act` event for the rejected `done` so the
+                    # trace shows what was proposed. Previously the supervisor
+                    # halt fired with trigger_event_seq=0 and there was no
+                    # corresponding act event — leaving an unexplained gap in
+                    # the trace.
+                    act_seq = _emit_act_event(
+                        trace_writer=trace_writer,
+                        run_id=run_id,
+                        tool="done",
+                        args=dict(args),
+                        outcome="halted_by_supervisor",
+                        ms=0,
+                        step_id=_step_id,
+                    )
                     sup_seq = trace_writer.next_seq(run_id) if use_writer else 0
                     sup_event = SupervisorEvent(
                         run_id=run_id if use_writer else "loop",
                         seq=sup_seq,
                         ts=datetime.now(UTC).isoformat() if use_writer else "",
                         step_id=_step_id,
-                        trigger_event_seq=0,
+                        trigger_event_seq=act_seq,
                         classified_as="premature_done",
                         policy="halt",
                         attempt=1,

@@ -66,7 +66,7 @@ class ActEvent(EventBase):
     kind: Literal["act"] = "act"
     tool: str
     args: dict[str, Any]
-    outcome: Literal["ok", "no_effect", "nav", "timeout", "error"]
+    outcome: Literal["ok", "no_effect", "nav", "timeout", "error", "halted_by_supervisor"]
     diff: dict[str, Any]
     ms: int
 

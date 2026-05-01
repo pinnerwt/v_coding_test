@@ -632,3 +632,87 @@ def test_f12_read_intent_unlocatable_falls_back_to_body(fixture_server, playwrig
     )
     # Body text must contain the heading from the fixture.
     assert "Hello" in out
+
+
+# --- F10 (rejected `done` emits act event before supervisor halt) ----------
+
+
+def test_f10_premature_done_emits_act_event_before_supervisor_halt(
+    fixture_server, playwright_chromium
+):
+    """Round-4 evidence (U1 step-8): a `done` rejected by the supervisor
+    produced a SupervisorEvent with `trigger_event_seq=0` and no preceding
+    `act` event. The trace then has no record of what was proposed — leaves
+    a gap that obstructs post-mortems. The loop must emit an `act` event
+    with `tool="done"` and `outcome="halted_by_supervisor"` *before* the
+    supervisor halt event, and the supervisor event's `trigger_event_seq`
+    must point at it (not 0).
+    """
+    from agent.trace import ActEvent, SupervisorEvent
+    from tests.agent.test_loop import (  # type: ignore[no-untyped-import]
+        _FakeLLMClient,
+        _make_writer_with_run,
+        _response_with_tool_call,
+        _tool_call,
+    )
+
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+    bad_done = _tool_call(
+        "done",
+        {
+            "result": {"ok": True},
+            "evidence": {"url": fixture_url, "text_snippet": "Hello, loop"},
+            "evaluation_previous_action": "no_action_yet",
+            "evaluation_reason": "I have not interacted with the page",
+            "next_goal": "report final answer",
+        },
+        call_id="tc-bad",
+    )
+    follow_up_fail = _tool_call("fail", {"reason": "halt"}, call_id="tc-fail")
+    fake_llm = _FakeLLMClient(
+        [
+            _response_with_tool_call(bad_done),
+            _response_with_tool_call(follow_up_fail),
+        ]
+    )
+
+    run_id = "f10-halt-act"
+    writer = _make_writer_with_run(run_id)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        loop(
+            "task",
+            browser,
+            fake_llm,
+            max_steps=5,
+            trace_writer=writer,
+            run_id=run_id,
+        )
+
+    events = list(writer.iter_events(run_id))
+    act_events = [
+        e for e in events if isinstance(e, ActEvent) and e.tool == "done"
+    ]
+    sup_events = [
+        e
+        for e in events
+        if isinstance(e, SupervisorEvent) and e.classified_as == "premature_done"
+    ]
+    writer.close()
+
+    assert sup_events, "expected a premature_done SupervisorEvent"
+    assert act_events, (
+        "expected an ActEvent with tool='done' for the rejected done; "
+        "F10 closes the trigger_event_seq=0 trace gap"
+    )
+    halt_act = act_events[0]
+    assert halt_act.outcome == "halted_by_supervisor", (
+        f"act event for rejected done must use the new outcome literal; got {halt_act.outcome!r}"
+    )
+    sup = sup_events[0]
+    assert sup.trigger_event_seq == halt_act.seq, (
+        f"supervisor halt must point at the act event seq ({halt_act.seq}), "
+        f"got trigger_event_seq={sup.trigger_event_seq}"
+    )
+    # Order: act event must precede the supervisor halt in the trace.
+    assert halt_act.seq < sup.seq
