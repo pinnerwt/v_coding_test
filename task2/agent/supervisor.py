@@ -5,10 +5,15 @@ from dataclasses import dataclass
 from agent.locate import LocatorMiss
 from agent.trace import EscalationPolicy
 
-# Only implemented escalation row. L2→L3, L3→L4, and L1-ambiguous→L3 are
-# deliberately absent so unknown (tier, reason) pairs fall through to halt.
+# Escalation rows the supervisor blesses when invoked from the loop. The
+# canonical locator ladder (`agent.locate._resolve_via_ladder`) handles the
+# remaining transitions internally — the loop only consults the supervisor
+# at L1_ax to record the attempt and decide whether to halt under
+# `max_attempts`. F22: ambiguous L1 must reach L3_rerank so cross-language
+# accessible-name mismatches are recoverable.
 _ESCALATION_TABLE: dict[tuple[str, str], str] = {
     ("L1_ax", "zero_matches"): "L2_dom",
+    ("L1_ax", "ambiguous"): "L3_rerank",
 }
 
 # T6: per-run replan budget with monotone escalation. Each replan must be
@@ -18,7 +23,11 @@ _ESCALATION_TABLE: dict[tuple[str, str], str] = {
 _REPLAN_SEVERITY: dict[str, int] = {
     "off_plan": 1,
     "tool_error": 2,
-    "unsupported_done": 3,
+    # F20: list-shape comparison-superlative mismatch sits between tool_error
+    # and unsupported_done so a structural list-coverage signal can fire first
+    # and an LLM-judge unsupported_done can still escalate above it.
+    "unsupported_superlative": 3,
+    "unsupported_done": 4,
 }
 _DEFAULT_MAX_REPLANS: int = 3
 

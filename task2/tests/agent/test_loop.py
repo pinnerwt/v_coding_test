@@ -17,6 +17,7 @@ from agent.loop import (
     loop,
     verify_done_with_llm,
 )
+from agent.supervisor import Supervisor
 from agent.trace import (
     ActEvent,
     LocateEvent,
@@ -327,7 +328,13 @@ def test_dispatch_read_with_find_returns_window_past_default_limit(
         f"{fixture_server}/read_find_long_page.html",
         {"find": "TURING_2018_WINNERS_SENTINEL"},
     )
+    # F23: find searches the FULL innerText, not the 2 KB-truncated body, so
+    # the sentinel past offset 5000 is locatable. Result must include both
+    # the sentinel AND its surrounding context (proves we returned the
+    # window, not an error message that echoed the query).
+    assert not out.lower().startswith("error"), out
     assert "TURING_2018_WINNERS_SENTINEL" in out
+    assert "Before the target" in out
 
 
 def test_dispatch_read_no_arg_truncates_before_sentinel(fixture_server, playwright_chromium):
@@ -342,14 +349,20 @@ def test_dispatch_read_no_arg_truncates_before_sentinel(fixture_server, playwrig
     assert "TURING_2018_WINNERS_SENTINEL" not in out
 
 
-def test_dispatch_read_with_find_no_match_returns_error(fixture_server, playwright_chromium):
+def test_dispatch_read_with_find_no_match_returns_ok_with_match_count_zero(
+    fixture_server, playwright_chromium
+):
+    # F23: a substring genuinely absent from the page is not a page failure;
+    # surface it as `ok` with `match_count=0` so the agent treats it as
+    # "look elsewhere on this page" rather than "page is broken."
     out = _run_read_dispatch(
         playwright_chromium,
         f"{fixture_server}/loop_happy_path.html",
         {"find": "definitely_not_present_xyz"},
     )
-    assert out.lower().startswith("error")
-    assert "not found" in out.lower()
+    assert not out.lower().startswith("error")
+    assert "no match" in out.lower()
+    assert "match_count=0" in out
 
 
 def test_dispatch_read_rejects_both_intent_and_find(fixture_server, playwright_chromium):
@@ -1847,9 +1860,12 @@ def test_loop_accepts_locator_cache_kwarg(fixture_server, playwright_chromium):
     writer.close()
 
 
-def test_loop_locator_cache_none_skips_emission_on_read_dispatch(
+def test_loop_locator_cache_none_emits_per_tier_locate_events_on_read_dispatch(
     fixture_server, playwright_chromium
 ):
+    """Without a cache, the canonical locator ladder still emits a per-tier
+    LocateEvent for each tier outcome. Cache-action fields stay None so the
+    trace is unambiguous about which events were cache-driven."""
     fixture_url = f"{fixture_server}/drift/submit-form/v1/index.html"
     intent = "Submit button"
     run_id = "test-kwarg-none-with-read"
@@ -1882,8 +1898,11 @@ def test_loop_locator_cache_none_skips_emission_on_read_dispatch(
         )
 
     assert result.status == "succeeded"
-    assert _locate_rows(writer) == [], (
-        "no LocateEvent rows should be emitted when locator_cache=None even on read dispatch"
+    rows = _locate_rows(writer)
+    assert rows, "expected at least one LocateEvent on read dispatch even without cache"
+    assert all(r["cache_action"] is None for r in rows), (
+        "cache_action must be None when no cache is configured, "
+        f"got {[r['cache_action'] for r in rows]}"
     )
     writer.close()
 
@@ -2566,37 +2585,94 @@ def test_emit_supervisor_event_maps_vision_miss_reason():
 
 
 # ---------------------------------------------------------------------------
-# _locate_via_ladder trace emission unit tests
+# Loop locator pipeline reaches L3_rerank when llm_chat is provided
 # ---------------------------------------------------------------------------
 
 
-def _make_mock_supervisor_next_tier(next_tier: str = "L2_dom"):
-    from agent.locate import LocatorMiss
-    from agent.supervisor import EscalationDecision, Supervisor
+def _ok_chat_response_for_locate(content: str):
+    from agent.llm import ChatResponse, Usage
 
-    class _AlwaysNextTier(Supervisor):
-        def handle(self, miss: LocatorMiss, *, current_tier: str) -> EscalationDecision:
-            decision = EscalationDecision(next_tier=next_tier, policy="next_tier", attempt=1)
-            self.last_policy = decision.policy
-            return decision
+    return ChatResponse(
+        content=content,
+        tool_calls=[],
+        finish_reason="stop",
+        model="stub",
+        usage=Usage(prompt_tokens=0, completion_tokens=0, total_tokens=0),
+        raw={},
+    )
 
-    return _AlwaysNextTier()
+
+def _make_loop_chat_stub(content: str):
+    calls: list[dict] = []
+
+    def stub(messages, **kwargs):
+        calls.append({"messages": messages, "kwargs": kwargs})
+        return _ok_chat_response_for_locate(content)
+
+    stub.calls = calls  # type: ignore[attr-defined]
+    return stub
 
 
-def test_locate_via_ladder_l1_miss_l2_hit_emits_three_events(fixture_server, playwright_chromium):
-    from agent.loop import _locate_via_ladder
+def test_loop_locate_pipeline_reaches_l3_rerank(fixture_server, playwright_chromium):
+    """Ambiguous L1 must escalate to L3_rerank via the loop's locator seam.
+
+    Regression for the truncated-ladder fork: the loop's _locate_with_supervisor
+    used to short-circuit at L2/L_textmatch and never reach L3_rerank or L4_vision,
+    which made cross-language locator misses (e.g. CJK accessible-name vs an
+    English intent) unrecoverable in the served agent.
+    """
+    from agent.loop import _locate_with_supervisor
+
+    run_id = "loop-l3-pipeline-1"
+    writer = _make_writer_with_run(run_id)
+    supervisor = Supervisor()
+    stub = _make_loop_chat_stub(json.dumps({"index": 1}))
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        browser.goto(f"{fixture_server}/locate_l3_three_save.html")
+        result = _locate_with_supervisor(
+            browser._page,
+            "Save button",
+            supervisor,
+            cache=None,
+            trace_writer=writer,
+            run_id=run_id,
+            step_id="loop-l3-pipeline-1:step-1",
+            llm_chat=stub,
+        )
+
+    assert result.tier == "L3_rerank", f"expected L3_rerank, got {result.tier}"
+    assert stub.calls, "llm_chat must have been invoked for L3 rerank"
+
+    locate_events = [e for e in writer.iter_events(run_id) if isinstance(e, LocateEvent)]
+    tiers = [(e.tier, e.outcome) for e in locate_events]
+    assert ("L3_rerank", "hit") in tiers, f"expected L3_rerank hit in trace, got {tiers}"
+    writer.close()
+
+
+# ---------------------------------------------------------------------------
+# Loop locator pipeline trace emission tests (canonical ladder via on_event)
+# ---------------------------------------------------------------------------
+
+
+def test_locate_with_supervisor_l1_miss_l2_hit_emits_three_events(
+    fixture_server, playwright_chromium
+):
+    """L1 miss + L2 hit emits L1_ax(miss) + Supervisor(next_tier) + L2_dom(hit)."""
+    from agent.loop import _locate_with_supervisor
 
     run_id = "ladder-test-1"
     writer = _make_writer_with_run(run_id)
-    supervisor = _make_mock_supervisor_next_tier()
+    supervisor = Supervisor()
 
     fixture_url = f"{fixture_server}/correction_l1_miss.html"
     with Browser(playwright_browser=playwright_chromium) as browser:
         browser.goto(fixture_url)
-        result = _locate_via_ladder(
+        result = _locate_with_supervisor(
             browser._page,
             "Submit button",
             supervisor,
+            cache=None,
             trace_writer=writer,
             run_id=run_id,
             step_id="ladder-test-1:step-1",
@@ -2624,23 +2700,26 @@ def test_locate_via_ladder_l1_miss_l2_hit_emits_three_events(fixture_server, pla
     writer.close()
 
 
-def test_locate_via_ladder_l1_miss_l2_miss_emits_events_and_raises(
+def test_locate_with_supervisor_l1_miss_l2_miss_emits_events_and_falls_through(
     playwright_chromium,
 ):
+    """Empty page → L1 miss + L2 miss + L_textmatch miss; vision fallback raises
+    without llm_chat. Supervisor records the L1 miss with a next_tier policy."""
     from agent.locate import LocatorMiss
-    from agent.loop import _locate_via_ladder
+    from agent.loop import _locate_with_supervisor
 
     run_id = "ladder-test-2"
     writer = _make_writer_with_run(run_id)
-    supervisor = _make_mock_supervisor_next_tier()
+    supervisor = Supervisor()
 
     with Browser(playwright_browser=playwright_chromium) as browser:
         browser._page.set_content("<html><body><h1>Empty</h1></body></html>")
         with pytest.raises(LocatorMiss):
-            _locate_via_ladder(
+            _locate_with_supervisor(
                 browser._page,
                 "Nonexistent button",
                 supervisor,
+                cache=None,
                 trace_writer=writer,
                 run_id=run_id,
                 step_id=None,
@@ -2663,15 +2742,16 @@ def test_locate_via_ladder_l1_miss_l2_miss_emits_events_and_raises(
     writer.close()
 
 
-def test_locate_via_ladder_no_trace_kwargs_no_emission(fixture_server, playwright_chromium):
-    from agent.loop import _locate_via_ladder
+def test_locate_with_supervisor_no_trace_kwargs_no_emission(fixture_server, playwright_chromium):
+    """Without trace_writer, the locator pipeline returns a result without emitting events."""
+    from agent.loop import _locate_with_supervisor
 
-    supervisor = _make_mock_supervisor_next_tier()
+    supervisor = Supervisor()
     fixture_url = f"{fixture_server}/correction_l1_miss.html"
 
     with Browser(playwright_browser=playwright_chromium) as browser:
         browser.goto(fixture_url)
-        result = _locate_via_ladder(browser._page, "Submit button", supervisor)
+        result = _locate_with_supervisor(browser._page, "Submit button", supervisor, cache=None)
 
     assert result is not None
     assert result.tier == "L2_dom"
@@ -4226,6 +4306,7 @@ class _ZeroCountLocator:
 
 class _AlwaysMissPage:
     url = "about:blank"
+    viewport_size = None
 
     def get_by_role(self, *_args, **_kwargs) -> _ZeroCountLocator:
         return _ZeroCountLocator()
@@ -4235,6 +4316,9 @@ class _AlwaysMissPage:
 
     def locator(self, *_args, **_kwargs) -> _ZeroCountLocator:
         return _ZeroCountLocator()
+
+    def screenshot(self, **_kwargs) -> bytes:
+        return b""
 
 
 class _StubBrowserWithMissPage:
@@ -4943,7 +5027,11 @@ def test_dispatch_read_emits_act_event(fixture_server, playwright_chromium):
     writer.close()
 
 
-def test_dispatch_read_find_miss_emits_error_act_event(fixture_server, playwright_chromium):
+def test_dispatch_read_find_miss_emits_ok_act_event(fixture_server, playwright_chromium):
+    """F23: a no-match find emits `outcome="ok"` with `match_count=0` rather
+    than `outcome="error"`. Reserves `error` for actual page failures so
+    the agent doesn't treat a missing token as a broken page.
+    """
     from agent.loop import _dispatch
     from agent.supervisor import Supervisor
 
@@ -4963,11 +5051,12 @@ def test_dispatch_read_find_miss_emits_error_act_event(fixture_server, playwrigh
             step_id=f"{run_id}:step-1",
         )
 
-    assert result.startswith("Error:")
+    assert not result.startswith("Error:")
+    assert "no match" in result.lower()
     events = [e for e in writer.iter_events(run_id) if isinstance(e, ActEvent)]
     read_events = [e for e in events if e.tool == "read"]
     assert len(read_events) == 1
-    assert read_events[0].outcome == "error"
+    assert read_events[0].outcome == "ok"
     writer.close()
 
 
@@ -5174,6 +5263,147 @@ def test_loop_done_unsupported_after_replan_marks_unverified(fixture_server, pla
         if isinstance(e, SupervisorEvent) and e.classified_as == "unsupported_done"
     ]
     assert len(sup_events) >= 1
+    writer.close()
+
+
+# ---------------------------------------------------------------------------
+# F20 — unsupported_superlative: comparison-superlative task + multi-candidate
+# read content + single-candidate `done` → supervisor signals replan.
+# Round-6 A6 trace silently passed because the agent picked the first organic
+# result without comparing alternatives even though prior `read` content
+# clearly exposed a list of candidates with ratings. This is a structural
+# detector — page-shape (list with same numeric field) plus task-shape
+# (comparison superlative token), not a per-domain recipe.
+# ---------------------------------------------------------------------------
+
+
+def test_loop_unsupported_superlative_triggers_replan(fixture_server, playwright_chromium):
+    """Task uses 'best' (a comparison superlative); read returns a list with
+    multiple ratings; agent commits `done` to a single restaurant. Loop must
+    emit a SupervisorEvent classified_as='unsupported_superlative' and replan
+    instead of accepting the result."""
+    fixture_url = f"{fixture_server}/list_with_ratings.html"
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+        _response_with_tool_call(_tool_call("read", {}, call_id="tc-2")),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {
+                        "restaurant_name": "Restaurant Beta",
+                        "rating": 4.8,
+                    },
+                    "evidence": {
+                        "url": fixture_url,
+                        "text_snippet": "Restaurant Beta",
+                    },
+                },
+                call_id="tc-3",
+            )
+        ),
+        # After replan, the agent submits a properly-grounded done quoting all
+        # candidates so the run can finish. The exact replanned action sequence
+        # doesn't matter for this test; we just need a path to terminal.
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {
+                        "all_candidates": [
+                            "Restaurant Alpha (4.5)",
+                            "Restaurant Beta (4.8)",
+                            "Restaurant Gamma (4.2)",
+                        ],
+                        "highest_rated": "Restaurant Beta",
+                    },
+                    "evidence": {
+                        "url": fixture_url,
+                        "text_snippet": "Restaurant Beta",
+                    },
+                },
+                call_id="tc-4",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+
+    run_id = "test-f20-superlative-replan"
+    writer = _make_writer_with_run(run_id)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result = loop(
+            "Find the best restaurant on this page.",
+            browser,
+            fake_llm,
+            trace_writer=writer,
+            run_id=run_id,
+        )
+
+    sup_events = [
+        e
+        for e in writer.iter_events(run_id)
+        if isinstance(e, SupervisorEvent) and e.classified_as == "unsupported_superlative"
+    ]
+    all_classes = [
+        e.classified_as for e in writer.iter_events(run_id) if isinstance(e, SupervisorEvent)
+    ]
+    assert len(sup_events) >= 1, (
+        f"expected ≥1 unsupported_superlative supervisor event, got {all_classes!r}"
+    )
+    assert sup_events[0].policy == "replan"
+
+    plan_events = [e for e in writer.iter_events(run_id) if isinstance(e, PlanEvent)]
+    replan_events = [e for e in plan_events if e.reason == "replan"]
+    assert len(replan_events) >= 1, "supervisor signal must trigger a replan"
+
+    # The run must finish — exact terminal status is not the assertion target,
+    # only that the replan branch executed and produced a terminal.
+    assert result.status in ("succeeded", "unverified", "failed")
+    writer.close()
+
+
+def test_loop_no_superlative_task_does_not_fire_unsupported_superlative(
+    fixture_server, playwright_chromium
+):
+    """The same multi-candidate page, but the task has no comparison
+    superlative — F20 must not fire. Prevents over-eager classification on
+    plain 'find X' tasks."""
+    fixture_url = f"{fixture_server}/list_with_ratings.html"
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+        _response_with_tool_call(_tool_call("read", {}, call_id="tc-2")),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"restaurant_name": "Restaurant Beta", "rating": 4.8},
+                    "evidence": {"url": fixture_url, "text_snippet": "Restaurant Beta"},
+                },
+                call_id="tc-3",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+
+    run_id = "test-f20-no-superlative"
+    writer = _make_writer_with_run(run_id)
+
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        loop(
+            "List the restaurants on this page.",
+            browser,
+            fake_llm,
+            trace_writer=writer,
+            run_id=run_id,
+        )
+
+    sup_events = [
+        e
+        for e in writer.iter_events(run_id)
+        if isinstance(e, SupervisorEvent) and e.classified_as == "unsupported_superlative"
+    ]
+    assert sup_events == [], "F20 must not fire on tasks without a comparison superlative"
     writer.close()
 
 

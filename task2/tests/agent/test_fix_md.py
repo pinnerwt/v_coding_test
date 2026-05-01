@@ -536,24 +536,25 @@ def test_f14_loop_ladder_emits_l_textmatch_event_on_l1_l2_miss(fixture_server, p
       - L2_dom miss event
       - L_textmatch hit event with a non-empty selector
     """
-    from agent.loop import _locate_via_ladder
+    from agent.loop import _locate_with_supervisor
+    from agent.supervisor import Supervisor
     from agent.trace import LocateEvent
     from tests.agent.test_loop import (  # type: ignore[no-untyped-import]
-        _make_mock_supervisor_next_tier,
         _make_writer_with_run,
     )
 
     run_id = "f14-textmatch"
     writer = _make_writer_with_run(run_id)
-    supervisor = _make_mock_supervisor_next_tier()
+    supervisor = Supervisor()
 
     fixture_url = f"{fixture_server}/locate_cjk_fallback.html"
     with Browser(playwright_browser=playwright_chromium) as browser:
         browser.goto(fixture_url)
-        result = _locate_via_ladder(
+        result = _locate_with_supervisor(
             browser._page,
             "網路訂位 link",
             supervisor,
+            cache=None,
             trace_writer=writer,
             run_id=run_id,
             step_id=f"{run_id}:step-1",
@@ -591,9 +592,7 @@ def test_f13_textbox_intent_matches_combobox_role_at_l1(fixture_server, playwrig
     assert result.role in {"textbox", "combobox"}
 
 
-def test_f13_textbox_intent_matches_combobox_via_full_locate(
-    fixture_server, playwright_chromium
-):
+def test_f13_textbox_intent_matches_combobox_via_full_locate(fixture_server, playwright_chromium):
     """End-to-end through `locate()`: intent 'Search textbox' on a page that
     only has a `role=combobox` editable div must resolve to that element."""
     from agent.locate import locate
@@ -701,13 +700,9 @@ def test_f10_premature_done_emits_act_event_before_supervisor_halt(
         )
 
     events = list(writer.iter_events(run_id))
-    act_events = [
-        e for e in events if isinstance(e, ActEvent) and e.tool == "done"
-    ]
+    act_events = [e for e in events if isinstance(e, ActEvent) and e.tool == "done"]
     sup_events = [
-        e
-        for e in events
-        if isinstance(e, SupervisorEvent) and e.classified_as == "premature_done"
+        e for e in events if isinstance(e, SupervisorEvent) and e.classified_as == "premature_done"
     ]
     writer.close()
 
@@ -792,9 +787,7 @@ def test_f9_done_with_result_supported_by_recent_read_is_accepted(
 
     events = list(writer.iter_events(run_id))
     premature_halts = [
-        e
-        for e in events
-        if isinstance(e, SupervisorEvent) and e.classified_as == "premature_done"
+        e for e in events if isinstance(e, SupervisorEvent) and e.classified_as == "premature_done"
     ]
     writer.close()
 
@@ -872,9 +865,7 @@ def test_f9_done_with_result_not_in_read_still_classified_premature():
 
     events = list(writer.iter_events(run_id))
     premature = [
-        e
-        for e in events
-        if isinstance(e, SupervisorEvent) and e.classified_as == "premature_done"
+        e for e in events if isinstance(e, SupervisorEvent) and e.classified_as == "premature_done"
     ]
     writer.close()
 
@@ -887,9 +878,7 @@ def test_f9_done_with_result_not_in_read_still_classified_premature():
 # --- F15 (locator name-fallback for non-English accessible names) ----------
 
 
-def test_f15_l1_role_singleton_fallback_when_name_misses(
-    fixture_server, playwright_chromium
-):
+def test_f15_l1_role_singleton_fallback_when_name_misses(fixture_server, playwright_chromium):
     """Round-5 U1/A6 evidence: page renders search input as
     `role=combobox aria-label="搜尋"` but the agent's intent is "the search
     textbox" (English token). L1's name= filter substring-matches "search"
@@ -935,9 +924,7 @@ def test_f15_l1_role_singleton_fallback_does_not_fire_when_ambiguous(
             )
 
 
-def test_f15_full_locate_resolves_cjk_combobox_at_l1(
-    fixture_server, playwright_chromium
-):
+def test_f15_full_locate_resolves_cjk_combobox_at_l1(fixture_server, playwright_chromium):
     """End-to-end: `locate(intent="the search textbox")` on a CJK-named
     combobox page must resolve at L1_ax (not fall through to L_textmatch
     or L4_vision)."""
@@ -961,9 +948,7 @@ def test_f15_full_locate_resolves_cjk_combobox_at_l1(
 # --- F16 (trace-gap step_advance event) -----------------------------------
 
 
-def test_f16_no_tool_call_response_emits_step_advance_event(
-    fixture_server, playwright_chromium
-):
+def test_f16_no_tool_call_response_emits_step_advance_event(fixture_server, playwright_chromium):
     """A text-only LLM response (no tool calls) used to leave a trace gap:
     step_id incremented, no event written. F16: emit a StepAdvanceEvent
     with reason='no_tool_call' so reviewers can see what happened during
@@ -1022,9 +1007,7 @@ def test_f16_no_tool_call_response_emits_step_advance_event(
     assert adv.step_id is not None and ":step-" in adv.step_id
 
 
-def test_f16_malformed_json_args_emits_step_advance_event(
-    fixture_server, playwright_chromium
-):
+def test_f16_malformed_json_args_emits_step_advance_event(fixture_server, playwright_chromium):
     """A tool call with non-JSON arguments used to write only a synthetic
     'Error: invalid JSON' tool message and `continue`, leaving no trace
     record. F16: emit StepAdvanceEvent with reason='parse_error' carrying
@@ -1083,9 +1066,7 @@ def test_f16_malformed_json_args_emits_step_advance_event(
     assert "{not json" in parse_advances[0].content
 
 
-def test_f16_non_object_args_emits_step_advance_event(
-    fixture_server, playwright_chromium
-):
+def test_f16_non_object_args_emits_step_advance_event(fixture_server, playwright_chromium):
     """A tool call whose decoded arguments are valid JSON but not an object
     (e.g. a bare string or number) used to silently `continue`. F16: emit
     StepAdvanceEvent with reason='arg_validate_error'."""
@@ -1201,3 +1182,225 @@ def test_f17_click_timeout_retries_via_js_click(fixture_server, playwright_chrom
     assert not out.lower().startswith("error"), (
         f"F17: dispatcher must not report error after successful JS-click; got {out!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# F21 — soft-failure self-status (partial / incomplete) downgrades to unverified
+# ---------------------------------------------------------------------------
+
+
+def test_f21_done_with_partial_status_downgrades_to_unverified(fixture_server, playwright_chromium):
+    """A1 round-8 shape: agent calls `done` with `result.status="partial"` and
+    a self-reported "unable to complete" message. The terminal status surfaced
+    to the SSE stream must not paper over that as plain `done`; F5 already
+    handles hard failures (failed/blocked) → "failed", F21 handles soft
+    failures (partial/incomplete) → "unverified".
+    """
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+    from tests.agent.test_loop import _FakeLLMClient
+
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {
+                        "status": "partial",
+                        "message": "Could not access reservation interface",
+                    },
+                    "evidence": {"url": fixture_url, "text_snippet": "Hello, loop"},
+                    "evaluation_previous_action": "success",
+                    "evaluation_reason": "did what we could",
+                    "next_goal": "report final answer",
+                },
+                call_id="tc-2",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result: RunResult = loop("task", browser, fake_llm, max_steps=4)
+
+    assert result.status == "unverified", (
+        "F21: done with result.status='partial' must downgrade run to 'unverified'; "
+        f"got {result.status!r}"
+    )
+
+
+def test_f21_done_with_incomplete_status_downgrades_to_unverified(
+    fixture_server, playwright_chromium
+):
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+    from tests.agent.test_loop import _FakeLLMClient
+
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"status": "incomplete", "reason": "search bar unreachable"},
+                    "evidence": {"url": fixture_url, "text_snippet": "Hello, loop"},
+                    "evaluation_previous_action": "failed",
+                    "evaluation_reason": "could not type",
+                    "next_goal": "report final answer",
+                },
+                call_id="tc-2",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result: RunResult = loop("task", browser, fake_llm, max_steps=4)
+
+    assert result.status == "unverified", (
+        "F21: done with result.status='incomplete' must downgrade to 'unverified'; "
+        f"got {result.status!r}"
+    )
+
+
+def test_f21_done_with_no_status_field_preserves_succeeded(fixture_server, playwright_chromium):
+    """Sanity: if result is a flat dict with no 'status' key, behavior is
+    unchanged — the run can still be marked succeeded.
+    """
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+    from tests.agent.test_loop import _FakeLLMClient
+
+    responses = [
+        _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
+        _response_with_tool_call(
+            _tool_call(
+                "done",
+                {
+                    "result": {"heading": "Hello, loop"},
+                    "evidence": {"url": fixture_url, "text_snippet": "Hello, loop"},
+                    "evaluation_previous_action": "success",
+                    "evaluation_reason": "page loaded with heading",
+                    "next_goal": "report final answer",
+                },
+                call_id="tc-2",
+            )
+        ),
+    ]
+    fake_llm = _FakeLLMClient(responses)
+    with Browser(playwright_browser=playwright_chromium) as browser:
+        result: RunResult = loop("task", browser, fake_llm, max_steps=4)
+
+    assert result.status in {"succeeded", "unverified"}, (
+        f"F21: done with no status field must not flip to failed; got {result.status!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# F22 — combobox role token must be accepted by parse_intent
+# ---------------------------------------------------------------------------
+
+
+def test_f22_parse_intent_accepts_combobox_role_token():
+    """A6 round-8 shape: agent emitted intent like 'the search combobox' and
+    parse_intent rejected it as an unknown role, even though F13 had aliased
+    combobox→textbox at L1. F22 closes the prompt/runtime gap by accepting
+    combobox at parse time and routing it to the textbox role.
+    """
+    from agent.locate import parse_intent
+
+    role, name = parse_intent("the search combobox")
+    assert role == "textbox", (
+        f"F22: 'combobox' role token must alias to 'textbox' at parse_intent; got role={role!r}"
+    )
+    assert name == "search"
+
+
+def test_f22_intent_parse_error_message_lists_combobox_as_supported():
+    """When the role IS unknown, the error message tells the agent what is
+    supported. Combobox must appear in that list so the agent doesn't
+    self-disqualify on the next valid attempt.
+    """
+    from agent.locate import IntentParseError, parse_intent
+
+    try:
+        parse_intent("the search totally_made_up_role")
+    except IntentParseError as e:
+        msg = str(e).lower()
+        assert "combobox" in msg, f"F22: IntentParseError message must list combobox; got {msg!r}"
+    else:
+        raise AssertionError("expected IntentParseError")
+
+
+# ---------------------------------------------------------------------------
+# F23 — read find searches the FULL page text, not the truncated body
+# ---------------------------------------------------------------------------
+
+
+def test_f23_read_find_locates_substring_past_default_limit(fixture_server, playwright_chromium):
+    """U1 round-8 shape: Wikipedia recipients table has '2018' past the first
+    2 KB of body text, but `read find='2018'` returns Error because
+    `_body_text` truncates BEFORE the substring search runs. After F23, find
+    searches the full innerText and returns a window centered on the match.
+    """
+    from agent.browser import Browser as _B
+    from agent.loop import _dispatch
+    from agent.supervisor import Supervisor
+
+    fixture_url = f"{fixture_server}/read_find_long_page.html"
+    with _B(playwright_browser=playwright_chromium) as browser:
+        browser.goto(fixture_url)
+        out = _dispatch("read", {"find": "TURING_2018_WINNERS_SENTINEL"}, browser, Supervisor())
+
+    assert not out.lower().startswith("error"), (
+        f"F23: read find must locate the sentinel past the 2 KB limit; got {out!r}"
+    )
+    # The actual matched text (not the echoed query) must appear in the window —
+    # so we strip any prefix line that might quote the query.
+    assert "TURING_2018_WINNERS_SENTINEL" in out
+    # Window should include surrounding context — fixture has 'Before the
+    # target.' immediately before the span.
+    assert "Before the target" in out, (
+        f"F23: returned window must include the surrounding page context; got {out!r}"
+    )
+
+
+def test_f23_read_find_no_match_returns_ok_with_match_count_zero(
+    fixture_server, playwright_chromium
+):
+    """When the substring genuinely is not on the page, the agent needs to
+    distinguish that from a real page-load failure. F23 returns ok with a
+    body explaining no match instead of an Error string.
+    """
+    from agent.browser import Browser as _B
+    from agent.loop import _dispatch
+    from agent.supervisor import Supervisor
+    from agent.trace import ActEvent
+    from tests.agent.test_loop import _open_click_writer
+
+    run_id = "f23-no-match"
+    writer = _open_click_writer(run_id)
+    fixture_url = f"{fixture_server}/loop_happy_path.html"
+    with _B(playwright_browser=playwright_chromium) as browser:
+        browser.goto(fixture_url)
+        out = _dispatch(
+            "read",
+            {"find": "DEFINITELY_ABSENT_TOKEN_ZZZ"},
+            browser,
+            Supervisor(),
+            trace_writer=writer,
+            run_id=run_id,
+            step_id=f"{run_id}:step-1",
+        )
+
+    assert not out.lower().startswith("error"), (
+        f"F23: no-match in find must NOT return an error string; got {out!r}"
+    )
+    assert "no match" in out.lower(), (
+        f"F23: no-match output should explain match_count=0; got {out!r}"
+    )
+    events = [e for e in writer.iter_events(run_id) if isinstance(e, ActEvent)]
+    read_events = [e for e in events if e.tool == "read"]
+    assert len(read_events) == 1
+    assert read_events[0].outcome == "ok", (
+        "F23: no-match find must emit outcome='ok' so the agent doesn't "
+        "treat a missing token as a broken page; "
+        f"got {read_events[0].outcome!r}"
+    )
+    writer.close()

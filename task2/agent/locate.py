@@ -17,7 +17,14 @@ if TYPE_CHECKING:
 
 SupportedRole = Literal["button", "link", "textbox", "checkbox", "heading", "list", "listitem"]
 _SUPPORTED_ROLES: frozenset[str] = frozenset(get_args(SupportedRole))
-_ROLE_ALIASES: dict[str, str] = {"items": "listitem", "lists": "list"}
+# F22: combobox is a textbox-shaped role at the locator level (F13 added the
+# alias inside `_l1_roles_to_try`); accept it at parse_intent so the agent
+# doesn't self-disqualify on `intent="X combobox"`.
+_ROLE_ALIASES: dict[str, str] = {
+    "items": "listitem",
+    "lists": "list",
+    "combobox": "textbox",
+}
 _ARTICLES: frozenset[str] = frozenset({"the", "a", "an"})
 
 LocatorMissReason = Literal["zero_matches", "ambiguous", "vision_miss"]
@@ -144,7 +151,7 @@ def parse_intent(intent: str) -> tuple[str, str | None]:
     if role not in _SUPPORTED_ROLES:
         raise IntentParseError(
             f"unknown role token {tokens[-1]!r} in intent {intent!r}; "
-            f"supported: {sorted(_SUPPORTED_ROLES)}"
+            f"supported: {sorted(_SUPPORTED_ROLES | _ROLE_ALIASES.keys())}"
         )
     name_tokens = tokens[:-1]
     name = " ".join(name_tokens) if name_tokens else None
@@ -183,9 +190,7 @@ def locate_l1(page: Page, *, role: str, name: str | None) -> LocateResult:
             last_miss = LocatorMiss(reason="ambiguous", match_count=count)
             continue
         matched_name_raw = locator.first.evaluate(_ACCESSIBLE_NAME_JS)
-        matched_name: str | None = (
-            matched_name_raw if isinstance(matched_name_raw, str) else None
-        )
+        matched_name: str | None = matched_name_raw if isinstance(matched_name_raw, str) else None
         selector = _role_selector(try_role, name)
         fingerprint_name = matched_name if matched_name is not None else (name or "")
         fingerprint = hashlib.sha256(f"{try_role}:{fingerprint_name}".encode()).hexdigest()
@@ -592,25 +597,60 @@ def _resolve_via_ladder(
     name: str | None,
     intent: str,
     llm_chat: Callable[..., Any] | None,
+    on_event: Callable[[dict], None] | None = None,
 ) -> LocateResult:
+    def _emit(payload: dict) -> None:
+        if on_event is not None:
+            on_event(payload)
+
+    def _hit(result: LocateResult) -> LocateResult:
+        _emit(
+            {
+                "tier": result.tier,
+                "outcome": "hit",
+                "chosen": {"role": result.role, "selector": result.selector},
+            }
+        )
+        return result
+
     try:
-        return locate_l1(page, role=role, name=name)
+        return _hit(locate_l1(page, role=role, name=name))
     except LocatorMiss as miss:
+        _emit({"tier": "L1_ax", "outcome": miss.reason, "miss": miss})
         if miss.reason == "zero_matches":
             try:
-                return locate_l2(page, role=role, name=name)
-            except LocatorMiss:
+                return _hit(locate_l2(page, role=role, name=name))
+            except LocatorMiss as l2_miss:
+                _emit({"tier": "L2_dom", "outcome": l2_miss.reason, "miss": l2_miss})
                 # F8: try verbatim textContent substring match against
                 # clickable-ish elements before falling back to vision.
                 try:
-                    return locate_l_textmatch(page, role=role, name=name)
-                except LocatorMiss:
-                    return locate_l4(page, role=role, name=name, intent=intent, llm_chat=llm_chat)
+                    return _hit(locate_l_textmatch(page, role=role, name=name))
+                except LocatorMiss as tm_miss:
+                    _emit({"tier": "L_textmatch", "outcome": tm_miss.reason, "miss": tm_miss})
+                    if llm_chat is None:
+                        raise
+                    try:
+                        return _hit(
+                            locate_l4(page, role=role, name=name, intent=intent, llm_chat=llm_chat)
+                        )
+                    except LocatorMiss as l4_miss:
+                        _emit({"tier": "L4_vision", "outcome": l4_miss.reason, "miss": l4_miss})
+                        raise
         if miss.reason == "ambiguous":
+            if llm_chat is None:
+                raise
             try:
-                return locate_l3(page, role=role, name=name, llm_chat=llm_chat)
-            except LocatorMiss:
-                return locate_l4(page, role=role, name=name, intent=intent, llm_chat=llm_chat)
+                return _hit(locate_l3(page, role=role, name=name, llm_chat=llm_chat))
+            except LocatorMiss as l3_miss:
+                _emit({"tier": "L3_rerank", "outcome": l3_miss.reason, "miss": l3_miss})
+                try:
+                    return _hit(
+                        locate_l4(page, role=role, name=name, intent=intent, llm_chat=llm_chat)
+                    )
+                except LocatorMiss as l4_miss:
+                    _emit({"tier": "L4_vision", "outcome": l4_miss.reason, "miss": l4_miss})
+                    raise
         raise
 
 
@@ -620,7 +660,12 @@ def locate(
     *,
     llm_chat: Callable[..., Any] | None = None,
     cache: LocatorCache | None = None,
+    on_event: Callable[[dict], None] | None = None,
 ) -> LocateResult:
+    def _emit(payload: dict) -> None:
+        if on_event is not None:
+            on_event(payload)
+
     role, name = parse_intent(intent)
 
     origin: str | None = None
@@ -632,11 +677,25 @@ def locate(
         if entry is not None:
             if entry.tier == "L4_vision":
                 cache.invalidate(origin=origin, intent=intent)
+                _emit({"tier": "cache", "outcome": "miss", "cache_action": "invalidate"})
             else:
                 live_fp = _canonical_ax_fingerprint(page, role=entry.role, selector=entry.selector)
                 if live_fp is None or live_fp != entry.ax_fingerprint:
                     cache.invalidate(origin=origin, intent=intent)
+                    _emit({"tier": "cache", "outcome": "miss", "cache_action": "invalidate"})
                 else:
+                    _emit(
+                        {
+                            "tier": "cache",
+                            "outcome": "hit",
+                            "cache_action": "read",
+                            "chosen": {
+                                "role": entry.role,
+                                "selector": entry.selector,
+                                "ax_fingerprint": entry.ax_fingerprint,
+                            },
+                        }
+                    )
                     return LocateResult(
                         tier="cache",
                         role=entry.role,
@@ -647,7 +706,9 @@ def locate(
                         coords=entry.coords,
                     )
 
-    result = _resolve_via_ladder(page, role=role, name=name, intent=intent, llm_chat=llm_chat)
+    result = _resolve_via_ladder(
+        page, role=role, name=name, intent=intent, llm_chat=llm_chat, on_event=on_event
+    )
 
     if cache is not None and origin is not None:
         if result.tier == "L4_vision":
@@ -669,6 +730,18 @@ def locate(
                 coords=result.coords,
                 written_at_utc=written_at,
             )
+        )
+        _emit(
+            {
+                "tier": result.tier,
+                "outcome": "cache_write",
+                "cache_action": "write",
+                "chosen": {
+                    "role": result.role,
+                    "selector": result.selector,
+                    "ax_fingerprint": stored_fingerprint,
+                },
+            }
         )
 
     return result

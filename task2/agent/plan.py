@@ -84,6 +84,76 @@ _TOO_SHORT_PLAN_MESSAGE = (
     "at least 2 distinct navigation/interaction steps."
 )
 
+# F19: when ask_user supplies an answer, the resulting plan must
+# substring-reference at least one non-stopword token from that answer.
+# Round-6 A3 trace showed the planner re-stating the raw task verbatim and
+# losing the user-supplied date entirely. Generic stopword set, no domain
+# vocabulary — this enforces "the answer made it into the plan" without
+# encoding any topic preferences.
+_ANSWER_STOPWORDS: frozenset[str] = frozenset(
+    {
+        "a",
+        "an",
+        "the",
+        "of",
+        "in",
+        "on",
+        "and",
+        "or",
+        "for",
+        "to",
+        "at",
+        "by",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "with",
+        "from",
+        "as",
+        "it",
+        "this",
+        "that",
+        "these",
+        "those",
+        "one",
+        "two",
+        "any",
+    }
+)
+_ANSWER_NOT_INCORPORATED_MESSAGE = (
+    "The user's answer must be incorporated into the plan; the plan you "
+    "just produced does not reference it. Produce a new plan whose steps "
+    "explicitly use the user's answer."
+)
+
+
+def _answer_tokens(answer: str) -> list[str]:
+    """Split on whitespace, lowercase, strip non-alphanumeric edges, drop
+    stopwords. Returns the enforceable content tokens for the F19 check."""
+    raw = answer.lower().split()
+    out: list[str] = []
+    for tok in raw:
+        cleaned = tok.strip(" \t\r\n.?!,;:'\"()[]{}/")
+        if not cleaned or cleaned in _ANSWER_STOPWORDS:
+            continue
+        out.append(cleaned)
+    return out
+
+
+def _plan_references_answer(plan: Plan, answer: str) -> bool:
+    """True if at least one non-stopword token from `answer` appears as a
+    case-insensitive substring in any plan step or expected_end_state. If
+    the answer has no enforceable tokens after stopword removal, returns
+    True (no enforcement)."""
+    tokens = _answer_tokens(answer)
+    if not tokens:
+        return True
+    haystack = (" ".join(plan.steps) + " " + plan.expected_end_state).lower()
+    return any(tok in haystack for tok in tokens)
+
 
 @dataclass(frozen=True)
 class Plan:
@@ -162,6 +232,8 @@ def _handle_ask_user_tool_call(
     tool_call: ToolCall,
     ask_user_callback: Callable[[str], str] | None,
     asked_fingerprints: set[str],
+    received_answers: list[str],
+    dedup_emitted: list[bool],
 ) -> str:
     """Resolve an ask_user tool call into the string content for the tool message.
 
@@ -178,6 +250,7 @@ def _handle_ask_user_tool_call(
     if not isinstance(question, str) or not question.strip():
         return "Error: ask_user requires a non-empty 'question' string."
     if asked_fingerprints:
+        dedup_emitted.append(True)
         return _DEDUP_SYNTHETIC_ANSWER
     asked_fingerprints.add(_normalize_question(question))
     if ask_user_callback is None:
@@ -186,9 +259,11 @@ def _handle_ask_user_tool_call(
             "Produce a best-effort plan from the task as stated."
         )
     try:
-        return str(ask_user_callback(question))
+        answer = str(ask_user_callback(question))
     except Exception as exc:  # noqa: BLE001
         return f"Error: ask_user callback raised: {exc}"
+    received_answers.append(answer)
+    return answer
 
 
 def plan(
@@ -209,7 +284,10 @@ def plan(
     ]
     last_response: Any = None
     asked_fingerprints: set[str] = set()
+    received_answers: list[str] = []
+    dedup_emitted: list[bool] = []
     short_plan_retried = False
+    answer_retry_used = False
     for _ in range(_MAX_ASK_USER_ROUNDS + 1):
         response = llm.chat(messages, tools=[_ASK_USER_TOOL])
         last_response = response
@@ -223,6 +301,23 @@ def plan(
                 short_plan_retried = True
                 messages.append({"role": "assistant", "content": response.content or ""})
                 messages.append({"role": "user", "content": _TOO_SHORT_PLAN_MESSAGE})
+                continue
+            # F19: if any ask_user answer was received during this plan() call
+            # and the produced plan does not reference any non-stopword token
+            # from any answer, retry the planner once with a corrective note.
+            # Cap at one extra attempt; accept whatever comes back next.
+            # Skipped when dedup-synthetic was emitted: the LLM has already been
+            # told to "use sane defaults", so layering a competing "incorporate
+            # the answer" directive doesn't fit that branch.
+            if (
+                received_answers
+                and not answer_retry_used
+                and not dedup_emitted
+                and not any(_plan_references_answer(parsed, ans) for ans in received_answers)
+            ):
+                answer_retry_used = True
+                messages.append({"role": "assistant", "content": response.content or ""})
+                messages.append({"role": "user", "content": _ANSWER_NOT_INCORPORATED_MESSAGE})
                 continue
             return parsed, response
         messages.append(
@@ -241,7 +336,13 @@ def plan(
         )
         for tc in response.tool_calls:
             if tc.name == "ask_user":
-                content = _handle_ask_user_tool_call(tc, ask_user_callback, asked_fingerprints)
+                content = _handle_ask_user_tool_call(
+                    tc,
+                    ask_user_callback,
+                    asked_fingerprints,
+                    received_answers,
+                    dedup_emitted,
+                )
             else:
                 content = f"Error: tool {tc.name!r} not available in planning."
             messages.append(

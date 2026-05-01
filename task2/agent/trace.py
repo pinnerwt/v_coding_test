@@ -88,6 +88,7 @@ class SupervisorEvent(EventBase):
         "premature_fail",
         "premature_done",
         "unsupported_done",
+        "unsupported_superlative",
     ]
     policy: EscalationPolicy
     attempt: int

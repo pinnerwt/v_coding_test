@@ -190,3 +190,40 @@ def test_can_replan_unknown_classification_is_treated_as_lowest_severity():
     sup = Supervisor()
     sup.record_replan("off_plan")
     assert sup.can_replan("mystery") is False
+
+
+# ---------------------------------------------------------------------------
+# F20 — unsupported_superlative classification severity
+#
+# Comparison-superlative tasks ("best", "cheapest", "highest", etc.) where the
+# `done` payload references a single candidate while prior `read` content
+# listed many candidates with the same numeric field. Round-6 A6 trace
+# (`task2/benchmark/feat-task2-sessions-ask-user-http/ask_user_smoke/round6/
+# A6.json`) showed the agent picking the first organic Maps result without
+# ever inspecting alternatives. The classification slots in *between*
+# tool_error and unsupported_done so a list-shape supervisor signal can fire
+# first and an LLM-judge unsupported_done can still escalate above it.
+# ---------------------------------------------------------------------------
+
+
+def test_can_replan_unsupported_superlative_is_stronger_than_tool_error():
+    sup = Supervisor()
+    sup.record_replan("tool_error")
+    assert sup.can_replan("unsupported_superlative") is True
+
+
+def test_can_replan_unsupported_done_can_escalate_after_unsupported_superlative():
+    sup = Supervisor()
+    sup.record_replan("unsupported_superlative")
+    assert sup.can_replan("unsupported_done") is True
+
+
+def test_can_replan_unsupported_superlative_after_unsupported_done_is_rejected():
+    sup = Supervisor()
+    sup.record_replan("unsupported_done")
+    assert sup.can_replan("unsupported_superlative") is False
+
+
+def test_can_replan_first_unsupported_superlative_is_allowed():
+    sup = Supervisor()
+    assert sup.can_replan("unsupported_superlative") is True

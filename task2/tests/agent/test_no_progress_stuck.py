@@ -52,8 +52,15 @@ class _StubBrowser:
 
 
 class _ReadEachStepClient:
-    """Emits read(find=f'x{i}') each step — different args every step (no stuck_repeat),
-    and the find query is not present in the empty stub body so each read errors."""
+    """Emits read with conflicting intent+find args each step. Different `find`
+    string per step prevents stuck_repeat detection; the conflict triggers
+    the dispatcher's "either 'intent' or 'find', not both" error so every
+    step records action_succeeded=False, which is the no_progress trigger.
+
+    Note: post-F23, a no-match `read(find=...)` returns outcome=ok (the
+    substring just isn't on the page; that's not a tool failure). To
+    exercise the no_progress path we need a tool call that actually errors.
+    """
 
     def __init__(self):
         self._step = 0
@@ -68,7 +75,9 @@ class _ReadEachStepClient:
                 ToolCall(
                     id=f"tc-{self._step}",
                     name="read",
-                    arguments=json.dumps({"find": f"missing-needle-{self._step}"}),
+                    arguments=json.dumps(
+                        {"intent": "the page", "find": f"missing-needle-{self._step}"}
+                    ),
                 )
             ],
             finish_reason="tool_calls",

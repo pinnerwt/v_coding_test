@@ -96,6 +96,17 @@ class _StubPage:
     def title(self) -> str:
         return ""
 
+    # F22: canonical locator ladder probes viewport_size before L4_vision.
+    # Returning None makes L4 raise LocatorMiss(vision_miss) without ever
+    # invoking the LLM — replay sees the same "no candidate" outcome it did
+    # before the truncated ladder was deleted.
+    @property
+    def viewport_size(self) -> dict | None:
+        return None
+
+    def screenshot(self, *, full_page: bool = False, scale: str = "css") -> bytes:  # noqa: ARG002
+        return b""
+
 
 class StubBrowser:
     """Duck-type replacement for agent.browser.Browser.

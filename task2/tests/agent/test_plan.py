@@ -328,3 +328,177 @@ def test_plan_omits_run_context_block_when_none():
 
     user_msg = next(m for m in llm.calls[0]["messages"] if m.get("role") == "user")
     assert "Run context" not in user_msg["content"]
+
+
+# ---------------------------------------------------------------------------
+# F19: when ask_user supplies an answer, the resulting final plan must
+# substring-reference at least one non-stopword token from that answer.
+# Round-6 A3 trace (`task2/benchmark/feat-task2-sessions-ask-user-http/
+# ask_user_smoke/round6/A3.json`) showed the planner re-stating the raw task
+# verbatim after receiving "December 15, 2026, one-way" — neither the date
+# nor "one-way" appeared in the produced plan. Structural retry, no prompt
+# heuristics — applies to any task where an answer would otherwise be lost.
+# ---------------------------------------------------------------------------
+
+
+def test_plan_retries_when_initial_plan_drops_user_supplied_answer():
+    """If the planner's first post-answer plan does not contain any non-stopword
+    token from the answer, plan() must retry the LLM once with a corrective
+    note, then accept the second plan even if it is still imperfect."""
+
+    def _cb(_q: str) -> str:
+        return "December 15, 2026, one-way"
+
+    # First post-answer plan: ≥2 steps (so F11 short-plan retry doesn't fire),
+    # but ignores the answer entirely.
+    weak_plan = json.dumps(
+        {
+            "steps": [
+                "Open a flight search site",
+                "Search Taipei to Tokyo and report the cheapest fare",
+            ],
+            "expected_end_state": "fare reported",
+        }
+    )
+    # Retry plan: weaves the date + one-way constraint in.
+    strong_plan = json.dumps(
+        {
+            "steps": [
+                "Open a flight search site",
+                "Set departure date to December 15, 2026 and select one-way",
+                "Search Taipei to Tokyo and report the cheapest fare",
+            ],
+            "expected_end_state": "fare reported",
+        }
+    )
+    llm = _ScriptedLLM(
+        [
+            _tool_call_response("ask_user", {"question": "Dates?"}, call_id="tc-ask"),
+            _fake_response(weak_plan),
+            _fake_response(strong_plan),
+        ]
+    )
+
+    result, _ = plan(
+        task="Book a flight from Taipei to Tokyo and return the cheapest fare.",
+        observation={},
+        llm=llm,
+        ask_user_callback=_cb,
+    )
+
+    # Three LLM calls: ask_user → weak plan → corrective retry → strong plan.
+    assert len(llm.calls) == 3, (
+        f"expected exactly 3 LLM calls (ask_user, weak, retry), got {len(llm.calls)}"
+    )
+    assert any("December 15" in s for s in result.steps), (
+        f"final plan must reference the user's answer, got {result.steps!r}"
+    )
+
+    # The retry message (third call's user-role payload) must call out the
+    # missing answer so the LLM understands what to fix.
+    third_msgs = llm.calls[2]["messages"]
+    user_msgs = [m for m in third_msgs if m.get("role") == "user"]
+    retry_note = " ".join(m.get("content") or "" for m in user_msgs)
+    assert "answer" in retry_note.lower() and "incorporat" in retry_note.lower(), (
+        f"retry must instruct the planner to incorporate the answer, got {retry_note!r}"
+    )
+
+
+def test_plan_does_not_retry_when_answer_already_referenced():
+    """If the first post-answer plan already substring-references the answer,
+    plan() must return immediately — no extra LLM call."""
+
+    def _cb(_q: str) -> str:
+        return "Tianmu"
+
+    plan_with_answer = json.dumps(
+        {
+            "steps": [
+                "Open the booking site",
+                "Select the Tianmu branch and confirm",
+            ],
+            "expected_end_state": "reservation confirmed",
+        }
+    )
+    llm = _ScriptedLLM(
+        [
+            _tool_call_response("ask_user", {"question": "Which location?"}, call_id="tc-ask"),
+            _fake_response(plan_with_answer),
+        ]
+    )
+
+    result, _ = plan(
+        task="book a table",
+        observation={},
+        llm=llm,
+        ask_user_callback=_cb,
+    )
+
+    assert len(llm.calls) == 2, (
+        f"no retry expected when plan already references the answer, got {len(llm.calls)}"
+    )
+    assert "Tianmu" in result.steps[1]
+
+
+def test_plan_does_not_retry_when_answer_is_only_stopwords():
+    """An answer like 'the one' has no enforceable content tokens after
+    stopword removal; plan() must accept the first post-answer plan rather
+    than retry indefinitely."""
+
+    def _cb(_q: str) -> str:
+        return "the one"
+
+    payload = json.dumps(
+        {"steps": ["start the task", "complete the task"], "expected_end_state": "done"}
+    )
+    llm = _ScriptedLLM(
+        [
+            _tool_call_response("ask_user", {"question": "Which?"}, call_id="tc-ask"),
+            _fake_response(payload),
+        ]
+    )
+
+    result, _ = plan(task="t", observation={}, llm=llm, ask_user_callback=_cb)
+
+    assert len(llm.calls) == 2, (
+        f"stopword-only answers must not trigger retry, got {len(llm.calls)} calls"
+    )
+    assert result.steps == ["start the task", "complete the task"]
+
+
+def test_plan_retry_only_runs_once_even_if_second_plan_also_misses():
+    """The retry must be capped at one extra attempt — accept whatever comes
+    back next to avoid infinite loops if the LLM repeatedly ignores the
+    answer."""
+
+    def _cb(_q: str) -> str:
+        return "Shinjuku"
+
+    miss_plan = json.dumps(
+        {"steps": ["Search for ramen", "Pick the top result"], "expected_end_state": "ok"}
+    )
+    second_miss = json.dumps(
+        {
+            "steps": ["Open Maps", "Search ramen and report the best"],
+            "expected_end_state": "ok",
+        }
+    )
+    llm = _ScriptedLLM(
+        [
+            _tool_call_response("ask_user", {"question": "Which area?"}, call_id="tc-ask"),
+            _fake_response(miss_plan),
+            _fake_response(second_miss),
+        ]
+    )
+
+    result, _ = plan(
+        task="best ramen",
+        observation={},
+        llm=llm,
+        ask_user_callback=_cb,
+    )
+
+    # Exactly one retry — third call. plan() accepts the second_miss even
+    # though it still doesn't reference Shinjuku.
+    assert len(llm.calls) == 3
+    assert result.steps == ["Open Maps", "Search ramen and report the best"]

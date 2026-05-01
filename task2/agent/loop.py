@@ -16,13 +16,7 @@ from agent.locate import (
     IntentParseError,
     LocateResult,
     LocatorMiss,
-    _canonical_ax_fingerprint,
-    locate_l1,
-    locate_l2,
-    locate_l_textmatch,
-    parse_intent,
 )
-from agent.locator_cache import CacheEntry, _origin_from_url
 from agent.supervisor import EscalationDecision, Supervisor
 from agent.trace import (
     ActEvent,
@@ -271,6 +265,11 @@ _PLAN_CURSOR_TOOLS: frozenset[str] = frozenset({"goto", "click", "type", "read"}
 _SELF_FAILURE_STATUSES: frozenset[str] = frozenset(
     {"failed", "unable_to_complete", "blocked", "captcha"}
 )
+# F21: soft-failure status tokens — agent self-reports the run did not fully
+# succeed but is not a hard block. Loop downgrades the run to "unverified" so
+# the SSE terminal status doesn't claim plain `done` while the result message
+# admits "could not access ...".
+_SELF_SOFT_FAILURE_STATUSES: frozenset[str] = frozenset({"partial", "incomplete"})
 _OFF_PLAN_SENTINEL: str = "off-plan"
 
 # T1: words in a `next_goal` that signal the agent still has work to do
@@ -337,6 +336,75 @@ def _result_grounded_in_read(result: Any, latest_read: str) -> bool:
         if leaf.lower() in haystack:
             return True
     return False
+
+
+# F20: detect comparison-superlative tasks where the agent commits `done` to a
+# single candidate while prior `read` content listed multiple candidates with
+# the same numeric field shape (rating, price, review count). Page-shape +
+# task-shape signal — no domain vocabulary, no per-site recipes.
+_SUPERLATIVE_TOKENS: frozenset[str] = frozenset(
+    {
+        "best",
+        "cheapest",
+        "highest",
+        "lowest",
+        "most",
+        "fewest",
+        "largest",
+        "smallest",
+        "biggest",
+        "tallest",
+        "longest",
+        "shortest",
+        "fastest",
+        "slowest",
+        "nearest",
+        "closest",
+        "farthest",
+        "top",
+        "oldest",
+        "newest",
+        "latest",
+    }
+)
+_RATING_RX = re.compile(r"\b[1-5]\.\d\b")
+_PRICE_RX = re.compile(r"(?:NT\$|HK\$|S\$|US\$|\$|€|£|¥)\s*\d[\d,]*(?:\.\d+)?")
+_COUNT_RX = re.compile(r"\b\d[\d,]*\s+reviews?\b", re.IGNORECASE)
+
+
+def _task_has_superlative(task: str) -> bool:
+    tokens = re.findall(r"\b[a-z]+\b", task.lower())
+    return any(t in _SUPERLATIVE_TOKENS for t in tokens)
+
+
+def _detect_unsupported_superlative(task: str, observation_tape: str, result: Any) -> str | None:
+    """Returns a reason string if F20 fires, else None.
+
+    Triggers when:
+      1. `task` contains a comparison superlative (whole-word).
+      2. `observation_tape` (cumulative read content) has ≥2 distinct values
+         of some candidate-shaped numeric field (rating / price / review count).
+      3. The stringified `result` references ≤1 distinct value of that same
+         field — i.e. the agent committed to one candidate without surfacing
+         the comparison.
+    """
+    if not _task_has_superlative(task):
+        return None
+    if not observation_tape:
+        return None
+    result_str = json.dumps(result, ensure_ascii=False) if result is not None else ""
+    for label, rx in (("rating", _RATING_RX), ("price", _PRICE_RX), ("review_count", _COUNT_RX)):
+        tape_values = set(rx.findall(observation_tape))
+        if len(tape_values) < 2:
+            continue
+        result_values = set(rx.findall(result_str))
+        if len(result_values) <= 1:
+            return (
+                f"task uses a comparison superlative; observed ≥2 candidates "
+                f"with {label}-shape values but `done` references only "
+                f"{len(result_values)}"
+            )
+    return None
 
 
 _ELIDED_AX_TREE_MARKER = "[elided — see latest observation]"
@@ -812,10 +880,18 @@ def _build_system_prompt(task: str, *, expect: dict | None = None) -> str:
     return base
 
 
-def _body_text(page: Page | None) -> str:
+def _body_text(page: Page | None, *, limit: int | None = _BODY_TEXT_LIMIT) -> str:
+    """Return the page body text. With limit=None, returns the full innerText
+    (used by `read find` so the substring search can scan the whole page).
+    With a limit, truncates to that many chars (default path for plain
+    `read` and intent-based reads, which can't afford a 50 KB observation).
+    """
     if page is None:
         return ""
-    return page.evaluate(_BODY_TEXT_JS)[:_BODY_TEXT_LIMIT]
+    text = page.evaluate(_BODY_TEXT_JS)
+    if limit is None:
+        return text
+    return text[:limit]
 
 
 def _window_around(text: str, query: str, *, window: int = _BODY_TEXT_LIMIT) -> str | None:
@@ -831,95 +907,71 @@ def _window_around(text: str, query: str, *, window: int = _BODY_TEXT_LIMIT) -> 
     return text[start:end]
 
 
-def _locate_via_ladder(
-    page: Page,
+_LADDER_OUTCOME_MAP: dict[str, Literal["hit", "miss", "ambiguous", "error"]] = {
+    "hit": "hit",
+    "zero_matches": "miss",
+    "ambiguous": "ambiguous",
+    "vision_miss": "miss",
+}
+
+
+def _make_ladder_event_handler(
+    *,
     intent: str,
     supervisor: Supervisor,
-    *,
-    trace_writer: TraceWriter | None = None,
-    run_id: str | None = None,
-    step_id: str | None = None,
-) -> LocateResult:
-    role, name = parse_intent(intent)
-    try:
-        return locate_l1(page, role=role, name=name)
-    except LocatorMiss as miss:
-        if miss.reason != "zero_matches":
-            raise
-        l1_miss_seq = _emit_locate_event(
+    trace_writer: TraceWriter | None,
+    run_id: str | None,
+    step_id: str | None,
+) -> Callable[[dict], None]:
+    """Translate canonical-ladder on_event payloads into LocateEvent / SupervisorEvent.
+
+    Also enforces the supervisor's max_attempts cap at L1_ax — when the
+    supervisor decides to halt (after `max_attempts` strikes), this raises
+    the original LocatorMiss to abort the ladder before it falls through to
+    L2/L3/L4. Without this gate the canonical ladder would happily burn an
+    L4_vision call on every repeat-miss intent.
+    """
+
+    def handler(payload: dict) -> None:
+        tier = payload.get("tier")
+        raw_outcome = payload.get("outcome")
+        chosen = payload.get("chosen")
+        cache_action = payload.get("cache_action")
+        miss: LocatorMiss | None = payload.get("miss")
+
+        # Map raw payload outcome to LocateEvent outcome literal.
+        if raw_outcome == "cache_write":
+            event_outcome: Literal["hit", "miss", "ambiguous", "error"] = "hit"
+            cache_action = "write"
+        else:
+            event_outcome = _LADDER_OUTCOME_MAP.get(str(raw_outcome), "error")
+
+        seq = _emit_locate_event(
             trace_writer=trace_writer,
             run_id=run_id,
             intent=intent,
-            tier="L1_ax",
-            outcome="miss",
-            cache_action=None,
-            chosen=None,
+            tier=tier,  # type: ignore[arg-type]
+            outcome=event_outcome,
+            cache_action=cache_action,  # type: ignore[arg-type]
+            chosen=chosen,
             step_id=step_id,
         )
-        decision = supervisor.handle(miss, current_tier="L1_ax")
-        if l1_miss_seq is not None:
-            _emit_supervisor_event(
-                trace_writer=trace_writer,
-                run_id=run_id,
-                decision=decision,
-                miss=miss,
-                trigger_event_seq=l1_miss_seq,
-                step_id=step_id,
-            )
-        if decision.next_tier != "L2_dom":
-            raise
-        try:
-            result = locate_l2(page, role=role, name=name)
-        except LocatorMiss:
-            _emit_locate_event(
-                trace_writer=trace_writer,
-                run_id=run_id,
-                intent=intent,
-                tier="L2_dom",
-                outcome="miss",
-                cache_action=None,
-                chosen=None,
-                step_id=step_id,
-            )
-            # F8: verbatim textContent substring match against clickable-ish
-            # elements. Catches CJK / non-English DOM where role-based tiers
-            # miss because the accessible name is the inner text.
-            try:
-                tm_result = locate_l_textmatch(page, role=role, name=name)
-            except LocatorMiss:
-                _emit_locate_event(
+
+        if tier == "L1_ax" and miss is not None and event_outcome in ("miss", "ambiguous"):
+            decision = supervisor.handle(miss, current_tier="L1_ax")
+            if seq is not None:
+                _emit_supervisor_event(
                     trace_writer=trace_writer,
                     run_id=run_id,
-                    intent=intent,
-                    tier="L_textmatch",
-                    outcome="miss",
-                    cache_action=None,
-                    chosen=None,
+                    decision=decision,
+                    miss=miss,
+                    trigger_event_seq=seq,
                     step_id=step_id,
                 )
-                raise
-            _emit_locate_event(
-                trace_writer=trace_writer,
-                run_id=run_id,
-                intent=intent,
-                tier="L_textmatch",
-                outcome="hit",
-                cache_action=None,
-                chosen={"role": tm_result.role, "selector": tm_result.selector},
-                step_id=step_id,
-            )
-            return tm_result
-        _emit_locate_event(
-            trace_writer=trace_writer,
-            run_id=run_id,
-            intent=intent,
-            tier="L2_dom",
-            outcome="hit",
-            cache_action=None,
-            chosen={"role": result.role, "selector": result.selector},
-            step_id=step_id,
-        )
-        return result
+            if decision.next_tier is None:
+                raise miss
+
+    return handler
 
 
 def _emit_locate_event(
@@ -1046,115 +1098,24 @@ def _locate_with_supervisor(
     trace_writer: TraceWriter | None = None,
     run_id: str | None = None,
     step_id: str | None = None,
+    llm_chat: Callable[..., Any] | None = None,
 ) -> LocateResult:
-    if cache is None:
-        return _locate_via_ladder(
-            page,
-            intent,
-            supervisor,
-            trace_writer=trace_writer,
-            run_id=run_id,
-            step_id=step_id,
-        )
+    from agent.locate import locate as canonical_locate
 
-    origin = _origin_from_url(page.url)
-    entry = cache.get(origin=origin, intent=intent)
-    if entry is not None:
-        if entry.tier == "L4_vision":
-            cache.invalidate(origin=origin, intent=intent)
-            _emit_locate_event(
-                trace_writer=trace_writer,
-                run_id=run_id,
-                intent=intent,
-                tier="cache",
-                outcome="miss",
-                cache_action="invalidate",
-                chosen=None,
-                step_id=step_id,
-            )
-        else:
-            live_fp = _canonical_ax_fingerprint(page, role=entry.role, selector=entry.selector)
-            if live_fp is None or live_fp != entry.ax_fingerprint:
-                cache.invalidate(origin=origin, intent=intent)
-                _emit_locate_event(
-                    trace_writer=trace_writer,
-                    run_id=run_id,
-                    intent=intent,
-                    tier="cache",
-                    outcome="miss",
-                    cache_action="invalidate",
-                    chosen=None,
-                    step_id=step_id,
-                )
-            else:
-                _emit_locate_event(
-                    trace_writer=trace_writer,
-                    run_id=run_id,
-                    intent=intent,
-                    tier="cache",
-                    outcome="hit",
-                    cache_action="read",
-                    chosen={
-                        "role": entry.role,
-                        "selector": entry.selector,
-                        "ax_fingerprint": entry.ax_fingerprint,
-                    },
-                    step_id=step_id,
-                )
-                return LocateResult(
-                    tier="cache",
-                    role=entry.role,
-                    name=entry.name,
-                    selector=entry.selector,
-                    ax_fingerprint=entry.ax_fingerprint,
-                    confidence=entry.confidence,
-                    coords=entry.coords,
-                )
-
-    result = _locate_via_ladder(
+    handler = _make_ladder_event_handler(
+        intent=intent,
+        supervisor=supervisor,
+        trace_writer=trace_writer,
+        run_id=run_id,
+        step_id=step_id,
+    )
+    return canonical_locate(
         page,
         intent,
-        supervisor,
-        trace_writer=trace_writer,
-        run_id=run_id,
-        step_id=step_id,
+        llm_chat=llm_chat,
+        cache=cache,
+        on_event=handler,
     )
-
-    if result.tier == "L4_vision":
-        stored_fingerprint = result.ax_fingerprint
-    else:
-        canonical = _canonical_ax_fingerprint(page, role=result.role, selector=result.selector)
-        stored_fingerprint = canonical if canonical is not None else result.ax_fingerprint
-    written_at = datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
-    cache.put(
-        CacheEntry(
-            origin=origin,
-            intent=intent,
-            role=result.role,
-            name=result.name,
-            selector=result.selector,
-            ax_fingerprint=stored_fingerprint,
-            confidence=result.confidence,
-            tier=result.tier,
-            coords=result.coords,
-            written_at_utc=written_at,
-        )
-    )
-    _emit_locate_event(
-        trace_writer=trace_writer,
-        run_id=run_id,
-        intent=intent,
-        tier=result.tier,
-        outcome="hit",
-        cache_action="write",
-        chosen={
-            "role": result.role,
-            "selector": result.selector,
-            "ax_fingerprint": stored_fingerprint,
-        },
-        step_id=step_id,
-    )
-    return result
 
 
 def _locate_or_error_msg(
@@ -1166,6 +1127,7 @@ def _locate_or_error_msg(
     trace_writer: TraceWriter | None,
     run_id: str | None,
     step_id: str | None,
+    llm_chat: Callable[..., Any] | None = None,
 ) -> LocateResult | str:
     try:
         return _locate_with_supervisor(
@@ -1176,6 +1138,7 @@ def _locate_or_error_msg(
             trace_writer=trace_writer,
             run_id=run_id,
             step_id=step_id,
+            llm_chat=llm_chat,
         )
     except (LocatorMiss, IntentParseError) as miss:
         return f"Error: could not locate element for intent {intent!r} ({miss})"
@@ -1191,6 +1154,7 @@ def _dispatch(
     trace_writer: TraceWriter | None = None,
     run_id: str | None = None,
     step_id: str | None = None,
+    llm_chat: Callable[..., Any] | None = None,
 ) -> str:
     if tool_name == "goto":
         url = args.get("url")
@@ -1245,12 +1209,24 @@ def _dispatch(
             if not isinstance(find, str) or not find.strip():
                 _emit_read("error", {"find": find})
                 return "Error: read 'find' must be a non-empty string"
-            full = _body_text(page)
+            # F23: scan the FULL page text, not the 2 KB-truncated body.
+            # Truncation moves to *after* the match (window slice) so a
+            # substring past the default window is still findable.
+            try:
+                full = _body_text(page, limit=None)
+            except Exception as e:  # real page failure (closed page, evaluate threw)
+                _emit_read("error", {"find": find})
+                return f"Error: page evaluate failed for find={find!r}: {e}"
             window = _window_around(full, find)
             if window is None:
-                _emit_read("error", {"find": find})
-                return f"Error: 'find' query {find!r} not found in page text"
-            _emit_read("ok", {"find": find})
+                # F23: a missing substring is not a page failure — surface as
+                # an `ok` outcome with match_count=0 so the agent reads it as
+                # "look elsewhere on this page" rather than "page is broken".
+                _emit_read("ok", {"find": find, "match_count": 0})
+                return (
+                    f"no match for {find!r} in page text (scanned {len(full)} chars; match_count=0)"
+                )
+            _emit_read("ok", {"find": find, "match_count": 1})
             return window
         if intent:
             located = _locate_or_error_msg(
@@ -1261,6 +1237,7 @@ def _dispatch(
                 trace_writer=trace_writer,
                 run_id=run_id,
                 step_id=step_id,
+                llm_chat=llm_chat,
             )
             if isinstance(located, str):
                 # F12: fall back to a full-body read instead of returning an
@@ -1296,6 +1273,7 @@ def _dispatch(
             trace_writer=trace_writer,
             run_id=run_id,
             step_id=step_id,
+            llm_chat=llm_chat,
         )
         if isinstance(located, str):
             return located
@@ -1365,6 +1343,7 @@ def _dispatch(
             trace_writer=trace_writer,
             run_id=run_id,
             step_id=step_id,
+            llm_chat=llm_chat,
         )
         if isinstance(located, str):
             return located
@@ -1890,6 +1869,81 @@ def loop(
                     )
                     continue
 
+                # F20: list-shape comparison-superlative mismatch — fires
+                # before the LLM judge so a structural signal can replan
+                # without burning a judge call. Severity sits between
+                # tool_error and unsupported_done so the LLM-judge path can
+                # still escalate above it.
+                _f20_reason = _detect_unsupported_superlative(
+                    task,
+                    _build_observation_tape(messages),
+                    args.get("result"),
+                )
+                if _f20_reason is not None and supervisor.can_replan("unsupported_superlative"):
+                    if trace_writer is not None and run_id is not None:
+                        sup_seq = trace_writer.next_seq(run_id)
+                        trace_writer.append_event(
+                            SupervisorEvent(
+                                run_id=run_id,
+                                seq=sup_seq,
+                                ts=datetime.now(UTC).isoformat(),
+                                step_id=_step_id,
+                                trigger_event_seq=0,
+                                classified_as="unsupported_superlative",
+                                policy="replan",
+                                attempt=1,
+                            )
+                        )
+                    elif events is not None:
+                        events.append(
+                            SupervisorEvent(
+                                run_id=run_id if run_id else "loop",
+                                seq=0,
+                                ts="",
+                                step_id=_step_id,
+                                trigger_event_seq=0,
+                                classified_as="unsupported_superlative",
+                                policy="replan",
+                                attempt=1,
+                            )
+                        )
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "content": (
+                                f"Supervisor: {_f20_reason}. The task asks for a "
+                                "comparison; read the list of candidates and "
+                                "compare the relevant field across them before "
+                                "calling `done` again."
+                            ),
+                        }
+                    )
+                    new_plan, replan_resp = plan_module.replan(
+                        task,
+                        observation,
+                        active_plan,
+                        f"unsupported superlative: {_f20_reason}",
+                        llm_client,
+                    )
+                    cum_prompt_tokens += replan_resp.usage.prompt_tokens
+                    cum_completion_tokens += replan_resp.usage.completion_tokens
+                    cum_usd += replan_resp.usd
+                    supervisor.record_replan("unsupported_superlative")
+                    active_plan = new_plan
+                    _no_progress_buf.clear()
+                    replanned_this_step = True
+                    _emit_plan_event(
+                        events,
+                        "replan",
+                        new_plan.steps,
+                        str(uuid.uuid4()),
+                        trace_writer=trace_writer,
+                        run_id=run_id,
+                        step_id=_step_id,
+                    )
+                    break
+
                 evidence = args.get("evidence")
                 verifier = _check_evidence(evidence)
 
@@ -1964,17 +2018,21 @@ def loop(
                             break
 
                 status: RunStatus = "succeeded" if verifier["ok"] else "unverified"
-                # F5: if the agent's own result payload self-reports a hard
-                # failure (captcha, blocked, unable_to_complete), downgrade
-                # the run to "failed" rather than silently marking it done.
+                # F5/F21: if the agent's own result payload self-reports a
+                # failure status, downgrade the run accordingly. Hard
+                # failures (failed/blocked/captcha/unable_to_complete) flip
+                # to "failed"; soft failures (partial/incomplete) flip to
+                # "unverified" so the SSE terminal status reflects what the
+                # agent actually accomplished.
                 _result_payload = args.get("result")
                 if isinstance(_result_payload, dict):
                     _self_status = _result_payload.get("status")
-                    if (
-                        isinstance(_self_status, str)
-                        and _self_status.lower() in _SELF_FAILURE_STATUSES
-                    ):
-                        status = "failed"
+                    if isinstance(_self_status, str):
+                        _normalized = _self_status.lower()
+                        if _normalized in _SELF_FAILURE_STATUSES:
+                            status = "failed"
+                        elif _normalized in _SELF_SOFT_FAILURE_STATUSES:
+                            status = "unverified"
                 _emit_act_event(
                     trace_writer=trace_writer,
                     run_id=run_id,
@@ -2077,6 +2135,7 @@ def loop(
                 trace_writer=trace_writer,
                 run_id=run_id,
                 step_id=_step_id,
+                llm_chat=llm_client.chat,
             )
             if supervisor.total_attempts() > _sup_calls_before:
                 _stuck_buf.clear()
