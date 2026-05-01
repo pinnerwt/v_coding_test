@@ -499,7 +499,10 @@ def test_chat_response_usd_unknown_model_uses_default():
 
 
 @respx.mock
-def test_chat_disable_thinking_env_unset_omits_kwargs(monkeypatch):
+def test_chat_disable_thinking_env_unset_disables_thinking_by_default(monkeypatch):
+    """When LLM_DISABLE_THINKING is unset, thinking is OFF by default — Qwen3-5
+    bills thinking tokens against the completion budget and inflates planner
+    cost ~10x with no measurable plan-quality win on the live agent."""
     monkeypatch.delenv("LLM_DISABLE_THINKING", raising=False)
     route = respx.post(f"http://localhost:8090{CHAT_PATH}").mock(
         return_value=httpx.Response(200, json=_ok_payload())
@@ -508,7 +511,7 @@ def test_chat_disable_thinking_env_unset_omits_kwargs(monkeypatch):
     chat(messages=[{"role": "user", "content": "hi"}], model="m")
 
     body = json.loads(route.calls.last.request.content)
-    assert "chat_template_kwargs" not in body
+    assert body["chat_template_kwargs"] == {"enable_thinking": False}
 
 
 @respx.mock

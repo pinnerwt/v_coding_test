@@ -144,7 +144,8 @@ class LLMClient:
             body["tools"] = tools
         if seed is not None:
             body["seed"] = seed
-        if os.environ.get("LLM_DISABLE_THINKING", "").strip().lower() in {"1", "true", "yes", "on"}:
+        disable_thinking = os.environ.get("LLM_DISABLE_THINKING", "1").strip().lower()
+        if disable_thinking in {"1", "true", "yes", "on"}:
             body["chat_template_kwargs"] = {"enable_thinking": False}
 
         headers: dict[str, str] = {}
