@@ -47,6 +47,7 @@ class TaskRequest(BaseModel):
     task: str
     expect_schema: dict | None = None
     budget: dict | None = None
+    locale: str | None = None
 
     @field_validator("task")
     @classmethod
@@ -204,7 +205,11 @@ class AnswerRequest(BaseModel):
 
 @app.post("/sessions")
 def create_session(task_req: TaskRequest) -> dict[str, Any]:
-    run_id = start_session(task_req.task, expect_schema=task_req.expect_schema)
+    run_id = start_session(
+        task_req.task,
+        expect_schema=task_req.expect_schema,
+        locale=task_req.locale,
+    )
     return {"id": run_id}
 
 

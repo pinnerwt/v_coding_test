@@ -42,9 +42,14 @@
   }
   .ev.plan { border-left-color: #6366f1; }
   .ev.act { border-left-color: #0ea5e9; }
+  .ev.locate { border-left-color: #8b5cf6; }
+  .ev.supervisor { border-left-color: #ec4899; }
   .ev.ask_user { border-left-color: #f59e0b; }
   .ev.answer { border-left-color: #10b981; }
   .ev.terminal { border-left-color: #16a34a; font-weight: 600; }
+  .ev.terminal.failed { border-left-color: #dc2626; }
+  .ev.terminal.timeout { border-left-color: #f59e0b; }
+  .ev.terminal.unverified { border-left-color: #f59e0b; }
   .ev .ev-detail { color: #6b7280; word-break: break-word; }
   form { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
   form[hidden] { display: none; }
@@ -122,14 +127,18 @@ function addEvent(ev) {
   if (ev.type === 'trace') {
     if (ev.kind === 'act') {
       label = `act: ${ev.tool} (${ev.outcome || 'ok'})`;
-      if (ev.tool === 'done' || ev.tool === 'fail') {
+      if (ev.tool === 'done') {
         detail = '';
+      } else if (ev.tool === 'fail') {
+        detail = (ev.args && ev.args.reason) || '';
       } else {
         detail = JSON.stringify(ev.args || {});
       }
     } else if (ev.kind === 'plan') {
       label = `plan (${ev.reason || 'initial'})`;
-      detail = (ev.steps || []).join(' → ');
+      detail = (ev.reason === 'ask_user' || ev.reason === 'started')
+        ? (ev.steps || [])[0] || ''
+        : (ev.steps || []).join(' → ');
     } else if (ev.kind === 'locate') {
       label = `locate: ${ev.tier || '?'} (${ev.outcome || '?'})`;
       detail = ev.intent || '';
@@ -145,8 +154,11 @@ function addEvent(ev) {
     label = 'answer';
     detail = ev.answer || '';
   } else if (ev.type === 'terminal') {
-    label = `terminal: ${ev.status}`;
-    detail = ev.error || JSON.stringify(ev.result || {});
+    const reasonSuffix = ev.reason ? ` (${ev.reason})` : '';
+    label = `terminal: ${ev.status}${reasonSuffix}`;
+    detail = ev.error
+      || (ev.result ? JSON.stringify(ev.result) : '');
+    div.classList.add(ev.status);
   }
   const detailHtml = detail
     ? ` <span class="ev-detail">${escapeHtml(detail)}</span>`
@@ -169,10 +181,11 @@ taskForm.addEventListener('submit', async (e) => {
   document.getElementById('task-submit').disabled = true;
   document.getElementById('task-input').disabled = true;
   setStatus('running');
+  const locale = navigator.language || null;
   const r = await fetch('/sessions', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({task})
+    body: JSON.stringify({task, locale})
   });
   const data = await r.json();
   runId = data.id;
@@ -188,9 +201,15 @@ taskForm.addEventListener('submit', async (e) => {
       setStatus('awaiting_user');
     } else if (ev.type === 'terminal') {
       const cls = ev.status === 'done' ? 'done' : 'error';
-      const text = ev.status === 'done'
-        ? `done:\n${JSON.stringify(ev.result || {}, null, 2)}`
-        : `failed: ${ev.error || 'unknown'}`;
+      let text;
+      if (ev.status === 'done') {
+        text = `done:\n${JSON.stringify(ev.result || {}, null, 2)}`;
+      } else {
+        const reasonSuffix = ev.reason ? ` (${ev.reason})` : '';
+        const detail = ev.error
+          || (ev.result ? `\n${JSON.stringify(ev.result, null, 2)}` : '');
+        text = `${ev.status}${reasonSuffix}${detail ? ': ' + detail : ''}`;
+      }
       addMessage(text, cls);
       setStatus(ev.status);
       evtSource.close();

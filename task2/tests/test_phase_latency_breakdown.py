@@ -44,6 +44,14 @@ def _is_judge_call(messages: list[dict]) -> bool:
     return isinstance(content, str) and "[VERIFY DONE]" in content
 
 
+def _is_planner_call(messages: list[dict]) -> bool:
+    if not messages:
+        return False
+    first = messages[0]
+    content = first.get("content", "") if isinstance(first, dict) else ""
+    return isinstance(content, str) and content.startswith("You are a planning assistant")
+
+
 def _tool_call(name: str, args: dict, call_id: str = "tc-1") -> ToolCall:
     return ToolCall(id=call_id, name=name, arguments=json.dumps(args))
 
@@ -90,7 +98,7 @@ class _SleepingLLMClient:
     def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
         if _is_judge_call(messages):
             return _judge_stub_response()
-        if tools is None:
+        if tools is None or _is_planner_call(messages):
             return _plan_stub_response()
         time.sleep(0.4)
         if self._index < len(self._responses):
@@ -110,7 +118,7 @@ class _SimpleLLMClient:
     def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
         if _is_judge_call(messages):
             return _judge_stub_response()
-        if tools is None:
+        if tools is None or _is_planner_call(messages):
             return _plan_stub_response()
         if self._index < len(self._responses):
             resp = self._responses[self._index]

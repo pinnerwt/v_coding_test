@@ -19,6 +19,14 @@ _CONSTANT_OBS = {
 }
 
 
+def _is_planner_call(messages: list[dict]) -> bool:
+    if not messages:
+        return False
+    first = messages[0]
+    content = first.get("content", "") if isinstance(first, dict) else ""
+    return isinstance(content, str) and content.startswith("You are a planning assistant")
+
+
 def _plan_stub() -> ChatResponse:
     return ChatResponse(
         content='{"steps": ["complete the task"], "expected_end_state": "task complete"}',
@@ -47,7 +55,7 @@ class _ReadEachStepClient:
         self._step = 0
 
     def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
-        if tools is None:
+        if tools is None or _is_planner_call(messages):
             return _plan_stub()
         self._step += 1
         return ChatResponse(
@@ -96,7 +104,7 @@ class _ClickOkEachStepClient:
         self._step = 0
 
     def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
-        if tools is None:
+        if tools is None or _is_planner_call(messages):
             return _plan_stub()
         self._step += 1
         return ChatResponse(
@@ -211,7 +219,7 @@ class _GotoThenBodyReadsClient:
         self._step = 0
 
     def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
-        if tools is None:
+        if tools is None or _is_planner_call(messages):
             return _plan_stub()
         self._step += 1
         if self._step == 1:
@@ -283,7 +291,7 @@ class _ReplanThenClickNoSuccessClient:
         self._step = 0
 
     def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
-        if tools is None:
+        if tools is None or _is_planner_call(messages):
             return _plan_stub()
         self._step += 1
         if self._step <= 2:

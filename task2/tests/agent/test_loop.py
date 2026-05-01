@@ -97,6 +97,16 @@ def _is_judge_call(messages: list[dict]) -> bool:
     return isinstance(content, str) and "[VERIFY DONE]" in content
 
 
+def _is_planner_call(messages: list[dict]) -> bool:
+    if not messages:
+        return False
+    first = messages[0]
+    if not isinstance(first, dict):
+        return False
+    content = first.get("content")
+    return isinstance(content, str) and content.startswith("You are a planning assistant")
+
+
 class _FakeLLMClient:
     """Returns pre-canned ChatResponse objects in sequence.
 
@@ -125,7 +135,7 @@ class _FakeLLMClient:
                 self._judge_index += 1
                 return resp
             return _judge_response("supported", "default")
-        if tools is None:
+        if tools is None or _is_planner_call(messages):
             return _plan_stub_response()
         if self._index < len(self._responses):
             resp = self._responses[self._index]
@@ -874,7 +884,7 @@ class _CapturingLLMClient:
         self.captured_messages: list[dict] | None = None
 
     def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
-        if tools is None:
+        if tools is None or _is_planner_call(messages):
             return _plan_stub_response()
         if self.captured_messages is None:
             self.captured_messages = list(messages)
@@ -956,7 +966,7 @@ class _TwoStepCapturingClient:
         self.all_captures: list[list[dict]] = []
 
     def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
-        if tools is None:
+        if tools is None or _is_planner_call(messages):
             return _plan_stub_response()
         self.all_captures.append(list(messages))
         self._index += 1
@@ -1286,7 +1296,7 @@ def test_loop_does_not_terminally_fail_on_unrelated_error_after_replan(
                 self._state = "read"
                 return _fake_text_response(plan_json)
 
-            if tools is None:
+            if tools is None or _is_planner_call(messages):
                 self._state = "goto_empty"
                 return _fake_text_response(replan_json)
 
@@ -1397,7 +1407,7 @@ class _ScriptedFirstStepClient:
         self.all_captures: list[list[dict]] = []
 
     def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
-        if tools is None:
+        if tools is None or _is_planner_call(messages):
             return _plan_stub_response()
         self.all_captures.append(list(messages))
         self._call_index += 1
@@ -3562,7 +3572,7 @@ class _RecordingLLMClient:
         self._step = 0
 
     def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
-        if tools is None:
+        if tools is None or _is_planner_call(messages):
             return ChatResponse(
                 content='{"steps": ["do the task"], "expected_end_state": "done"}',
                 tool_calls=[],
@@ -4019,7 +4029,7 @@ def test_strip_stale_ax_trees_handles_non_json_state_content_gracefully():
 
 class _AlwaysGotoClient:
     def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
-        if tools is None:
+        if tools is None or _is_planner_call(messages):
             return ChatResponse(
                 content='{"steps": ["do the task"], "expected_end_state": "done"}',
                 tool_calls=[],
@@ -4057,7 +4067,7 @@ class _AlternatingGotoClient:
         self._step = 0
 
     def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
-        if tools is None:
+        if tools is None or _is_planner_call(messages):
             return ChatResponse(
                 content='{"steps": ["do the task"], "expected_end_state": "done"}',
                 tool_calls=[],
@@ -4160,7 +4170,7 @@ def test_loop_stuck_repeat_does_not_preempt_supervisor_halt():
 
 class _AlwaysNoToolCallClient:
     def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
-        if tools is None:
+        if tools is None or _is_planner_call(messages):
             return ChatResponse(
                 content='{"steps": ["do the task"], "expected_end_state": "done"}',
                 tool_calls=[],
@@ -4195,7 +4205,7 @@ class _NoToolCallThenGotoClient:
         self._step = 0
 
     def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
-        if tools is None:
+        if tools is None or _is_planner_call(messages):
             return ChatResponse(
                 content='{"steps": ["do the task"], "expected_end_state": "done"}',
                 tool_calls=[],
@@ -4286,7 +4296,7 @@ class _SleepingLLMClient:
         self._step = 0
 
     def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
-        if tools is None:
+        if tools is None or _is_planner_call(messages):
             return _plan_stub_response()
         import time as _t
 
@@ -4415,154 +4425,297 @@ def test_loop_budget_seconds_signature_accepts_kwarg():
 
 
 # ---------------------------------------------------------------------------
-# ask_user tool: lets the agent ask the human a clarifying question mid-run
+# ask_user lives on the planner now (see tests/agent/test_plan.py).
+# The loop's TOOLS list must NOT contain ask_user — navigation only.
 # ---------------------------------------------------------------------------
 
 
-def test_tools_list_includes_ask_user():
-    """ask_user MUST appear in TOOLS with a required `question: string` parameter."""
+def test_tools_list_does_not_include_ask_user():
+    """ask_user must not appear in the loop's tool list — it belongs on the planner."""
     from agent.loop import TOOLS
 
-    entry = next((t for t in TOOLS if t["function"]["name"] == "ask_user"), None)
-    assert entry is not None, "TOOLS must contain an entry with function.name == 'ask_user'"
-    props = entry["function"]["parameters"]["properties"]
-    assert "question" in props, "ask_user entry must have 'question' in parameters.properties"
-    assert props["question"]["type"] == "string", "ask_user 'question' must be type 'string'"
-    required = entry["function"]["parameters"]["required"]
-    assert "question" in required, "'question' must appear in ask_user's parameters.required"
+    names = [t["function"]["name"] for t in TOOLS]
+    assert "ask_user" not in names, (
+        f"loop TOOLS must not expose ask_user (planner-only); got {names!r}"
+    )
 
 
 def test_loop_ask_user_callback_signature_kwarg():
-    """loop() MUST accept ask_user_callback as a keyword-only param defaulting to None."""
+    """loop() still accepts ask_user_callback (forwarded to the planner)."""
     import inspect
 
     from agent import loop as loop_mod
 
     sig = inspect.signature(loop_mod.loop)
-    assert "ask_user_callback" in sig.parameters, "loop must accept ask_user_callback keyword param"
+    assert "ask_user_callback" in sig.parameters
     p = sig.parameters["ask_user_callback"]
     assert p.default is None
     assert p.kind == inspect.Parameter.KEYWORD_ONLY
 
 
-def test_loop_ask_user_invokes_callback_and_feeds_answer_back(fixture_server, playwright_chromium):
-    """When the LLM calls ask_user, the loop SHALL invoke the callback synchronously
-    and feed the answer back as the tool result so the LLM's next call sees it."""
-    fixture_url = f"{fixture_server}/loop_happy_path.html"
+def test_loop_locale_signature_kwarg():
+    """loop() accepts locale as a keyword-only kwarg defaulting to None."""
+    import inspect
 
-    captured_questions: list[str] = []
-    captured_messages_at_step2: list[dict] = []
+    from agent import loop as loop_mod
 
-    def _callback(question: str) -> str:
-        captured_questions.append(question)
-        return "Tianmu"
+    sig = inspect.signature(loop_mod.loop)
+    assert "locale" in sig.parameters
+    p = sig.parameters["locale"]
+    assert p.default is None
+    assert p.kind == inspect.Parameter.KEYWORD_ONLY
 
-    responses = [
-        _response_with_tool_call(
-            _tool_call(
-                "ask_user",
-                {"question": "Which 旭集 location?"},
-                call_id="tc-ask",
+
+def test_loop_emits_planner_started_before_initial_plan():
+    """Loop must emit a PlanEvent(reason='started') before the planner's first
+    LLM call returns, so the UI's trace pane lights up immediately instead of
+    waiting silently for the LLM round-trip."""
+    import json as _json
+    from unittest.mock import MagicMock, patch
+
+    from agent.llm import ChatResponse, ToolCall, Usage
+    from agent.loop import loop
+    from agent.trace import PlanEvent
+
+    plan_resp = ChatResponse(
+        content='{"steps": ["go", "read"], "expected_end_state": "done"}',
+        tool_calls=[],
+        finish_reason="stop",
+        model="fake",
+        usage=Usage(prompt_tokens=0, completion_tokens=0, total_tokens=0),
+        raw={},
+        usd=0.0,
+    )
+    done_resp = ChatResponse(
+        content=None,
+        tool_calls=[
+            ToolCall(
+                id="tc-done",
+                name="done",
+                arguments=_json.dumps(
+                    {
+                        "result": {"ok": True},
+                        "evidence": {"url": "http://x", "text_snippet": "ok"},
+                    }
+                ),
             )
-        ),
-        _response_with_tool_call(
-            _tool_call(
-                "done",
-                {
-                    "result": {"location": "Tianmu"},
-                    "evidence": {"url": fixture_url, "text_snippet": "Tianmu"},
-                },
-                call_id="tc-done",
-            )
-        ),
-    ]
+        ],
+        finish_reason="tool_calls",
+        model="fake",
+        usage=Usage(prompt_tokens=1, completion_tokens=1, total_tokens=2),
+        raw={},
+    )
 
-    class _CapturingLLM:
+    class _LLM:
+        def chat(self, messages, *, tools=None, **_kw):
+            first = messages[0].get("content", "") if messages else ""
+            if isinstance(first, str) and first.startswith("You are a planning assistant"):
+                return plan_resp
+            return done_resp
+
+    browser = MagicMock()
+    browser._page = None
+    obs = {
+        "url": "http://x",
+        "title": "x",
+        "ax_tree_digest": "",
+        "ax_fingerprint": "0" * 64,
+        "last_actions": [],
+    }
+
+    events: list = []
+    with patch("agent.loop.observe.build_observation", return_value=obs):
+        loop("t", browser, _LLM(), max_steps=3, events=events)
+
+    plan_events = [e for e in events if isinstance(e, PlanEvent)]
+    reasons = [e.reason for e in plan_events]
+    assert reasons[0] == "started", (
+        f"first plan event must be reason='started'; got {reasons!r}"
+    )
+    assert "initial" in reasons, (
+        f"after planner returns, reason='initial' must follow; got {reasons!r}"
+    )
+    started_idx = reasons.index("started")
+    initial_idx = reasons.index("initial")
+    assert started_idx < initial_idx, (
+        f"started must come before initial; got order {reasons!r}"
+    )
+
+
+def test_loop_emits_plan_event_when_planner_asks_user():
+    """When the planner emits ask_user, loop must emit a PlanEvent with
+    reason='ask_user' so the trace pane shows planner activity rather than
+    going silent until the user answers."""
+    import json as _json
+    from unittest.mock import MagicMock, patch
+
+    from agent.llm import ChatResponse, ToolCall, Usage
+    from agent.loop import loop
+    from agent.trace import PlanEvent
+
+    plan_ask = ChatResponse(
+        content=None,
+        tool_calls=[
+            ToolCall(
+                id="tc-ask", name="ask_user", arguments=_json.dumps({"question": "Which one?"})
+            )
+        ],
+        finish_reason="tool_calls",
+        model="fake",
+        usage=Usage(prompt_tokens=0, completion_tokens=0, total_tokens=0),
+        raw={},
+    )
+    plan_final = ChatResponse(
+        content='{"steps": ["go", "read"], "expected_end_state": "done"}',
+        tool_calls=[],
+        finish_reason="stop",
+        model="fake",
+        usage=Usage(prompt_tokens=0, completion_tokens=0, total_tokens=0),
+        raw={},
+        usd=0.0,
+    )
+    done_resp = ChatResponse(
+        content=None,
+        tool_calls=[
+            ToolCall(
+                id="tc-done",
+                name="done",
+                arguments=_json.dumps(
+                    {
+                        "result": {"ok": True},
+                        "evidence": {"url": "http://x", "text_snippet": "ok"},
+                    }
+                ),
+            )
+        ],
+        finish_reason="tool_calls",
+        model="fake",
+        usage=Usage(prompt_tokens=1, completion_tokens=1, total_tokens=2),
+        raw={},
+    )
+
+    class _LLM:
         def __init__(self):
-            self._responses = list(responses)
-            self._idx = 0
-            self._tool_calls = 0
+            self._planner_calls = 0
 
         def chat(self, messages, *, tools=None, **_kw):
-            if _is_judge_call(messages):
-                return _judge_response("supported", "test default")
-            if tools is None:
-                return _plan_stub_response()
-            self._tool_calls += 1
-            if self._tool_calls == 2:
-                captured_messages_at_step2.extend(messages)
-            if self._idx < len(self._responses):
-                resp = self._responses[self._idx]
-                self._idx += 1
-                return resp
-            return _response_no_tool_call()
+            first = messages[0].get("content", "") if messages else ""
+            if isinstance(first, str) and first.startswith("You are a planning assistant"):
+                self._planner_calls += 1
+                return plan_ask if self._planner_calls == 1 else plan_final
+            return done_resp
 
-    fake_llm = _CapturingLLM()
+    browser = MagicMock()
+    browser._page = None
+    obs = {
+        "url": "http://x",
+        "title": "x",
+        "ax_tree_digest": "",
+        "ax_fingerprint": "0" * 64,
+        "last_actions": [],
+    }
 
-    with Browser(playwright_browser=playwright_chromium) as browser:
-        browser.goto(fixture_url)
-        result = loop(
-            "book a table at 旭集",
+    events: list = []
+
+    def _cb(_q):
+        return "answer-A"
+
+    with patch("agent.loop.observe.build_observation", return_value=obs):
+        loop(
+            "ambiguous task",
             browser,
-            fake_llm,
-            max_steps=4,
-            ask_user_callback=_callback,
+            _LLM(),
+            max_steps=5,
+            events=events,
+            ask_user_callback=_cb,
         )
 
-    assert captured_questions == ["Which 旭集 location?"], (
-        f"callback must be invoked once with the question, got {captured_questions!r}"
+    plan_events = [e for e in events if isinstance(e, PlanEvent)]
+    reasons = [e.reason for e in plan_events]
+    assert "ask_user" in reasons, (
+        f"expected a PlanEvent with reason='ask_user' when planner asks; got {reasons!r}"
     )
-    assert result.status == "succeeded"
-    assert result.result == {"location": "Tianmu"}
-
-    tool_msgs = [
-        m
-        for m in captured_messages_at_step2
-        if m.get("role") == "tool" and m.get("tool_call_id") == "tc-ask"
-    ]
-    assert len(tool_msgs) == 1, (
-        f"ask_user must produce one tool-result message in history, got {len(tool_msgs)}"
-    )
-    assert "Tianmu" in tool_msgs[0]["content"], (
-        f"answer 'Tianmu' must appear in ask_user tool-result content, got {tool_msgs[0]!r}"
+    ask_event = next(e for e in plan_events if e.reason == "ask_user")
+    assert any("Which one?" in s for s in ask_event.steps), (
+        f"ask_user PlanEvent must surface the question; got steps={ask_event.steps!r}"
     )
 
 
-def test_loop_ask_user_without_callback_returns_error_and_loop_continues(
-    fixture_server, playwright_chromium
-):
-    """If the LLM calls ask_user but no callback was provided, the loop SHALL return an
-    error tool-result (not crash) so the agent can continue with another tool."""
-    fixture_url = f"{fixture_server}/loop_happy_path.html"
+def test_loop_passes_run_context_with_locale_to_planner(monkeypatch):
+    """When loop() is invoked with locale='zh-TW' and max_steps=15, the planner
+    must see a RunContext whose locale matches and step_budget == max_steps."""
+    import json
+    from unittest.mock import MagicMock, patch
 
-    responses = [
-        _response_with_tool_call(
-            _tool_call(
-                "ask_user",
-                {"question": "Which one?"},
-                call_id="tc-ask",
-            )
+    from agent.llm import ChatResponse, ToolCall, Usage
+    from agent.loop import loop
+    from agent.plan import RunContext
+
+    captured: dict = {}
+
+    real_plan = __import__("agent.plan", fromlist=["plan"]).plan
+
+    def _spy_plan(task, observation, llm, **kwargs):
+        captured["context"] = kwargs.get("context")
+        return real_plan(task, observation, llm, **kwargs)
+
+    done_tc = ToolCall(
+        id="tc-1",
+        name="done",
+        arguments=json.dumps(
+            {"result": {"ok": True}, "evidence": {"url": "http://x", "text_snippet": "ok"}}
         ),
-        _response_with_tool_call(
-            _tool_call(
-                "done",
-                {
-                    "result": {"answer": "fallback"},
-                    "evidence": {"url": fixture_url, "text_snippet": "Hello, loop"},
-                },
-                call_id="tc-done",
-            )
-        ),
-    ]
-    fake_llm = _FakeLLMClient(responses)
-
-    with Browser(playwright_browser=playwright_chromium) as browser:
-        browser.goto(fixture_url)
-        result = loop("task", browser, fake_llm, max_steps=4)
-
-    assert result.status == "succeeded", (
-        f"loop should not crash without callback, got status={result.status!r}"
     )
+    plan_resp = ChatResponse(
+        content='{"steps": ["x"], "expected_end_state": "done"}',
+        tool_calls=[],
+        finish_reason="stop",
+        model="fake",
+        usage=Usage(prompt_tokens=0, completion_tokens=0, total_tokens=0),
+        raw={},
+        usd=0.0,
+    )
+    act_resp = ChatResponse(
+        content=None,
+        tool_calls=[done_tc],
+        finish_reason="tool_calls",
+        model="fake",
+        usage=Usage(prompt_tokens=1, completion_tokens=1, total_tokens=2),
+        raw={},
+    )
+
+    class _LLM:
+        def __init__(self):
+            self._calls = 0
+
+        def chat(self, messages, *, tools=None, **_kw):
+            self._calls += 1
+            if self._calls == 1:
+                return plan_resp
+            return act_resp
+
+    browser = MagicMock()
+    browser._page = None
+    obs = {
+        "url": "http://x",
+        "title": "x",
+        "ax_tree_digest": "",
+        "ax_fingerprint": "0" * 64,
+        "last_actions": [],
+    }
+
+    with (
+        patch("agent.loop.observe.build_observation", return_value=obs),
+        patch("agent.loop.plan_module.plan", side_effect=_spy_plan),
+    ):
+        loop("t", browser, _LLM(), max_steps=15, locale="zh-TW")
+
+    ctx = captured["context"]
+    assert isinstance(ctx, RunContext), f"context must be RunContext, got {type(ctx)!r}"
+    assert ctx.locale == "zh-TW"
+    assert ctx.step_budget == 15
+    assert ctx.date  # non-empty
+    assert ctx.timezone
 
 
 # ---------------------------------------------------------------------------
@@ -4807,7 +4960,8 @@ def test_loop_done_supported_judge_marks_succeeded(fixture_server, playwright_ch
 
     assert result.status == "succeeded"
     sup_events = [
-        e for e in writer.iter_events(run_id)
+        e
+        for e in writer.iter_events(run_id)
         if isinstance(e, SupervisorEvent) and e.classified_as == "unsupported_done"
     ]
     assert sup_events == []
@@ -4858,7 +5012,8 @@ def test_loop_done_unsupported_triggers_replan_and_emits_supervisor_event(
         result = loop("t", browser, fake_llm, trace_writer=writer, run_id=run_id)
 
     sup_events = [
-        e for e in writer.iter_events(run_id)
+        e
+        for e in writer.iter_events(run_id)
         if isinstance(e, SupervisorEvent) and e.classified_as == "unsupported_done"
     ]
     assert len(sup_events) == 1
@@ -4872,9 +5027,7 @@ def test_loop_done_unsupported_triggers_replan_and_emits_supervisor_event(
     writer.close()
 
 
-def test_loop_done_unsupported_after_replan_marks_unverified(
-    fixture_server, playwright_chromium
-):
+def test_loop_done_unsupported_after_replan_marks_unverified(fixture_server, playwright_chromium):
     fixture_url = f"{fixture_server}/loop_happy_path.html"
     responses = [
         _response_with_tool_call(_tool_call("goto", {"url": fixture_url}, call_id="tc-1")),
@@ -4915,7 +5068,8 @@ def test_loop_done_unsupported_after_replan_marks_unverified(
 
     assert result.status == "unverified"
     sup_events = [
-        e for e in writer.iter_events(run_id)
+        e
+        for e in writer.iter_events(run_id)
         if isinstance(e, SupervisorEvent) and e.classified_as == "unsupported_done"
     ]
     assert len(sup_events) >= 1

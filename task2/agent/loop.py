@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 
 RunStatus = Literal["succeeded", "unverified", "failed", "timeout"]
 RunResultReason = Literal["stuck_repeat", "no_tool_call_repeat", "seconds_budget", "no_progress"]
-ToolName = Literal["goto", "read", "click", "type", "done", "fail", "ask_user"]
+ToolName = Literal["goto", "read", "click", "type", "done", "fail"]
 _CLICK_SUCCESS_OUTCOMES: frozenset[str] = frozenset({"ok", "nav"})
 _IRRECOVERABLE_REASONS: frozenset[str] = frozenset({"login wall", "captcha", "blocked"})
 
@@ -182,29 +182,6 @@ TOOLS: list[dict] = [
             },
         },
     },
-    {
-        "type": "function",
-        "function": {
-            "name": "ask_user",
-            "description": (
-                "Ask the human a clarifying question and get their answer back as the "
-                "tool result. Use only when the task is genuinely ambiguous (e.g. a "
-                "named entity has multiple matching locations and there is no way to "
-                "infer the intended one from the task text). Do NOT use for things you "
-                "can resolve by reading the page."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "question": {
-                        "type": "string",
-                        "description": "A concise question for the user.",
-                    }
-                },
-                "required": ["question"],
-            },
-        },
-    },
 ]
 
 
@@ -216,6 +193,34 @@ _NO_PROGRESS_K: int = 4
 
 _ELIDED_AX_TREE_MARKER = "[elided — see latest observation]"
 _KEEP_RECENT_AX_TREES = 2
+
+
+def _build_run_context(locale: str | None, max_steps: int) -> plan_module.RunContext:
+    """Assemble the trusted RunContext shown to the planner.
+
+    Date and timezone come from the system clock (via AGENT_TZ env override
+    when set). Locale comes from the caller — the frontend supplies it from
+    navigator.language so plans are interpreted under the user's region.
+    """
+    tz_name = os.environ.get("AGENT_TZ")
+    if tz_name:
+        try:
+            from zoneinfo import ZoneInfo
+
+            tz = ZoneInfo(tz_name)
+            now = datetime.now(tz)
+        except Exception:  # noqa: BLE001
+            now = datetime.now().astimezone()
+            tz_name = str(now.tzinfo)
+    else:
+        now = datetime.now().astimezone()
+        tz_name = str(now.tzinfo)
+    return plan_module.RunContext(
+        date=now.date().isoformat(),
+        timezone=tz_name,
+        locale=locale or os.environ.get("AGENT_LOCALE", "en-US"),
+        step_budget=max_steps,
+    )
 
 
 def _strip_stale_ax_trees(messages: list[dict]) -> list[dict]:
@@ -498,19 +503,6 @@ def _build_system_prompt(task: str, *, expect: dict | None = None) -> str:
         "box, retry the `type` call with `submit=true` to press Enter instead "
         "of clicking a button — do not give up on the search just because the "
         "button can't be found. "
-        "AMBIGUITY → ASK, do not guess and do not give up. If the task names "
-        "an entity and the page reveals MULTIPLE plausible matches with no way "
-        "to choose between them from the task text, you MUST call `ask_user` "
-        "with a concise clarifying question that lists the options. Do NOT "
-        "call `done` with a 'cannot determine' answer in this case — that is "
-        "a wrong call; `ask_user` is the right call. Do NOT call `fail` "
-        "either. After `ask_user` returns, treat the answer as resolving an "
-        "intermediate sub-goal only — the original task still has to be "
-        "carried out. Resume executing the task with the user's choice "
-        "applied; only call `done`/`fail` once you have actually pursued the "
-        "task's stated outcome (succeeded, or hit a real wall). Use "
-        "`ask_user` sparingly: only for genuine ambiguity you cannot resolve "
-        "by reading more of the page."
     )
     if expect and expect.get("schema"):
         schema = expect["schema"]
@@ -1084,6 +1076,7 @@ def loop(
     expect: dict | None = None,
     budget_seconds: float | None = None,
     ask_user_callback: Callable[[str], str] | None = None,
+    locale: str | None = None,
 ) -> RunResult:
     if trace_writer is not None and run_id is None:
         raise ValueError("run_id is required when trace_writer is provided")
@@ -1135,7 +1128,43 @@ def loop(
         last_actions = []
 
         if step_num == 1:
-            active_plan, plan_resp = plan_module.plan(task, observation, llm_client)
+            run_context = _build_run_context(locale, max_steps)
+            _emit_plan_event(
+                events,
+                "started",
+                ["Planning..."],
+                str(uuid.uuid4()),
+                trace_writer=trace_writer,
+                run_id=run_id,
+                step_id=_step_id,
+            )
+
+            def _traced_ask_user(
+                question: str,
+                _events=events,
+                _writer=trace_writer,
+                _run_id=run_id,
+                _step_id=_step_id,
+                _cb=ask_user_callback,
+            ) -> str:
+                _emit_plan_event(
+                    _events,
+                    "ask_user",
+                    [f"Asking user: {question}"],
+                    str(uuid.uuid4()),
+                    trace_writer=_writer,
+                    run_id=_run_id,
+                    step_id=_step_id,
+                )
+                return "" if _cb is None else _cb(question)
+
+            active_plan, plan_resp = plan_module.plan(
+                task,
+                observation,
+                llm_client,
+                ask_user_callback=_traced_ask_user if ask_user_callback is not None else None,
+                context=run_context,
+            )
             cum_prompt_tokens += plan_resp.usage.prompt_tokens
             cum_completion_tokens += plan_resp.usage.completion_tokens
             cum_usd += plan_resp.usd
@@ -1428,50 +1457,6 @@ def loop(
                     latency_ms_per_step=latency_ms_per_step,
                     step_breakdown=step_breakdown,
                 )
-
-            if tool_call.name == "ask_user":
-                question = args.get("question")
-                if not isinstance(question, str) or not question.strip():
-                    messages.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": tool_call.id,
-                            "content": ("Error: ask_user requires a non-empty 'question' string."),
-                        }
-                    )
-                    continue
-                if ask_user_callback is None:
-                    messages.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": tool_call.id,
-                            "content": (
-                                "Error: ask_user is not available in this run "
-                                "(no callback wired). Resolve the ambiguity from "
-                                "page content or call `done`/`fail`."
-                            ),
-                        }
-                    )
-                    continue
-                try:
-                    answer = ask_user_callback(question)
-                except Exception as exc:  # noqa: BLE001
-                    messages.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": tool_call.id,
-                            "content": f"Error: ask_user callback raised: {exc}",
-                        }
-                    )
-                    continue
-                messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "content": str(answer),
-                    }
-                )
-                continue
 
             _sup_calls_before = supervisor.total_attempts()
             tool_result = _dispatch(

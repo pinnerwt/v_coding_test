@@ -35,7 +35,7 @@ class ObservationEvent(EventBase):
 
 class PlanEvent(EventBase):
     kind: Literal["plan"] = "plan"
-    reason: Literal["initial", "replan"]
+    reason: Literal["initial", "replan", "ask_user", "started"]
     steps: list[str]
     llm_call_id: str
 

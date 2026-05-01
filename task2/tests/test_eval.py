@@ -30,6 +30,14 @@ from scripts.eval import (
     run_validators,
 )
 
+
+def _is_planner_call(messages: list[dict]) -> bool:
+    if not messages:
+        return False
+    first = messages[0]
+    content = first.get("content", "") if isinstance(first, dict) else ""
+    return isinstance(content, str) and content.startswith("You are a planning assistant")
+
 _FIXTURE_CASE = {
     "id": "fixture-heading",
     "domain": "fixture",
@@ -1259,7 +1267,7 @@ def test_maintenance_drift_rename_real_loop_cache_invalidation(playwright_chromi
                 self._call_index = 0
 
             def chat(self, messages, *, tools=None, **_):
-                if tools is None:
+                if tools is None or _is_planner_call(messages):
                     return _text_resp(plan_stub)
                 idx = self._call_index
                 self._call_index += 1
@@ -1939,7 +1947,7 @@ def test_fixture_count_with_listitem_intent_stub_llm(playwright_chromium):
             self._call_index = 0
 
         def chat(self, messages, *, tools=None, **_):
-            if tools is None:
+            if tools is None or _is_planner_call(messages):
                 return _text_resp(plan_stub)
             idx = self._call_index
             self._call_index += 1

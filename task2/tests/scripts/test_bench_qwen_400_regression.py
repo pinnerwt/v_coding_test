@@ -23,6 +23,14 @@ _URLS = [
 ]
 
 
+def _is_planner_call(messages: list[dict]) -> bool:
+    if not messages:
+        return False
+    first = messages[0]
+    content = first.get("content", "") if isinstance(first, dict) else ""
+    return isinstance(content, str) and content.startswith("You are a planning assistant")
+
+
 class _StubBrowser:
     def __init__(self):
         self._page = None
@@ -38,7 +46,7 @@ class _RecordingStubLLM:
         self._step = 0
 
     def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
-        if tools is None:
+        if tools is None or _is_planner_call(messages):
             return ChatResponse(
                 content='{"steps": ["do the task"], "expected_end_state": "done"}',
                 tool_calls=[],

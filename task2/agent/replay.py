@@ -170,6 +170,14 @@ def _is_judge_call(messages: list[dict]) -> bool:
     return isinstance(content, str) and "[VERIFY DONE]" in content
 
 
+def _is_planner_call(messages: list[dict]) -> bool:
+    if not messages:
+        return False
+    first = messages[0]
+    content = first.get("content", "") if isinstance(first, dict) else ""
+    return isinstance(content, str) and content.startswith("You are a planning assistant")
+
+
 class StubLLMClient:
     """Returns pre-recorded ChatResponse objects in sequence.
 
@@ -196,8 +204,8 @@ class StubLLMClient:
         # Verify-done judge calls — return supported without consuming decision queue.
         if _is_judge_call(messages):
             return _STUB_JUDGE_RESPONSE
-        # Planner calls have no tools; return a stub plan without consuming the decision queue.
-        if tools is None:
+        # Planner calls — return a stub plan without consuming the decision queue.
+        if tools is None or _is_planner_call(messages):
             return _STUB_PLAN_RESPONSE
         # Snapshot the messages — loop.py keeps mutating the same list across calls.
         self.prompts_consumed.append(json.loads(json.dumps(messages)))

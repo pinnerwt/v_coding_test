@@ -23,6 +23,15 @@ SessionStatus = Literal["running", "awaiting_user", "done", "failed"]
 
 _AGENT_VERSION = "0.1.0"
 
+def _terminal_status_label(loop_status: str) -> str:
+    """Map RunResult.status to the terminal-event status surface.
+
+    The UI distinguishes succeeded → 'done', and surfaces 'failed'/'unverified'/
+    'timeout' explicitly so users see why a run ended.
+    """
+    return "done" if loop_status == "succeeded" else loop_status
+
+
 _ZERO_TOTALS: dict[str, Any] = {
     "steps": 0,
     "llm_calls": 0,
@@ -111,6 +120,7 @@ def _invoke_loop(
     expect_schema: dict | None = None,
     ask_user_callback,
     on_event=None,
+    locale: str | None = None,
 ) -> RunResult:
     """Real loop entrypoint. Tests monkeypatch this seam to avoid Browser/LLM."""
     if os.environ.get("SESSIONS_FAKE_LOOP") == "1":
@@ -150,6 +160,7 @@ def _invoke_loop(
                 run_id=run_id,
                 expect=expect_schema,
                 ask_user_callback=ask_user_callback,
+                locale=locale,
             )
         writer.close_run(
             run_id,
@@ -167,7 +178,12 @@ def _invoke_loop(
         writer.close()
 
 
-def _worker(session: SessionState, task: str, expect_schema: dict | None) -> None:
+def _worker(
+    session: SessionState,
+    task: str,
+    expect_schema: dict | None,
+    locale: str | None,
+) -> None:
     cb = _make_ask_user_callback(session)
     on_event = lambda payload: emit_event(session, {"type": "trace", **payload})  # noqa: E731
     try:
@@ -177,15 +193,18 @@ def _worker(session: SessionState, task: str, expect_schema: dict | None) -> Non
             expect_schema=expect_schema,
             ask_user_callback=cb,
             on_event=on_event,
+            locale=locale,
         )
         session.result = result
-        session.status = "done"
+        session.status = "done" if result.status == "succeeded" else "failed"
         emit_event(
             session,
             {
                 "type": "terminal",
-                "status": "done",
+                "status": _terminal_status_label(result.status),
+                "reason": result.reason,
                 "result": result.result,
+                "evidence": result.evidence,
             },
         )
     except Exception as exc:
@@ -195,13 +214,18 @@ def _worker(session: SessionState, task: str, expect_schema: dict | None) -> Non
         emit_event(session, {"type": "terminal", "status": "failed", "error": str(exc)})
 
 
-def start_session(task: str, *, expect_schema: dict | None = None) -> str:
+def start_session(
+    task: str,
+    *,
+    expect_schema: dict | None = None,
+    locale: str | None = None,
+) -> str:
     run_id = str(ULID())
     session = SessionState(run_id=run_id)
     _register_session(session)
     thread = threading.Thread(
         target=_worker,
-        args=(session, task, expect_schema),
+        args=(session, task, expect_schema, locale),
         name=f"session-{run_id}",
         daemon=True,
     )

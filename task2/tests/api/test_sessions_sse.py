@@ -115,6 +115,104 @@ def test_sse_stream_404_for_unknown_session(client):
     assert resp.status_code == 404
 
 
+def test_post_sessions_forwards_locale_to_loop(client, monkeypatch):
+    """POST /sessions {task, locale} must reach loop() with locale=<value>."""
+    captured: dict = {}
+
+    def fake_loop(task, *, locale=None, **kw):
+        captured["locale"] = locale
+        return _DONE_RESULT
+
+    monkeypatch.setattr("api.sessions._invoke_loop", fake_loop)
+    resp = client.post("/sessions", json={"task": "hi", "locale": "zh-TW"})
+    assert resp.status_code == 200
+    run_id = resp.json()["id"]
+
+    from api.sessions import get_session
+
+    assert _wait_for(lambda: get_session(run_id).status == "done")
+    assert captured.get("locale") == "zh-TW"
+
+
+def test_chat_html_posts_navigator_language_as_locale(client):
+    """The chat UI must include locale=navigator.language in the /sessions
+    POST body so the planner is anchored to the user's region."""
+    resp = client.get("/chat")
+    assert resp.status_code == 200
+    body = resp.text
+    assert "navigator.language" in body
+    assert "locale" in body
+
+
+def test_terminal_event_forwards_failed_status_and_reason(client, monkeypatch):
+    """When loop returns RunResult(status='failed', reason='stuck_repeat'),
+    the SSE terminal event must reflect that — not lie with status='done'."""
+    monkeypatch.setattr(
+        "api.sessions._invoke_loop",
+        lambda *a, **kw: RunResult(
+            status="failed",
+            reason="stuck_repeat",
+            result=None,
+            evidence=None,
+        ),
+    )
+    run_id = client.post("/sessions", json={"task": "t"}).json()["id"]
+
+    from api.sessions import get_session
+
+    assert _wait_for(lambda: get_session(run_id).status in ("done", "failed"))
+
+    with client.stream("GET", f"/sessions/{run_id}/events") as resp:
+        events = _parse_sse(resp.iter_text(), max_events=10)
+
+    terminal = next(e for e in events if e["type"] == "terminal")
+    assert terminal["status"] == "failed", f"got {terminal!r}"
+    assert terminal.get("reason") == "stuck_repeat", f"got {terminal!r}"
+
+
+def test_terminal_event_forwards_timeout_status(client, monkeypatch):
+    monkeypatch.setattr(
+        "api.sessions._invoke_loop",
+        lambda *a, **kw: RunResult(
+            status="timeout",
+            reason="seconds_budget",
+            result=None,
+            evidence=None,
+        ),
+    )
+    run_id = client.post("/sessions", json={"task": "t"}).json()["id"]
+
+    from api.sessions import get_session
+
+    assert _wait_for(lambda: get_session(run_id).status in ("done", "failed"))
+
+    with client.stream("GET", f"/sessions/{run_id}/events") as resp:
+        events = _parse_sse(resp.iter_text(), max_events=10)
+
+    terminal = next(e for e in events if e["type"] == "terminal")
+    assert terminal["status"] == "timeout"
+    assert terminal.get("reason") == "seconds_budget"
+
+
+def test_post_sessions_locale_optional(client, monkeypatch):
+    """Locale is optional; omitting it must not break session creation."""
+    captured: dict = {}
+
+    def fake_loop(task, *, locale=None, **kw):
+        captured["locale"] = locale
+        return _DONE_RESULT
+
+    monkeypatch.setattr("api.sessions._invoke_loop", fake_loop)
+    resp = client.post("/sessions", json={"task": "hi"})
+    assert resp.status_code == 200
+
+    from api.sessions import get_session
+
+    run_id = resp.json()["id"]
+    assert _wait_for(lambda: get_session(run_id).status == "done")
+    assert captured.get("locale") is None
+
+
 def test_streaming_trace_writer_calls_on_event(tmp_path):
     from agent.trace import ActEvent, Run, RunBudget, RunLLM
     from api.streaming_trace import StreamingTraceWriter
