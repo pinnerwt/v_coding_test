@@ -24,14 +24,13 @@ _PLAN_SYSTEM = (
     "present (most simple fact-lookup or navigation tasks fall here). "
     "If information is INSUFFICIENT, call the `ask_user` tool with the "
     "argument `questions`: a JSON array where each element is ONE focused "
-    "question for ONE missing slot. Examples of correct shape:\n"
-    '  - one slot:    {"questions": ["Which city or branch?"]}\n'
-    '  - two slots:   {"questions": ["Which branch?", "What date?"]}\n'
-    '  - three slots: {"questions": ["Which city?", "What date?", "How '
-    'many guests?"]}\n'
+    "question for ONE missing slot. Shape:\n"
+    '  - one slot:    {"questions": ["<question about slot A>"]}\n'
+    '  - two slots:   {"questions": ["<question about slot A>", '
+    '"<question about slot B>"]}\n'
     "Always emit `questions` as an array, even when there is only one. "
-    "Do NOT pack multiple slots into one question string with 'and' "
-    '(wrong: {"questions": ["What is the date and how many guests?"]}). '
+    "Do NOT pack multiple slots into one question string with 'and' — "
+    "split them into separate array items instead. "
     "Ask only what the task actually requires; do not over-ask. Do NOT "
     "guess the missing information. Do NOT include 'ask the user: ...' "
     "as a plan step — that step happens here, in planning, not during "
