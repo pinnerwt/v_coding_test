@@ -55,13 +55,11 @@ _PLAN_SYSTEM = (
 )
 
 _PLAN_SYSTEM_NO_ASK = (
-    "You are a planning assistant for a browser agent. The conversation "
-    "above already contains the user's clarifying answers (if any were "
-    "needed). The `ask_user` tool is no longer available — do not request "
-    "more information from the user. Produce a concrete step-by-step plan "
-    "now using the answers above plus sane defaults for any still-missing "
-    "fields. Respond with ONLY a JSON object: "
-    '{"steps": ["step 1", ...], "expected_end_state": "..."} — no tool call.'
+    "You are a planning assistant for a browser agent. Produce a concrete "
+    "step-by-step plan using the task and any clarifying Q&A in the "
+    "conversation above. Pick sane defaults for any still-missing fields. "
+    "Respond with ONLY a JSON object: "
+    '{"steps": ["step 1", ...], "expected_end_state": "..."}'
 )
 
 _REPLAN_SYSTEM = (
@@ -295,47 +293,32 @@ def plan(
                 messages.append({"role": "user", "content": _TOO_SHORT_PLAN_MESSAGE})
                 continue
             return parsed, response
-        messages.append(
-            {
-                "role": "assistant",
-                "content": response.content or "",
-                "tool_calls": [
-                    {
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {"name": tc.name, "arguments": tc.arguments},
-                    }
-                    for tc in response.tool_calls
-                ],
-            }
-        )
-        for tc in response.tool_calls:
-            if tc.name == "ask_user":
-                if asked_rounds >= _MAX_ASK_USER_ROUNDS:
-                    # ask_user was not advertised this round; the LLM
-                    # hallucinated it. Reject without firing the callback.
-                    content = (
-                        "Error: ask_user is not available after the first "
-                        "round. Produce a final plan now using the Q&A "
-                        "already provided."
-                    )
-                else:
-                    content = _handle_ask_user_tool_call(
-                        tc,
-                        ask_user_callback,
-                        asked_fingerprints,
-                    )
-            else:
-                content = f"Error: tool {tc.name!r} not available in planning."
+        if not ask_available:
+            # ask_user not advertised this round but the LLM emitted it
+            # anyway. Don't fire the callback; nudge once and re-ask for
+            # a plan. The tool plumbing (assistant tool_call + tool result)
+            # is intentionally NOT appended — keeping the message stack
+            # clean of any reference to the absent tool.
             messages.append(
                 {
-                    "role": "tool",
-                    "tool_call_id": tc.id,
-                    "content": content,
+                    "role": "user",
+                    "content": (
+                        "Produce the final plan now from the information "
+                        "already provided. Do not request more clarification."
+                    ),
                 }
             )
-        if any(tc.name == "ask_user" for tc in response.tool_calls):
             asked_rounds += 1
+            continue
+        # Legitimate round-0 ask_user. Resolve every tool_call into Q&A
+        # text and append it as a single user message — the LLM doesn't
+        # need to know it came via a tool round.
+        for tc in ask_calls:
+            qa_content = _handle_ask_user_tool_call(
+                tc, ask_user_callback, asked_fingerprints
+            )
+            messages.append({"role": "user", "content": qa_content})
+        asked_rounds += 1
     # Hit round cap without a final plan; fall back.
     return _fallback(task), last_response
 

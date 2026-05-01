@@ -220,12 +220,13 @@ def test_plan_calls_ask_user_callback_when_planner_emits_tool_call():
         "Navigate to https://inline.app/booking/旭集天母",
         "Pick a time slot",
     ], f"final plan must come from second LLM call, got {result.steps!r}"
-    # The second call must include the assistant tool_call message AND the
-    # tool-result message carrying the answer, so the LLM can plan around it.
+    # The second call must carry the answer as a user-role Q&A message —
+    # tool plumbing is intentionally stripped.
     second_call_msgs = llm.calls[1]["messages"]
-    tool_msgs = [m for m in second_call_msgs if m.get("role") == "tool"]
-    assert any("Tianmu" in (m.get("content") or "") for m in tool_msgs), (
-        f"answer 'Tianmu' must be fed back as a tool message, got {tool_msgs!r}"
+    assert all(m.get("role") != "tool" for m in second_call_msgs)
+    user_msgs = [m for m in second_call_msgs if m.get("role") == "user"]
+    assert any("Tianmu" in (m.get("content") or "") for m in user_msgs), (
+        f"answer 'Tianmu' must be fed back as a user message, got {user_msgs!r}"
     )
     assert resp is not None
 
@@ -414,23 +415,18 @@ def test_plan_second_llm_call_contains_task_and_qa_block_after_ask_user():
     assert first[1]["role"] == "user"
     assert "Book a table at the restaurant." in first[1]["content"]
 
-    # Second call: must contain the same user task message, the assistant
-    # tool_call, and a tool message bearing the Q&A block.
+    # Second call: system + user(task) + user(Q&A). No tool plumbing —
+    # the assistant tool_call message and the tool-role result are stripped
+    # in favor of a plain user message bearing the Q&A. The LLM doesn't
+    # need to know the Q&A came via a tool round.
     second = llm.calls[1]["messages"]
     roles = [m["role"] for m in second]
-    assert roles[:2] == ["system", "user"]
+    assert roles == ["system", "user", "user"], roles
     assert "Book a table at the restaurant." in second[1]["content"]
-    assert "assistant" in roles
-    assert "tool" in roles
+    assert "assistant" not in roles
+    assert "tool" not in roles
 
-    asst = next(m for m in second if m["role"] == "assistant")
-    assert asst.get("tool_calls"), asst
-    assert asst["tool_calls"][0]["function"]["name"] == "ask_user"
-
-    tool_msg = next(m for m in second if m["role"] == "tool")
-    assert tool_msg["tool_call_id"] == "tc-multi"
-    body = tool_msg["content"]
-    # Both questions appear, both answers appear, in a Q&A-numbered block.
+    body = second[2]["content"]
     assert "Which date?" in body and "How many guests?" in body, body
     assert "December 15, 2026" in body and "two" in body, body
     assert "Q1:" in body and "A1:" in body and "Q2:" in body and "A2:" in body, body
@@ -500,15 +496,17 @@ def test_i1_ask_user_with_two_questions_invokes_callback_twice_in_order():
     assert any("天母店" in s or "Tianmu" in s for s in result.steps)
     assert any("Saturday" in s or "May 9" in s for s in result.steps)
 
-    # The tool message that was fed back to the LLM contains both Q&A pairs.
-    tool_msg_content = ""
+    # The Q&A message that was fed back to the LLM contains both pairs —
+    # delivered as a user message, not a tool-role message.
+    user_msg_content = ""
     for msg in llm.calls[1]["messages"]:
-        if msg.get("role") == "tool":
-            tool_msg_content += msg.get("content", "")
-    assert "Which branch?" in tool_msg_content
-    assert "天母店" in tool_msg_content or "Tianmu" in tool_msg_content
-    assert "What date?" in tool_msg_content
-    assert "Saturday" in tool_msg_content or "May 9" in tool_msg_content
+        if msg.get("role") == "user":
+            user_msg_content += msg.get("content", "")
+    assert all(m.get("role") != "tool" for m in llm.calls[1]["messages"])
+    assert "Which branch?" in user_msg_content
+    assert "天母店" in user_msg_content or "Tianmu" in user_msg_content
+    assert "What date?" in user_msg_content
+    assert "Saturday" in user_msg_content or "May 9" in user_msg_content
 
 
 def test_i1_ask_user_with_single_question_still_works():
@@ -555,11 +553,13 @@ def test_i1_ask_user_rejects_legacy_single_question_shape():
     plan(task="t", observation={}, llm=llm, ask_user_callback=_cb)
 
     assert asked == [], asked
-    tool_msg_content = ""
+    # The error explaining the right shape is delivered as a user message
+    # (tool plumbing is stripped in favor of plain user-role Q&A).
+    user_msg_content = ""
     for msg in llm.calls[1]["messages"]:
-        if msg.get("role") == "tool":
-            tool_msg_content += msg.get("content", "")
-    assert "questions" in tool_msg_content.lower()
+        if msg.get("role") == "user":
+            user_msg_content += msg.get("content", "")
+    assert "questions" in user_msg_content.lower()
 
 
 def test_i1_ask_user_empty_list_returns_error():
@@ -725,12 +725,12 @@ def test_planner_second_round_system_prompt_does_not_advertise_ask_user():
     assert "ask_user" in first_sys["content"]
     assert "call the `ask_user` tool" in first_sys["content"]
 
-    # Round 1: ask_user tool is dropped — the prompt must not direct the LLM
-    # to call it. No "call the `ask_user`" directive, no "If information is
-    # INSUFFICIENT" branch that instructs asking.
+    # Round 1: ask_user tool is dropped — the prompt must not mention
+    # ask_user at all. Mentioning a tool just to forbid it primes the
+    # LLM to think it exists. The agent has no other way to learn of
+    # the tool than the round-0 prompt + tool list.
     second = second_sys["content"]
-    assert "call the `ask_user` tool" not in second, second
-    assert "call `ask_user`" not in second, second
+    assert "ask_user" not in second, second
     # The prompt should still tell the LLM to produce a plan.
     assert "plan" in second.lower()
     # And it should still constrain the response shape.
