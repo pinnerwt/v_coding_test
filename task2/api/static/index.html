@@ -71,10 +71,28 @@
   }
   button:disabled { background: #9ca3af; cursor: not-allowed; }
   #status { font-size: 0.8rem; color: #6b7280; margin-bottom: 0.5rem; }
+  #obs-bar { display: flex; gap: 0.4rem; margin-bottom: 0.6rem; flex-wrap: wrap; }
+  #obs-bar a {
+    padding: 0.3rem 0.65rem;
+    background: #f3f4f6;
+    color: #374151;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    font-size: 0.78rem;
+    text-decoration: none;
+    font-family: ui-monospace, monospace;
+  }
+  #obs-bar a:hover { background: #e5e7eb; }
 </style>
 </head>
 <body>
 <h1>Browser Agent</h1>
+<div id="obs-bar">
+  <a href="/healthz" target="_blank" rel="noopener" title="Liveness probe">/healthz</a>
+  <a href="/readyz" target="_blank" rel="noopener" title="Readiness probe — DB + LLM reachable">/readyz</a>
+  <a href="/metrics" target="_blank" rel="noopener" title="Prometheus metrics">/metrics</a>
+  <a href="/usage" target="_blank" rel="noopener" title="Cumulative LLM token + USD spend">/usage</a>
+</div>
 <div id="status" data-status="idle">idle</div>
 <div id="app">
   <section id="chat-pane">
