@@ -26,6 +26,52 @@ MAX_NAME_LEN: int = 80
 
 _EMPTY_FINGERPRINT: str = hashlib.sha256(b"").hexdigest()
 
+# T5: keywords that mark a transient toast/notification line in the AX-tree
+# digest. A diff containing only such lines (no removals, ≤2 additions) is
+# classified as "minor: notification appeared" so the agent doesn't mistake
+# a passive toast for evidence of user-driven state change.
+_NOTIFICATION_KEYWORDS: tuple[str, ...] = (
+    "alert",
+    "notification",
+    "status",
+    "toast",
+)
+
+
+def _line_is_notification(line: str) -> bool:
+    lowered = line.lower()
+    return any(kw in lowered for kw in _NOTIFICATION_KEYWORDS)
+
+
+def compute_dom_digest(prev_obs: dict | None, curr_obs: dict) -> str:
+    """Return a short verbal summary of how `curr_obs` differs from `prev_obs`.
+
+    Output vocabulary:
+      - ""                              — no prior observation
+      - "unchanged"                     — same URL and same ax_fingerprint
+      - "url_changed: <prev> → <curr>"  — URL transitioned (takes priority)
+      - "minor: notification appeared"  — only added a toast/alert line
+      - "minor: N node(s) added"        — small additions, no removals
+      - "changed: +A -R"                — general change
+    """
+    if prev_obs is None:
+        return ""
+    prev_url = prev_obs.get("url") or ""
+    curr_url = curr_obs.get("url") or ""
+    if prev_url != curr_url:
+        return f"url_changed: {prev_url} → {curr_url}"
+    if prev_obs.get("ax_fingerprint") == curr_obs.get("ax_fingerprint"):
+        return "unchanged"
+    prev_lines = set((prev_obs.get("ax_tree_digest") or "").splitlines())
+    curr_lines = set((curr_obs.get("ax_tree_digest") or "").splitlines())
+    added = curr_lines - prev_lines
+    removed = prev_lines - curr_lines
+    if not removed and added and len(added) <= 2 and any(_line_is_notification(ln) for ln in added):
+        return "minor: notification appeared"
+    if not removed and added and len(added) <= 3:
+        return f"minor: {len(added)} node(s) added"
+    return f"changed: +{len(added)} -{len(removed)}"
+
 
 def _detach_silently(session) -> None:
     try:

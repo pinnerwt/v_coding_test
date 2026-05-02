@@ -1,0 +1,172 @@
+{
+  "summary": {
+    "case_id": "A6",
+    "run_id": "01KQGV08RAXTTWJCH07EEHM8X8",
+    "task": "Find the best ramen restaurant in Tokyo on Google Maps.",
+    "ambiguous_expected": true,
+    "saw_ask_user": false,
+    "asked_questions": [],
+    "terminal": {
+      "type": "terminal",
+      "status": "failed",
+      "reason": null,
+      "result": null,
+      "evidence": null
+    },
+    "elapsed_s": 71.7,
+    "n_events": 11
+  },
+  "events": [
+    {
+      "type": "trace",
+      "run_id": "01KQGV08RAXTTWJCH07EEHM8X8",
+      "seq": 1,
+      "ts": "2026-05-01T03:58:30.452020+00:00",
+      "step_id": "01KQGV08RAXTTWJCH07EEHM8X8:step-1",
+      "kind": "plan",
+      "reason": "started",
+      "steps": [
+        "Planning..."
+      ],
+      "llm_call_id": "40ea6742-6671-4e26-ac0f-48cae7a2730c"
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGV08RAXTTWJCH07EEHM8X8",
+      "seq": 2,
+      "ts": "2026-05-01T03:58:48.990216+00:00",
+      "step_id": "01KQGV08RAXTTWJCH07EEHM8X8:step-1",
+      "kind": "plan",
+      "reason": "initial",
+      "steps": [
+        "Navigate to Google Maps (maps.google.com)",
+        "Search for 'ramen restaurant Tokyo' in the search bar",
+        "Review the search results sorted by rating/relevance",
+        "Identify the highest-rated ramen restaurant from the results",
+        "Click on the top result to view details"
+      ],
+      "llm_call_id": "e8a6a628-ada3-4a68-bdfe-c8294b321114"
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGV08RAXTTWJCH07EEHM8X8",
+      "seq": 3,
+      "ts": "2026-05-01T03:58:53.340658+00:00",
+      "step_id": "01KQGV08RAXTTWJCH07EEHM8X8:step-1",
+      "kind": "act",
+      "tool": "goto",
+      "args": {
+        "url": "https://maps.google.com"
+      },
+      "outcome": "ok",
+      "diff": {},
+      "ms": 376
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGV08RAXTTWJCH07EEHM8X8",
+      "seq": 4,
+      "ts": "2026-05-01T03:59:13.893988+00:00",
+      "step_id": "01KQGV08RAXTTWJCH07EEHM8X8:step-4",
+      "kind": "locate",
+      "intent": "the Search Google Maps textbox",
+      "tier": "L1_ax",
+      "outcome": "miss",
+      "candidates": [],
+      "chosen": null,
+      "cache_action": null,
+      "ms": 0
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGV08RAXTTWJCH07EEHM8X8",
+      "seq": 5,
+      "ts": "2026-05-01T03:59:13.900409+00:00",
+      "step_id": "01KQGV08RAXTTWJCH07EEHM8X8:step-4",
+      "kind": "supervisor",
+      "trigger_event_seq": 4,
+      "classified_as": "LocatorMiss",
+      "policy": "next_tier",
+      "attempt": 1
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGV08RAXTTWJCH07EEHM8X8",
+      "seq": 6,
+      "ts": "2026-05-01T03:59:13.910348+00:00",
+      "step_id": "01KQGV08RAXTTWJCH07EEHM8X8:step-4",
+      "kind": "locate",
+      "intent": "the Search Google Maps textbox",
+      "tier": "L2_dom",
+      "outcome": "miss",
+      "candidates": [],
+      "chosen": null,
+      "cache_action": null,
+      "ms": 0
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGV08RAXTTWJCH07EEHM8X8",
+      "seq": 7,
+      "ts": "2026-05-01T03:59:20.899645+00:00",
+      "step_id": "01KQGV08RAXTTWJCH07EEHM8X8:step-5",
+      "kind": "locate",
+      "intent": "the Search Google Maps button",
+      "tier": "L1_ax",
+      "outcome": "miss",
+      "candidates": [],
+      "chosen": null,
+      "cache_action": null,
+      "ms": 0
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGV08RAXTTWJCH07EEHM8X8",
+      "seq": 8,
+      "ts": "2026-05-01T03:59:20.905481+00:00",
+      "step_id": "01KQGV08RAXTTWJCH07EEHM8X8:step-5",
+      "kind": "supervisor",
+      "trigger_event_seq": 7,
+      "classified_as": "LocatorMiss",
+      "policy": "next_tier",
+      "attempt": 2
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGV08RAXTTWJCH07EEHM8X8",
+      "seq": 9,
+      "ts": "2026-05-01T03:59:20.916316+00:00",
+      "step_id": "01KQGV08RAXTTWJCH07EEHM8X8:step-5",
+      "kind": "locate",
+      "intent": "the Search Google Maps button",
+      "tier": "L2_dom",
+      "outcome": "miss",
+      "candidates": [],
+      "chosen": null,
+      "cache_action": null,
+      "ms": 0
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGV08RAXTTWJCH07EEHM8X8",
+      "seq": 10,
+      "ts": "2026-05-01T03:59:41.830029+00:00",
+      "step_id": "01KQGV08RAXTTWJCH07EEHM8X8:step-6",
+      "kind": "act",
+      "tool": "fail",
+      "args": {
+        "reason": "Unable to interact with Google Maps search interface. The page appears to be in Chinese/Taiwanese (showing Taiwan location by default). Multiple attempts to type into the search box failed due to element locator issues - tried 'the search box', 'the Search Google Maps combobox', 'the Search Google Maps textbox' and clicking the search button, all returned zero matches. The ax_tree shows a combobox labeled '搜尋 Google 地圖' (Search Google Maps) but I couldn't locate it with my intent selectors. Would need different selector strategy or ability to handle non-English interfaces to complete this task."
+      },
+      "outcome": "ok",
+      "diff": {},
+      "ms": 0
+    },
+    {
+      "type": "terminal",
+      "status": "failed",
+      "reason": null,
+      "result": null,
+      "evidence": null
+    }
+  ]
+}

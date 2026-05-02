@@ -1,0 +1,91 @@
+[
+  {
+    "case_id": "A1",
+    "run_id": "01KQGSD3HJERX1ZCB7JJ59961G",
+    "task": "Book a table at Inparadise (旭集) for noon next Saturday.",
+    "ambiguous_expected": true,
+    "saw_ask_user": true,
+    "asked_questions": [
+      "Inparadise (旭集) has multiple locations. Which city or specific branch would you like to book a table at?"
+    ],
+    "terminal": {
+      "type": "terminal",
+      "status": "failed",
+      "reason": "no_progress",
+      "result": null,
+      "evidence": null
+    },
+    "elapsed_s": 279.8,
+    "n_events": 17
+  },
+  {
+    "case_id": "A3",
+    "run_id": "01KQGSNMTGBQQ916PF7N4BMFZY",
+    "task": "Book a flight from Taipei to Tokyo and return the cheapest fare.",
+    "ambiguous_expected": true,
+    "saw_ask_user": true,
+    "asked_questions": [
+      "What are your travel dates for the flight from Taipei to Tokyo? Please provide both departure and return dates."
+    ],
+    "terminal": {
+      "type": "terminal",
+      "status": "failed",
+      "reason": "no_progress",
+      "result": null,
+      "evidence": null
+    },
+    "elapsed_s": 388.0,
+    "n_events": 12
+  },
+  {
+    "case_id": "A6",
+    "run_id": "01KQGT1FR4A8T5J6ACG9HB5W9Q",
+    "task": "Find the best ramen restaurant in Tokyo on Google Maps.",
+    "ambiguous_expected": true,
+    "saw_ask_user": false,
+    "asked_questions": [],
+    "terminal": {
+      "type": "terminal",
+      "status": "failed",
+      "reason": null,
+      "result": null,
+      "evidence": null
+    },
+    "elapsed_s": 79.9,
+    "n_events": 8
+  },
+  {
+    "case_id": "U1",
+    "run_id": "01KQGT3XRTFWSXPF20QJ95GB9S",
+    "task": "Tell me the name of the Turing Award winner in 2018.",
+    "ambiguous_expected": false,
+    "saw_ask_user": false,
+    "asked_questions": [],
+    "terminal": {
+      "type": "terminal",
+      "status": "failed",
+      "reason": "no_progress",
+      "result": null,
+      "evidence": null
+    },
+    "elapsed_s": 246.8,
+    "n_events": 14
+  },
+  {
+    "case_id": "U4",
+    "run_id": "01KQGTBET1AFD7GFPPVSTAG7SJ",
+    "task": "Find the abstract of the paper 'Attention Is All You Need' on arXiv.",
+    "ambiguous_expected": false,
+    "saw_ask_user": false,
+    "asked_questions": [],
+    "terminal": {
+      "type": "terminal",
+      "status": "timeout",
+      "reason": null,
+      "result": null,
+      "evidence": null
+    },
+    "elapsed_s": 563.3,
+    "n_events": 22
+  }
+]

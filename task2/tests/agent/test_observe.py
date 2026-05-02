@@ -14,6 +14,7 @@ from agent.observe import (
     MAX_NAME_LEN,
     MAX_NODES,
     build_observation,
+    compute_dom_digest,
 )
 from agent.trace import ObservationEvent
 
@@ -291,3 +292,53 @@ def test_last_actions_error_entry_preserved(browser_on_mixed):
     obs = build_observation(browser_on_mixed, [action])
     assert "error" in obs["last_actions"][0]
     assert obs["last_actions"][0]["error"] == "bad url"
+
+
+# ---------------------------------------------------------------------------
+# T5: DOM-mutation digest
+# ---------------------------------------------------------------------------
+
+
+def _obs(*, ax="", fp="f", url="http://a/"):
+    return {"ax_tree_digest": ax, "ax_fingerprint": fp, "url": url}
+
+
+def test_dom_digest_empty_when_no_previous_observation():
+    """First observation in a run has nothing to compare to → empty digest."""
+    assert compute_dom_digest(None, _obs(ax='[button] "X"', fp="f1")) == ""
+
+
+def test_dom_digest_unchanged_when_trees_identical():
+    prev = _obs(ax='[button] "X"', fp="f1")
+    curr = _obs(ax='[button] "X"', fp="f1")
+    assert compute_dom_digest(prev, curr) == "unchanged"
+
+
+def test_dom_digest_minor_notification_when_only_toast_added():
+    """A transient toast/alert/notification line added with no removals
+    must classify as 'minor: notification appeared' (Agent-E DOM-mutation
+    pattern), so the agent can truthfully say no_action_yet."""
+    prev_lines = '[button] "Submit"'
+    curr_lines = prev_lines + '\n[alert] "Form saved successfully"'
+    digest = compute_dom_digest(
+        _obs(ax=prev_lines, fp="f1"),
+        _obs(ax=curr_lines, fp="f2"),
+    )
+    assert digest == "minor: notification appeared"
+
+
+def test_dom_digest_url_change_takes_priority():
+    """When the URL transitioned, that's the headline — even if the AX tree
+    happens to be identical."""
+    prev = _obs(ax='[button] "X"', fp="f1", url="http://a/")
+    curr = _obs(ax='[button] "X"', fp="f1", url="http://b/")
+    digest = compute_dom_digest(prev, curr)
+    assert digest.startswith("url_changed")
+
+
+def test_dom_digest_general_change_reports_added_and_removed_counts():
+    prev = _obs(ax='[button] "A"\n[button] "B"\n[button] "C"', fp="f1")
+    curr = _obs(ax='[button] "A"\n[link] "Z"\n[link] "Y"', fp="f2")
+    digest = compute_dom_digest(prev, curr)
+    # 2 removed (B, C), 2 added (Z, Y) — describe both.
+    assert "+2" in digest and "-2" in digest

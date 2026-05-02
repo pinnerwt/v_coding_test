@@ -17,8 +17,26 @@ if TYPE_CHECKING:
 
 SupportedRole = Literal["button", "link", "textbox", "checkbox", "heading", "list", "listitem"]
 _SUPPORTED_ROLES: frozenset[str] = frozenset(get_args(SupportedRole))
-_ROLE_ALIASES: dict[str, str] = {"items": "listitem", "lists": "list"}
+# F22: combobox is a textbox-shaped role at the locator level (F13 added the
+# alias inside `_l1_roles_to_try`); accept it at parse_intent so the agent
+# doesn't self-disqualify on `intent="X combobox"`.
+_ROLE_ALIASES: dict[str, str] = {
+    "items": "listitem",
+    "lists": "list",
+    "combobox": "textbox",
+}
 _ARTICLES: frozenset[str] = frozenset({"the", "a", "an"})
+# Punctuation stripped from each token before role-matching. The LLM commonly
+# emits intents like `'the combobox labeled "搜尋 Google 地圖"'`, where the
+# closing `"` attaches to the last whitespace-token and turns the role lookup
+# into `'地圖"'` — guaranteed parse error. Strip these so the role becomes
+# recognizable wherever it sits in the phrase.
+_TOKEN_TRIM_CHARS = "\"'`,.;:!?()[]{}<>"
+# Tokens that, when they appear immediately after the role, signal that the
+# rest of the phrase is the accessible name. e.g. `'X labeled Y'` → name=Y.
+_NAME_HINT_TOKENS: frozenset[str] = frozenset(
+    {"labeled", "named", "label", "placeholder", "called", "titled"}
+)
 
 LocatorMissReason = Literal["zero_matches", "ambiguous", "vision_miss"]
 _VALID_REASONS: frozenset[str] = frozenset(get_args(LocatorMissReason))
@@ -126,46 +144,139 @@ class LocateResult:
     ax_fingerprint: str
     confidence: float
     coords: tuple[int, int] | None = None
+    # F15: when L1 returns a role-only singleton because the name filter
+    # missed (typically: page accessible name is in a different language
+    # than the agent's intent token), this is "role_singleton". None means
+    # the result was a normal name-matched hit.
+    name_fallback: str | None = None
 
 
 def parse_intent(intent: str) -> tuple[str, str | None]:
-    tokens = intent.split()
-    if not tokens:
+    raw_tokens = intent.split()
+    if not raw_tokens:
         raise IntentParseError("intent is empty")
-    if len(tokens) > 1 and tokens[0].lower() in _ARTICLES:
-        tokens = tokens[1:]
-    role = tokens[-1].lower()
-    role = _ROLE_ALIASES.get(role, role)
-    if role not in _SUPPORTED_ROLES:
+    cleaned = [t.strip(_TOKEN_TRIM_CHARS) for t in raw_tokens]
+    cleaned = [c for c in cleaned if c]
+    if not cleaned:
+        raise IntentParseError(f"intent {intent!r} is empty after stripping punctuation")
+    if len(cleaned) > 1 and cleaned[0].lower() in _ARTICLES:
+        cleaned = cleaned[1:]
+    role: str | None = None
+    role_idx: int | None = None
+    for idx in range(len(cleaned) - 1, -1, -1):
+        candidate = cleaned[idx].lower()
+        candidate = _ROLE_ALIASES.get(candidate, candidate)
+        if candidate in _SUPPORTED_ROLES:
+            role = candidate
+            role_idx = idx
+            break
+    if role is None or role_idx is None:
         raise IntentParseError(
-            f"unknown role token {tokens[-1]!r} in intent {intent!r}; "
-            f"supported: {sorted(_SUPPORTED_ROLES)}"
+            f"no supported role token in intent {intent!r}; "
+            f"supported: {sorted(_SUPPORTED_ROLES | _ROLE_ALIASES.keys())}"
         )
-    name_tokens = tokens[:-1]
-    name = " ".join(name_tokens) if name_tokens else None
+    after = cleaned[role_idx + 1 :]
+    name: str | None = None
+    if after:
+        i = 0
+        while i < len(after) and after[i].lower() == "with":
+            i += 1
+        if i < len(after) and after[i].lower() in _NAME_HINT_TOKENS:
+            name_tokens_after = after[i + 1 :]
+            if name_tokens_after:
+                name = " ".join(name_tokens_after)
+    if name is None:
+        before = cleaned[:role_idx]
+        name = " ".join(before) if before else None
     return role, name
 
 
+# F13: textbox-shaped intents must also match `role=combobox` inputs. Sites
+# like google.com and Google Maps render their search input as a combobox
+# (per ARIA combobox-with-listbox pattern), so a `role=textbox` query alone
+# misses the only entry point on the page.
+_TEXTBOX_ROLE_ALIASES: tuple[str, ...] = ("textbox", "combobox")
+
+
+def _l1_roles_to_try(role: str) -> tuple[str, ...]:
+    if role == "textbox":
+        return _TEXTBOX_ROLE_ALIASES
+    return (role,)
+
+
+_L1_ROLE_SINGLETON_CONFIDENCE = 0.7
+
+
 def locate_l1(page: Page, *, role: str, name: str | None) -> LocateResult:
-    locator = page.get_by_role(role, name=name, exact=False) if name else page.get_by_role(role)
-    count = locator.count()
-    if count == 0:
-        raise LocatorMiss(reason="zero_matches", match_count=0)
-    if count > 1:
-        raise LocatorMiss(reason="ambiguous", match_count=count)
-    matched_name_raw = locator.first.evaluate(_ACCESSIBLE_NAME_JS)
-    matched_name: str | None = matched_name_raw if isinstance(matched_name_raw, str) else None
-    selector = _role_selector(role, name)
-    fingerprint_name = matched_name if matched_name is not None else (name or "")
-    fingerprint = hashlib.sha256(f"{role}:{fingerprint_name}".encode()).hexdigest()
-    return LocateResult(
-        tier="L1_ax",
-        role=role,
-        name=name,
-        selector=selector,
-        ax_fingerprint=fingerprint,
-        confidence=1.0,
-    )
+    last_miss: LocatorMiss | None = None
+    for try_role in _l1_roles_to_try(role):
+        locator = (
+            page.get_by_role(try_role, name=name, exact=False)
+            if name
+            else page.get_by_role(try_role)
+        )
+        count = locator.count()
+        if count == 0:
+            last_miss = LocatorMiss(reason="zero_matches", match_count=0)
+            continue
+        if count > 1:
+            last_miss = LocatorMiss(reason="ambiguous", match_count=count)
+            continue
+        matched_name_raw = locator.first.evaluate(_ACCESSIBLE_NAME_JS)
+        matched_name: str | None = matched_name_raw if isinstance(matched_name_raw, str) else None
+        selector = _role_selector(try_role, name)
+        fingerprint_name = matched_name if matched_name is not None else (name or "")
+        fingerprint = hashlib.sha256(f"{try_role}:{fingerprint_name}".encode()).hexdigest()
+        return LocateResult(
+            tier="L1_ax",
+            role=try_role,
+            name=name,
+            selector=selector,
+            ax_fingerprint=fingerprint,
+            confidence=1.0,
+        )
+    # F15: name-filtered match missed across every role alias. Try the union
+    # of role aliases without the name filter — if exactly one element on the
+    # page carries any of those roles, return it as a role-singleton fallback.
+    # This unblocks pages whose accessible name is in a different language
+    # than the agent's intent token (page-shape rule, not locale-specific).
+    if name:
+        singleton = _l1_role_only_singleton(page, role)
+        if singleton is not None:
+            try_role, locator = singleton
+            matched_name_raw = locator.evaluate(_ACCESSIBLE_NAME_JS)
+            matched_name = matched_name_raw if isinstance(matched_name_raw, str) else ""
+            selector = _role_selector(try_role, None)
+            fingerprint = hashlib.sha256(f"{try_role}:{matched_name}".encode()).hexdigest()
+            return LocateResult(
+                tier="L1_ax",
+                role=try_role,
+                name=name,
+                selector=selector,
+                ax_fingerprint=fingerprint,
+                confidence=_L1_ROLE_SINGLETON_CONFIDENCE,
+                name_fallback="role_singleton",
+            )
+    assert last_miss is not None  # at least one role tried
+    raise last_miss
+
+
+def _l1_role_only_singleton(page: Page, role: str) -> tuple[str, Any] | None:
+    """Return (role, locator-of-the-one-element) if the union of role aliases
+    has exactly one matching element on the page. Otherwise None."""
+    matches: list[tuple[str, Any]] = []
+    total = 0
+    for try_role in _l1_roles_to_try(role):
+        locator = page.get_by_role(try_role)
+        c = locator.count()
+        total += c
+        if c == 1:
+            matches.append((try_role, locator.first))
+        elif c > 1:
+            return None
+    if total != 1 or len(matches) != 1:
+        return None
+    return matches[0]
 
 
 def locate_l2(page: Page, *, role: str, name: str | None) -> LocateResult:
@@ -454,6 +565,52 @@ def locate_l4(
     )
 
 
+# F8: clickable-ish element shortlist for verbatim text-substring fallback.
+# Used as a final tier before L4_vision when L1/L2 miss and the intent name
+# (often non-ASCII) does not match any role-typed candidate. Matches the
+# innermost element whose textContent contains `name` verbatim, biased to
+# clickable surfaces so we do not return raw <p> / <span> blobs.
+_L_TEXTMATCH_CSS = (
+    "a[href], button, input[type=button], input[type=submit], input[type=reset], "
+    "[role=button], [role=link], [onclick], [tabindex], "
+    '[class*="btn"], [class*="button"], [class*="link"], [class*="cta"]'
+)
+_L_TEXTMATCH_CONFIDENCE = 0.6
+
+
+def locate_l_textmatch(page: Page, *, role: str, name: str | None) -> LocateResult:
+    """Last-resort tier: match clickable-ish elements whose textContent
+    contains `name` verbatim. Role-agnostic — primarily for non-English
+    DOM where AX-name matching fails (e.g. `<div onclick>網路訂位</div>`)."""
+    if not name:
+        raise LocatorMiss(reason="zero_matches", match_count=0)
+    locator = page.locator(_L_TEXTMATCH_CSS).filter(has_text=name)
+    count = locator.count()
+    if count == 0:
+        raise LocatorMiss(reason="zero_matches", match_count=0)
+    # If multiple match, prefer the element with the shortest textContent
+    # (most specific / innermost). Index resolution is deterministic so the
+    # selector round-trips through canonical fingerprint revalidation.
+    if count > 1:
+        lengths = locator.evaluate_all(
+            "els => els.map(e => (e.textContent || '').replace(/\\s+/g, ' ').trim().length)"
+        )
+        chosen = min(range(len(lengths)), key=lambda i: lengths[i])
+    else:
+        chosen = 0
+    pattern = re.escape(name).replace("/", r"\/")
+    selector = f"{_L_TEXTMATCH_CSS} >> text=/{pattern}/i >> nth={chosen}"
+    fingerprint = hashlib.sha256(f"{role}:{name}:textmatch".encode()).hexdigest()
+    return LocateResult(
+        tier="L_textmatch",
+        role=role,
+        name=name,
+        selector=selector,
+        ax_fingerprint=fingerprint,
+        confidence=_L_TEXTMATCH_CONFIDENCE,
+    )
+
+
 def _canonical_ax_fingerprint(page: Page, *, role: str, selector: str) -> str | None:
     # Single revalidation rule for the locator cache: hash role:accessible_name of
     # the element the selector resolves to. Returns None when the selector does not
@@ -473,20 +630,60 @@ def _resolve_via_ladder(
     name: str | None,
     intent: str,
     llm_chat: Callable[..., Any] | None,
+    on_event: Callable[[dict], None] | None = None,
 ) -> LocateResult:
+    def _emit(payload: dict) -> None:
+        if on_event is not None:
+            on_event(payload)
+
+    def _hit(result: LocateResult) -> LocateResult:
+        _emit(
+            {
+                "tier": result.tier,
+                "outcome": "hit",
+                "chosen": {"role": result.role, "selector": result.selector},
+            }
+        )
+        return result
+
     try:
-        return locate_l1(page, role=role, name=name)
+        return _hit(locate_l1(page, role=role, name=name))
     except LocatorMiss as miss:
+        _emit({"tier": "L1_ax", "outcome": miss.reason, "miss": miss})
         if miss.reason == "zero_matches":
             try:
-                return locate_l2(page, role=role, name=name)
-            except LocatorMiss:
-                return locate_l4(page, role=role, name=name, intent=intent, llm_chat=llm_chat)
+                return _hit(locate_l2(page, role=role, name=name))
+            except LocatorMiss as l2_miss:
+                _emit({"tier": "L2_dom", "outcome": l2_miss.reason, "miss": l2_miss})
+                # F8: try verbatim textContent substring match against
+                # clickable-ish elements before falling back to vision.
+                try:
+                    return _hit(locate_l_textmatch(page, role=role, name=name))
+                except LocatorMiss as tm_miss:
+                    _emit({"tier": "L_textmatch", "outcome": tm_miss.reason, "miss": tm_miss})
+                    if llm_chat is None:
+                        raise
+                    try:
+                        return _hit(
+                            locate_l4(page, role=role, name=name, intent=intent, llm_chat=llm_chat)
+                        )
+                    except LocatorMiss as l4_miss:
+                        _emit({"tier": "L4_vision", "outcome": l4_miss.reason, "miss": l4_miss})
+                        raise
         if miss.reason == "ambiguous":
+            if llm_chat is None:
+                raise
             try:
-                return locate_l3(page, role=role, name=name, llm_chat=llm_chat)
-            except LocatorMiss:
-                return locate_l4(page, role=role, name=name, intent=intent, llm_chat=llm_chat)
+                return _hit(locate_l3(page, role=role, name=name, llm_chat=llm_chat))
+            except LocatorMiss as l3_miss:
+                _emit({"tier": "L3_rerank", "outcome": l3_miss.reason, "miss": l3_miss})
+                try:
+                    return _hit(
+                        locate_l4(page, role=role, name=name, intent=intent, llm_chat=llm_chat)
+                    )
+                except LocatorMiss as l4_miss:
+                    _emit({"tier": "L4_vision", "outcome": l4_miss.reason, "miss": l4_miss})
+                    raise
         raise
 
 
@@ -496,7 +693,12 @@ def locate(
     *,
     llm_chat: Callable[..., Any] | None = None,
     cache: LocatorCache | None = None,
+    on_event: Callable[[dict], None] | None = None,
 ) -> LocateResult:
+    def _emit(payload: dict) -> None:
+        if on_event is not None:
+            on_event(payload)
+
     role, name = parse_intent(intent)
 
     origin: str | None = None
@@ -508,11 +710,25 @@ def locate(
         if entry is not None:
             if entry.tier == "L4_vision":
                 cache.invalidate(origin=origin, intent=intent)
+                _emit({"tier": "cache", "outcome": "miss", "cache_action": "invalidate"})
             else:
                 live_fp = _canonical_ax_fingerprint(page, role=entry.role, selector=entry.selector)
                 if live_fp is None or live_fp != entry.ax_fingerprint:
                     cache.invalidate(origin=origin, intent=intent)
+                    _emit({"tier": "cache", "outcome": "miss", "cache_action": "invalidate"})
                 else:
+                    _emit(
+                        {
+                            "tier": "cache",
+                            "outcome": "hit",
+                            "cache_action": "read",
+                            "chosen": {
+                                "role": entry.role,
+                                "selector": entry.selector,
+                                "ax_fingerprint": entry.ax_fingerprint,
+                            },
+                        }
+                    )
                     return LocateResult(
                         tier="cache",
                         role=entry.role,
@@ -523,7 +739,9 @@ def locate(
                         coords=entry.coords,
                     )
 
-    result = _resolve_via_ladder(page, role=role, name=name, intent=intent, llm_chat=llm_chat)
+    result = _resolve_via_ladder(
+        page, role=role, name=name, intent=intent, llm_chat=llm_chat, on_event=on_event
+    )
 
     if cache is not None and origin is not None:
         if result.tier == "L4_vision":
@@ -545,6 +763,18 @@ def locate(
                 coords=result.coords,
                 written_at_utc=written_at,
             )
+        )
+        _emit(
+            {
+                "tier": result.tier,
+                "outcome": "cache_write",
+                "cache_action": "write",
+                "chosen": {
+                    "role": result.role,
+                    "selector": result.selector,
+                    "ax_fingerprint": stored_fingerprint,
+                },
+            }
         )
 
     return result

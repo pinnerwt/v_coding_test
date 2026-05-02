@@ -4,5 +4,8 @@
 <body>
   <h1>Type Textbox</h1>
   <input type="text" placeholder="Email" id="email">
+  <!-- Second textbox so F15's role-singleton fallback cannot resolve a
+       "Nonexistent textbox" intent — the L1 zero-matches path stays exercised. -->
+  <input type="text" placeholder="Phone" id="phone">
 </body>
 </html>

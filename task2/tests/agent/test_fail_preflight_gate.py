@@ -9,7 +9,9 @@ from agent.trace import Run, RunBudget, RunLLM, SupervisorEvent, TraceWriter
 
 _DUMMY_USAGE = Usage(prompt_tokens=1, completion_tokens=1, total_tokens=2)
 
-_PLAN_STUB = '{"steps": ["complete the task"], "expected_end_state": "task complete"}'
+_PLAN_STUB = (
+    '{"steps": ["start the task", "complete the task"], "expected_end_state": "task complete"}'
+)
 
 
 def _tool_call(name: str, args: dict, call_id: str = "tc-1") -> ToolCall:
@@ -39,13 +41,43 @@ def _plan_stub_response() -> ChatResponse:
     )
 
 
+def _is_planner_call(messages: list[dict]) -> bool:
+    if not messages:
+        return False
+    first = messages[0]
+    content = first.get("content", "") if isinstance(first, dict) else ""
+    return isinstance(content, str) and content.startswith("You are a planning assistant")
+
+
+def _judge_stub_response() -> ChatResponse:
+    return ChatResponse(
+        content='{"verdict": "supported", "reason": "stub"}',
+        tool_calls=[],
+        finish_reason="stop",
+        model="fake",
+        usage=Usage(prompt_tokens=0, completion_tokens=0, total_tokens=0),
+        raw={},
+        usd=0.0,
+    )
+
+
+def _is_judge_call(messages: list[dict]) -> bool:
+    if not messages:
+        return False
+    first = messages[0]
+    content = first.get("content", "") if isinstance(first, dict) else ""
+    return isinstance(content, str) and "[VERIFY DONE]" in content
+
+
 class _FakeLLMClient:
     def __init__(self, responses: list[ChatResponse]):
         self._responses = list(responses)
         self._index = 0
 
     def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
-        if tools is None:
+        if _is_judge_call(messages):
+            return _judge_stub_response()
+        if tools is None or _is_planner_call(messages):
             return _plan_stub_response()
         if self._index < len(self._responses):
             resp = self._responses[self._index]
@@ -210,7 +242,9 @@ def test_loop_fail_step1_rejected_nudge_content(fixture_server, playwright_chrom
             self._index = 0
 
         def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
-            if tools is None:
+            if _is_judge_call(messages):
+                return _judge_stub_response()
+            if tools is None or _is_planner_call(messages):
                 return _plan_stub_response()
             captured_messages.append(list(messages))
             if self._index < len(self._responses):

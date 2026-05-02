@@ -3,13 +3,18 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import sqlite3
+import time
+import uuid
 from collections.abc import Generator
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException
-from fastapi.responses import HTMLResponse, StreamingResponse
+import httpx
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, field_validator
 from ulid import ULID
 
@@ -17,11 +22,26 @@ from agent.browser import Browser
 from agent.llm import _DEFAULT_LLM_MODEL, LLMClient
 from agent.loop import RunResult, loop
 from agent.trace import Run, RunBudget, RunLLM, TraceWriter
+from api import metrics
 from api.db import get_db_path
+from api.sessions import (
+    get_session,
+    start_session,
+    submit_answer,
+    subscribe_events,
+    unsubscribe_events,
+)
 
 logger = logging.getLogger(__name__)
+access_logger = logging.getLogger("api.access")
 
 _AGENT_VERSION = "0.1.0"
+
+# Routes that embed a run_id under their second path segment. A regex over
+# `request.url.path` is enough — FastAPI's matched-route metadata isn't
+# populated until after dispatch and we want to emit one log line per
+# request whether the route was matched or 404'd.
+_RUN_ID_PATH_RE = re.compile(r"^/(?:tasks|sessions)/([^/]+)")
 
 _ZERO_TOTALS: dict[str, Any] = {
     "steps": 0,
@@ -35,10 +55,147 @@ _ZERO_TOTALS: dict[str, Any] = {
 app = FastAPI()
 
 
+@app.middleware("http")
+async def access_log_middleware(request: Request, call_next):
+    """Per-request structured access log.
+
+    Emits exactly one JSON line on `api.access` after the response is
+    formed, with `request_id`, `route`, `method`, `status`, `latency_ms`,
+    `run_id` (if the path embeds one), and `token_id` (placeholder until
+    auth lands). The `request_id` is also surfaced as the `x-request-id`
+    response header — clients can quote it in support tickets and we
+    can correlate without grepping logs by timestamp.
+
+    Honors a client-supplied `x-request-id` so upstream tracers (an LB,
+    another service) can thread their id through unchanged. Otherwise
+    we mint a UUID4.
+    """
+    incoming_rid = request.headers.get("x-request-id")
+    request_id = incoming_rid if incoming_rid else str(uuid.uuid4())
+    started = time.perf_counter()
+    response = await call_next(request)
+    latency_seconds = time.perf_counter() - started
+    latency_ms = latency_seconds * 1000.0
+    response.headers["x-request-id"] = request_id
+
+    run_id_match = _RUN_ID_PATH_RE.match(request.url.path)
+    # Use the matched route's path template (e.g. "/tasks/{run_id}") for
+    # metrics labels — substituting the actual run_id would make every
+    # run a new label set and blow up Prometheus memory. Falls back to
+    # a generic "unmatched" bucket for 404s.
+    matched_route = request.scope.get("route")
+    metric_route = (
+        getattr(matched_route, "path", None) if matched_route is not None else None
+    ) or "unmatched"
+    payload = {
+        "request_id": request_id,
+        "method": request.method,
+        "route": request.url.path,
+        "status": response.status_code,
+        "latency_ms": round(latency_ms, 3),
+        "run_id": run_id_match.group(1) if run_id_match else None,
+        # Reserved for the auth middleware (see plan.md security section);
+        # emitting now keeps the log schema stable across that change.
+        "token_id": None,
+    }
+    access_logger.info(json.dumps(payload, ensure_ascii=False))
+    metrics.record_request(
+        route=metric_route,
+        method=request.method,
+        status=response.status_code,
+        latency_seconds=latency_seconds,
+    )
+    return response
+
+
+def _probe_db() -> bool:
+    """Open a short connection to the trace DB and run a no-op query.
+
+    Cheap: SQLite open + `SELECT 1` is sub-millisecond on a healthy disk.
+    Raises on any sqlite3 error; the caller treats that as `db: False`.
+    """
+    with sqlite3.connect(get_db_path(), timeout=1.0) as conn:
+        conn.execute("SELECT 1").fetchone()
+    return True
+
+
+def _probe_llm() -> bool:
+    """HEAD the configured LLM_BASE_URL with a tight timeout.
+
+    Any 2xx/3xx/4xx is treated as "endpoint is up" — the LLM's own auth
+    or routing might 404 a HEAD, but the network path is healthy and the
+    upstream is responding. Connection refused / DNS error / timeout
+    raises and the caller treats that as `llm: False`. Kept under 1 s so
+    a stuck endpoint doesn't dominate the probe budget.
+    """
+    base_url = os.environ.get("LLM_BASE_URL", "http://localhost:8090")
+    with httpx.Client(timeout=1.0) as client:
+        client.head(base_url)
+    return True
+
+
+@app.get("/metrics")
+def metrics_endpoint() -> Response:
+    """Prometheus scrape endpoint — text-exposition format.
+
+    Renders the process-global default registry. No auth gating for now;
+    the security workstream (plan.md) is the right place to introduce
+    a separate scrape-only token if we publicly expose the surface."""
+    body, content_type = metrics.render_latest()
+    return Response(content=body, media_type=content_type)
+
+
+@app.get("/usage")
+def usage_endpoint() -> dict[str, Any]:
+    """Cumulative LLM cost snapshot for this process.
+
+    Returns prompt/completion token counts and total USD spend. A token
+    holder calls this to self-check before being rate-limited. The
+    numbers match the `llm_tokens_total` / `llm_usd_total` Prometheus
+    counters; persistent history lives in the trace store.
+    """
+    return metrics.get_usage_snapshot()
+
+
+@app.get("/healthz")
+def healthz() -> dict[str, Any]:
+    """Bare liveness probe — process is up and responsive.
+
+    Intentionally dependency-free: a flaky DB or LLM endpoint must not
+    trigger a process-restart loop. Use `/readyz` for traffic admission.
+    """
+    return {"status": "ok"}
+
+
+@app.get("/readyz")
+def readyz() -> JSONResponse:
+    """Readiness probe — DB and LLM endpoint reachable.
+
+    Returns 200 with each dependency's status when all green; 503 with
+    the same payload when any check fails. A deploy controller reads
+    this to drain old pods before flipping traffic.
+    """
+    checks: dict[str, bool] = {}
+    try:
+        checks["db"] = _probe_db()
+    except Exception:
+        checks["db"] = False
+    try:
+        checks["llm"] = _probe_llm()
+    except Exception:
+        checks["llm"] = False
+    all_ok = all(checks.values())
+    return JSONResponse(
+        status_code=200 if all_ok else 503,
+        content={"status": "ready" if all_ok else "not_ready", "checks": checks},
+    )
+
+
 class TaskRequest(BaseModel):
     task: str
     expect_schema: dict | None = None
     budget: dict | None = None
+    locale: str | None = None
 
     @field_validator("task")
     @classmethod
@@ -169,44 +326,98 @@ def get_trace(run_id: str) -> StreamingResponse:
     )
 
 
-_HTML = """<!DOCTYPE html>
-<html>
-<head><title>Agent Task Runner</title></head>
-<body>
-<h1>Run a Task</h1>
-<form id="task-form">
-  <label>task: <input id="task-input" name="task" type="text" size="60" /></label>
-  <button type="submit">Run</button>
-</form>
-<pre id="result"></pre>
-<script>
-document.getElementById('task-form').addEventListener('submit', async function(e) {
-  e.preventDefault();
-  const task = document.getElementById('task-input').value;
-  const pre = document.getElementById('result');
-  pre.textContent = 'Submitting...';
-  const resp = await fetch('/tasks', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({task})
-  });
-  const data = await resp.json();
-  const id = data.id;
-  pre.textContent = 'Running (id=' + id + ')...';
-  const poll = setInterval(async function() {
-    const r = await fetch('/tasks/' + id);
-    const body = await r.json();
-    if (body.status !== 'running') {
-      clearInterval(poll);
-      pre.textContent = JSON.stringify(body, null, 2);
-    }
-  }, 2000);
-});
-</script>
-</body>
-</html>"""
+_STATIC_DIR = Path(__file__).parent / "static"
+_CHAT_HTML = (_STATIC_DIR / "index.html").read_text(encoding="utf-8")
 
 
 @app.get("/")
 def root() -> HTMLResponse:
-    return HTMLResponse(_HTML)
+    return HTMLResponse(_CHAT_HTML)
+
+
+@app.get("/chat")
+def chat() -> HTMLResponse:
+    return HTMLResponse(_CHAT_HTML)
+
+
+class AnswerRequest(BaseModel):
+    answer: str
+
+    @field_validator("answer")
+    @classmethod
+    def answer_not_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("answer must not be empty")
+        return v
+
+
+@app.post("/sessions")
+def create_session(task_req: TaskRequest) -> dict[str, Any]:
+    run_id = start_session(
+        task_req.task,
+        expect_schema=task_req.expect_schema,
+        locale=task_req.locale,
+    )
+    return {"id": run_id}
+
+
+@app.get("/sessions/{run_id}")
+def get_session_status(run_id: str) -> dict[str, Any]:
+    session = get_session(run_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="not found")
+    result_payload = session.result.result if session.result is not None else None
+    return {
+        "run_id": session.run_id,
+        "status": session.status,
+        "pending_question": session.pending_question,
+        "result": result_payload,
+    }
+
+
+@app.post("/sessions/{run_id}/answer")
+def post_session_answer(run_id: str, body: AnswerRequest) -> dict[str, Any]:
+    session = get_session(run_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="not found")
+    try:
+        submit_answer(session, body.answer)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+    return {"ok": True}
+
+
+@app.get("/sessions/{run_id}/events")
+def get_session_events(run_id: str) -> StreamingResponse:
+    session = get_session(run_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="not found")
+
+    backlog, q = subscribe_events(session)
+
+    def gen() -> Generator[str, None, None]:
+        try:
+            terminal_seen = False
+            for ev in backlog:
+                yield f"data: {json.dumps(ev)}\n\n"
+                if ev.get("type") == "terminal":
+                    terminal_seen = True
+            if terminal_seen:
+                return
+            while True:
+                try:
+                    ev = q.get(timeout=15)
+                except Exception:
+                    yield ": keepalive\n\n"
+                    continue
+                yield f"data: {json.dumps(ev)}\n\n"
+                if ev.get("type") == "terminal":
+                    return
+        finally:
+            unsubscribe_events(session, q)
+
+    headers = {
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+    }
+    return StreamingResponse(gen(), media_type="text/event-stream", headers=headers)

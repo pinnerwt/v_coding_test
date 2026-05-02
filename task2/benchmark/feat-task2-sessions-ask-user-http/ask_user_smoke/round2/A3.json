@@ -1,0 +1,165 @@
+{
+  "summary": {
+    "case_id": "A3",
+    "run_id": "01KQGSNMTGBQQ916PF7N4BMFZY",
+    "task": "Book a flight from Taipei to Tokyo and return the cheapest fare.",
+    "ambiguous_expected": true,
+    "saw_ask_user": true,
+    "asked_questions": [
+      "What are your travel dates for the flight from Taipei to Tokyo? Please provide both departure and return dates."
+    ],
+    "terminal": {
+      "type": "terminal",
+      "status": "failed",
+      "reason": "no_progress",
+      "result": null,
+      "evidence": null
+    },
+    "elapsed_s": 388.0,
+    "n_events": 12
+  },
+  "events": [
+    {
+      "type": "trace",
+      "run_id": "01KQGSNMTGBQQ916PF7N4BMFZY",
+      "seq": 1,
+      "ts": "2026-05-01T03:35:13.763706+00:00",
+      "step_id": "01KQGSNMTGBQQ916PF7N4BMFZY:step-1",
+      "kind": "plan",
+      "reason": "started",
+      "steps": [
+        "Planning..."
+      ],
+      "llm_call_id": "9647376a-0688-4291-80aa-59514284a2cf"
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGSNMTGBQQ916PF7N4BMFZY",
+      "seq": 2,
+      "ts": "2026-05-01T03:35:56.595642+00:00",
+      "step_id": "01KQGSNMTGBQQ916PF7N4BMFZY:step-1",
+      "kind": "plan",
+      "reason": "ask_user",
+      "steps": [
+        "Asking user: What are your travel dates for the flight from Taipei to Tokyo? Please provide both departure and return dates."
+      ],
+      "llm_call_id": "dee24957-5fc7-48e3-9adc-8e4bdd5c196a"
+    },
+    {
+      "type": "ask_user",
+      "question": "What are your travel dates for the flight from Taipei to Tokyo? Please provide both departure and return dates."
+    },
+    {
+      "type": "answer",
+      "answer": "December 15, 2026, one-way"
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGSNMTGBQQ916PF7N4BMFZY",
+      "seq": 3,
+      "ts": "2026-05-01T03:36:24.043080+00:00",
+      "step_id": "01KQGSNMTGBQQ916PF7N4BMFZY:step-1",
+      "kind": "plan",
+      "reason": "initial",
+      "steps": [
+        "Book a flight from Taipei to Tokyo and return the cheapest fare."
+      ],
+      "llm_call_id": "b63870f4-784f-4722-89ad-70d32250164c"
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGSNMTGBQQ916PF7N4BMFZY",
+      "seq": 4,
+      "ts": "2026-05-01T03:36:31.794008+00:00",
+      "step_id": "01KQGSNMTGBQQ916PF7N4BMFZY:step-1",
+      "kind": "act",
+      "tool": "goto",
+      "args": {
+        "url": "https://www.google.com/flights"
+      },
+      "outcome": "ok",
+      "diff": {},
+      "ms": 430
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGSNMTGBQQ916PF7N4BMFZY",
+      "seq": 5,
+      "ts": "2026-05-01T03:40:12.581067+00:00",
+      "step_id": "01KQGSNMTGBQQ916PF7N4BMFZY:step-6",
+      "kind": "supervisor",
+      "trigger_event_seq": 0,
+      "classified_as": "unsupported_done",
+      "policy": "replan",
+      "attempt": 1
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGSNMTGBQQ916PF7N4BMFZY",
+      "seq": 6,
+      "ts": "2026-05-01T03:40:35.228094+00:00",
+      "step_id": "01KQGSNMTGBQQ916PF7N4BMFZY:step-6",
+      "kind": "plan",
+      "reason": "replan",
+      "steps": [
+        "Fill in the 'Where from?' combobox with 'Taipei' or 'Taipei City (TPE)'",
+        "Fill in the 'Where to?' combobox with 'Tokyo'",
+        "Set departure date in the 'Departure' textbox",
+        "Set return date in the 'Return' textbox",
+        "Click the search button to find available flights",
+        "Review the flight search results and identify the cheapest fare option",
+        "Select the cheapest flight from the search results",
+        "Proceed to booking by clicking on the selected flight option",
+        "Complete passenger information and payment details",
+        "Confirm booking and capture the final fare price"
+      ],
+      "llm_call_id": "2178a2dc-e2c5-4a95-810f-f3ee051e8c85"
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGSNMTGBQQ916PF7N4BMFZY",
+      "seq": 7,
+      "ts": "2026-05-01T03:40:46.458416+00:00",
+      "step_id": "01KQGSNMTGBQQ916PF7N4BMFZY:step-7",
+      "kind": "act",
+      "tool": "read",
+      "args": {
+        "intent": "the flight search results showing Taipei to Tokyo fares"
+      },
+      "outcome": "error",
+      "diff": {},
+      "ms": 0
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGSNMTGBQQ916PF7N4BMFZY",
+      "seq": 8,
+      "ts": "2026-05-01T03:41:04.349220+00:00",
+      "step_id": "01KQGSNMTGBQQ916PF7N4BMFZY:step-8",
+      "kind": "supervisor",
+      "trigger_event_seq": 0,
+      "classified_as": "premature_done",
+      "policy": "halt",
+      "attempt": 1
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGSNMTGBQQ916PF7N4BMFZY",
+      "seq": 9,
+      "ts": "2026-05-01T03:41:41.445343+00:00",
+      "step_id": "01KQGSNMTGBQQ916PF7N4BMFZY:step-10",
+      "kind": "supervisor",
+      "trigger_event_seq": 0,
+      "classified_as": "premature_done",
+      "policy": "halt",
+      "attempt": 1
+    },
+    {
+      "type": "terminal",
+      "status": "failed",
+      "reason": "no_progress",
+      "result": null,
+      "evidence": null
+    }
+  ]
+}

@@ -19,9 +19,20 @@ _CONSTANT_OBS = {
 }
 
 
+def _is_planner_call(messages: list[dict]) -> bool:
+    if not messages:
+        return False
+    first = messages[0]
+    content = first.get("content", "") if isinstance(first, dict) else ""
+    return isinstance(content, str) and content.startswith("You are a planning assistant")
+
+
 def _plan_stub() -> ChatResponse:
     return ChatResponse(
-        content='{"steps": ["complete the task"], "expected_end_state": "task complete"}',
+        content=(
+            '{"steps": ["start the task", "complete the task"],'
+            ' "expected_end_state": "task complete"}'
+        ),
         tool_calls=[],
         finish_reason="stop",
         model="fake",
@@ -41,13 +52,21 @@ class _StubBrowser:
 
 
 class _ReadEachStepClient:
-    """Emits read(intent=f'x{i}') each step — different args every step (no stuck_repeat)."""
+    """Emits read with conflicting intent+find args each step. Different `find`
+    string per step prevents stuck_repeat detection; the conflict triggers
+    the dispatcher's "either 'intent' or 'find', not both" error so every
+    step records action_succeeded=False, which is the no_progress trigger.
+
+    Note: post-F23, a no-match `read(find=...)` returns outcome=ok (the
+    substring just isn't on the page; that's not a tool failure). To
+    exercise the no_progress path we need a tool call that actually errors.
+    """
 
     def __init__(self):
         self._step = 0
 
     def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
-        if tools is None:
+        if tools is None or _is_planner_call(messages):
             return _plan_stub()
         self._step += 1
         return ChatResponse(
@@ -56,7 +75,9 @@ class _ReadEachStepClient:
                 ToolCall(
                     id=f"tc-{self._step}",
                     name="read",
-                    arguments=json.dumps({"intent": f"x{self._step}"}),
+                    arguments=json.dumps(
+                        {"intent": "the page", "find": f"missing-needle-{self._step}"}
+                    ),
                 )
             ],
             finish_reason="tool_calls",
@@ -96,7 +117,7 @@ class _ClickOkEachStepClient:
         self._step = 0
 
     def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
-        if tools is None:
+        if tools is None or _is_planner_call(messages):
             return _plan_stub()
         self._step += 1
         return ChatResponse(
@@ -211,7 +232,7 @@ class _GotoThenBodyReadsClient:
         self._step = 0
 
     def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
-        if tools is None:
+        if tools is None or _is_planner_call(messages):
             return _plan_stub()
         self._step += 1
         if self._step == 1:
@@ -283,7 +304,7 @@ class _ReplanThenClickNoSuccessClient:
         self._step = 0
 
     def chat(self, messages: list[dict], *, tools=None, **_kwargs) -> ChatResponse:
-        if tools is None:
+        if tools is None or _is_planner_call(messages):
             return _plan_stub()
         self._step += 1
         if self._step <= 2:

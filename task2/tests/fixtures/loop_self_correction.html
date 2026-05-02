@@ -3,6 +3,9 @@
 <head><meta charset="utf-8"><title>Loop Self-Correction Fixture</title></head>
 <body>
   <h1>Self-correction test page</h1>
+  <h2>Other section</h2>
+  <!-- Two headings present so F15's role-singleton fallback cannot resolve
+       a "NonExistent heading" intent — the locator-miss path stays exercised. -->
   <!-- aria-label="action" makes L1 (role+accessible-name) miss while L2 (visible text) hits. -->
   <button aria-label="action">Submit</button>
 </body>

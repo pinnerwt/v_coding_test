@@ -1,0 +1,210 @@
+{
+  "summary": {
+    "case_id": "A6",
+    "run_id": "01KQH2YZ7YQ8Y4N5KW931BVZ2K",
+    "task": "Find the best ramen restaurant in Tokyo on Google Maps.",
+    "ambiguous_expected": true,
+    "saw_ask_user": true,
+    "asked_questions": [
+      "What criteria should I use to find the best ramen restaurant — highest rating, most reviews, a specific neighborhood in Tokyo, or something else?"
+    ],
+    "terminal": {
+      "type": "terminal",
+      "status": "failed",
+      "reason": "no_progress",
+      "result": null,
+      "evidence": null
+    },
+    "elapsed_s": 106.4,
+    "n_events": 15
+  },
+  "events": [
+    {
+      "type": "trace",
+      "run_id": "01KQH2YZ7YQ8Y4N5KW931BVZ2K",
+      "seq": 1,
+      "ts": "2026-05-01T06:17:36.576525+00:00",
+      "step_id": "01KQH2YZ7YQ8Y4N5KW931BVZ2K:step-1",
+      "kind": "plan",
+      "reason": "started",
+      "steps": [
+        "Planning..."
+      ],
+      "llm_call_id": "37690265-9770-4aa1-a45f-90645c2d9cda"
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQH2YZ7YQ8Y4N5KW931BVZ2K",
+      "seq": 2,
+      "ts": "2026-05-01T06:17:43.911249+00:00",
+      "step_id": "01KQH2YZ7YQ8Y4N5KW931BVZ2K:step-1",
+      "kind": "plan",
+      "reason": "ask_user",
+      "steps": [
+        "Asking user: What criteria should I use to find the best ramen restaurant — highest rating, most reviews, a specific neighborhood in Tokyo, or something else?"
+      ],
+      "llm_call_id": "675e8b7e-4eba-4c16-a85d-8a883582ec17"
+    },
+    {
+      "type": "ask_user",
+      "question": "What criteria should I use to find the best ramen restaurant — highest rating, most reviews, a specific neighborhood in Tokyo, or something else?"
+    },
+    {
+      "type": "answer",
+      "answer": "highest-rated by Google reviews, in Shinjuku"
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQH2YZ7YQ8Y4N5KW931BVZ2K",
+      "seq": 3,
+      "ts": "2026-05-01T06:17:51.851168+00:00",
+      "step_id": "01KQH2YZ7YQ8Y4N5KW931BVZ2K:step-1",
+      "kind": "plan",
+      "reason": "initial",
+      "steps": [
+        "Navigate to Google Maps (maps.google.com)",
+        "Search for 'ramen restaurants in Shinjuku, Tokyo'",
+        "Apply filter or sort by highest rating/reviews",
+        "Identify the top-rated ramen restaurant from the results",
+        "Note the name and details of the best ramen restaurant found"
+      ],
+      "llm_call_id": "3eea1ddb-1080-4a27-8bdc-448d270346ba"
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQH2YZ7YQ8Y4N5KW931BVZ2K",
+      "seq": 4,
+      "ts": "2026-05-01T06:17:58.860935+00:00",
+      "step_id": "01KQH2YZ7YQ8Y4N5KW931BVZ2K:step-1",
+      "kind": "act",
+      "tool": "goto",
+      "args": {
+        "url": "https://maps.google.com"
+      },
+      "outcome": "ok",
+      "diff": {},
+      "ms": 345
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQH2YZ7YQ8Y4N5KW931BVZ2K",
+      "seq": 5,
+      "ts": "2026-05-01T06:18:30.287036+00:00",
+      "step_id": "01KQH2YZ7YQ8Y4N5KW931BVZ2K:step-5",
+      "kind": "locate",
+      "intent": "the search button",
+      "tier": "L1_ax",
+      "outcome": "miss",
+      "candidates": [],
+      "chosen": null,
+      "cache_action": null,
+      "ms": 0
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQH2YZ7YQ8Y4N5KW931BVZ2K",
+      "seq": 6,
+      "ts": "2026-05-01T06:18:30.293214+00:00",
+      "step_id": "01KQH2YZ7YQ8Y4N5KW931BVZ2K:step-5",
+      "kind": "supervisor",
+      "trigger_event_seq": 5,
+      "classified_as": "LocatorMiss",
+      "policy": "next_tier",
+      "attempt": 1
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQH2YZ7YQ8Y4N5KW931BVZ2K",
+      "seq": 7,
+      "ts": "2026-05-01T06:18:30.309172+00:00",
+      "step_id": "01KQH2YZ7YQ8Y4N5KW931BVZ2K:step-5",
+      "kind": "locate",
+      "intent": "the search button",
+      "tier": "L2_dom",
+      "outcome": "miss",
+      "candidates": [],
+      "chosen": null,
+      "cache_action": null,
+      "ms": 0
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQH2YZ7YQ8Y4N5KW931BVZ2K",
+      "seq": 8,
+      "ts": "2026-05-01T06:18:30.331150+00:00",
+      "step_id": "01KQH2YZ7YQ8Y4N5KW931BVZ2K:step-5",
+      "kind": "locate",
+      "intent": "the search button",
+      "tier": "L_textmatch",
+      "outcome": "miss",
+      "candidates": [],
+      "chosen": null,
+      "cache_action": null,
+      "ms": 0
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQH2YZ7YQ8Y4N5KW931BVZ2K",
+      "seq": 9,
+      "ts": "2026-05-01T06:18:58.459996+00:00",
+      "step_id": "01KQH2YZ7YQ8Y4N5KW931BVZ2K:step-7",
+      "kind": "locate",
+      "intent": "the search textbox",
+      "tier": "L1_ax",
+      "outcome": "miss",
+      "candidates": [],
+      "chosen": null,
+      "cache_action": null,
+      "ms": 0
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQH2YZ7YQ8Y4N5KW931BVZ2K",
+      "seq": 10,
+      "ts": "2026-05-01T06:18:58.466681+00:00",
+      "step_id": "01KQH2YZ7YQ8Y4N5KW931BVZ2K:step-7",
+      "kind": "supervisor",
+      "trigger_event_seq": 9,
+      "classified_as": "LocatorMiss",
+      "policy": "next_tier",
+      "attempt": 2
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQH2YZ7YQ8Y4N5KW931BVZ2K",
+      "seq": 11,
+      "ts": "2026-05-01T06:18:58.474294+00:00",
+      "step_id": "01KQH2YZ7YQ8Y4N5KW931BVZ2K:step-7",
+      "kind": "locate",
+      "intent": "the search textbox",
+      "tier": "L2_dom",
+      "outcome": "miss",
+      "candidates": [],
+      "chosen": null,
+      "cache_action": null,
+      "ms": 0
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQH2YZ7YQ8Y4N5KW931BVZ2K",
+      "seq": 12,
+      "ts": "2026-05-01T06:18:58.490013+00:00",
+      "step_id": "01KQH2YZ7YQ8Y4N5KW931BVZ2K:step-7",
+      "kind": "locate",
+      "intent": "the search textbox",
+      "tier": "L_textmatch",
+      "outcome": "miss",
+      "candidates": [],
+      "chosen": null,
+      "cache_action": null,
+      "ms": 0
+    },
+    {
+      "type": "terminal",
+      "status": "failed",
+      "reason": "no_progress",
+      "result": null,
+      "evidence": null
+    }
+  ]
+}

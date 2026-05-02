@@ -1,0 +1,111 @@
+[
+  {
+    "case_id": "A1",
+    "run_id": "01KQGY8NQ3BN0D3PB8TGYCR6KS",
+    "task": "Book a table at Inparadise (旭集) for noon next Saturday.",
+    "ambiguous_expected": true,
+    "saw_ask_user": true,
+    "asked_questions": [
+      "Which Inparadise (旭集) location would you like to book at? Please specify the city or neighborhood."
+    ],
+    "terminal": {
+      "type": "terminal",
+      "status": "failed",
+      "reason": "no_progress",
+      "result": null,
+      "evidence": null
+    },
+    "elapsed_s": 167.2,
+    "n_events": 12
+  },
+  {
+    "case_id": "A3",
+    "run_id": "01KQGYDRZ0X7Q897PFRTQ7408T",
+    "task": "Book a flight from Taipei to Tokyo and return the cheapest fare.",
+    "ambiguous_expected": true,
+    "saw_ask_user": true,
+    "asked_questions": [
+      "What date do you want to travel from Taipei to Tokyo?"
+    ],
+    "terminal": {
+      "type": "terminal",
+      "status": "failed",
+      "reason": "no_progress",
+      "result": null,
+      "evidence": null
+    },
+    "elapsed_s": 114.9,
+    "n_events": 12
+  },
+  {
+    "case_id": "A6",
+    "run_id": "01KQGYH94T1SDJFK8J7TJAFJ6E",
+    "task": "Find the best ramen restaurant in Tokyo on Google Maps.",
+    "ambiguous_expected": true,
+    "saw_ask_user": true,
+    "asked_questions": [
+      "What criteria should I use to determine the best ramen restaurant — highest rating, most reviews, or a specific neighborhood in Tokyo?"
+    ],
+    "terminal": {
+      "type": "terminal",
+      "status": "failed",
+      "reason": "no_progress",
+      "result": null,
+      "evidence": null
+    },
+    "elapsed_s": 180.0,
+    "n_events": 16
+  },
+  {
+    "case_id": "U1",
+    "run_id": "01KQGYPRWM1WHF47PKAAGYEZQZ",
+    "task": "Tell me the name of the Turing Award winner in 2018.",
+    "ambiguous_expected": false,
+    "saw_ask_user": false,
+    "asked_questions": [],
+    "terminal": {
+      "type": "terminal",
+      "status": "done",
+      "reason": null,
+      "result": {
+        "winners": [
+          "Yoshua Bengio",
+          "Geoffrey Hinton",
+          "Yann LeCun"
+        ],
+        "year": 2018,
+        "citation": "for conceptual and engineering breakthroughs that have made deep neural networks a critical component of computing"
+      },
+      "evidence": {
+        "url": "https://en.wikipedia.org/wiki/Turing_Award",
+        "text_snippet": "2018\tYoshua Bengio\t\t\"for conceptual and engineering breakthroughs that have made deep neural networks a critical component of computing\"\tUniversité de Montréal, Mila\nGeoffrey Hinton\t\tUniversity of Toronto, Google Brain\nYann LeCun\t\tNew York University, Meta AI"
+      }
+    },
+    "elapsed_s": 245.4,
+    "n_events": 18
+  },
+  {
+    "case_id": "U4",
+    "run_id": "01KQGYY8JB8AT5HN1BWT649Z3C",
+    "task": "Find the abstract of the paper 'Attention Is All You Need' on arXiv.",
+    "ambiguous_expected": false,
+    "saw_ask_user": false,
+    "asked_questions": [],
+    "terminal": {
+      "type": "terminal",
+      "status": "done",
+      "reason": null,
+      "result": {
+        "abstract": "The dominant sequence transduction models are based on complex recurrent or convolutional neural networks in an encoder-decoder configuration. The best performing models also connect the encoder and decoder through an attention mechanism. We propose a new simple network architecture, the Transformer, based solely on attention mechanisms, dispensing with recurrence and convolutions entirely. Experiments on two machine translation tasks show these models to be superior in quality while being more parallelizable and requiring significantly less time to train. Our model achieves 28.4 BLEU on the WMT 2014 English-to-German translation task, improving over the existing best results, including ensembles by over 2 BLEU. On the WMT 2014 English-to-French translation task, our model establishes a new single-model state-of-the-art BLEU score of 41.8 after training for 3.5 days on eight GPUs, a small fraction of the training costs of the best models from the literature. We show that the Transformer generalizes well to other tasks by applying it successfully to English constituency parsing both with large and limited training data.",
+        "paper_title": "Attention Is All You Need",
+        "arxiv_id": "1706.03762"
+      },
+      "evidence": {
+        "url": "https://arxiv.org/abs/1706.03762",
+        "text_snippet": "The dominant sequence transduction models are based on complex recurrent or convolutional neural networks in an encoder-decoder configuration. The best performing models also connect the encoder and decoder through an attention mechanism. We propose a new simple network architecture, the Transformer, based solely on attention mechanisms, dispensing with recurrence and convolutions entirely."
+      }
+    },
+    "elapsed_s": 110.2,
+    "n_events": 11
+  }
+]

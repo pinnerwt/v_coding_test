@@ -47,13 +47,21 @@ def _default_run_dict(run_id: str, task: str) -> dict:
 
 
 def _live_user_content(
-    observation: dict, *, step: int, max_steps: int, plan: list[str] | None = None
+    observation: dict,
+    *,
+    step: int,
+    max_steps: int,
+    plan: list[str] | None = None,
+    prev_obs: dict | None = None,
 ) -> str:
     """Reproduce the user message content loop.py builds for a given step.
 
-    Mirrors `budget_prefix + plan_prefix + STATE_MESSAGE_PREFIX + json.dumps(obs)`
-    from loop.py so hand-built fixtures stay self-consistent with the live loop.
+    Mirrors `budget_prefix + plan_prefix + dom_digest_prefix +
+    STATE_MESSAGE_PREFIX + json.dumps(obs)` from loop.py so hand-built
+    fixtures stay self-consistent with the live loop.
     """
+    from agent.observe import compute_dom_digest
+
     plan = plan if plan is not None else ["complete the task"]
     steps_remaining = max_steps - step
     if steps_remaining <= 4:
@@ -70,7 +78,11 @@ def _live_user_content(
         budget_prefix = f"Step {step}/{max_steps}.\n\n"
     plan_lines = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(plan))
     plan_prefix = f"Plan progress:\n{plan_lines}\n\n"
-    return f"{budget_prefix}{plan_prefix}Current state: {json.dumps(observation)}"
+    digest = compute_dom_digest(prev_obs, observation) if prev_obs is not None else ""
+    digest_prefix = (
+        f"DOM change since last step: {digest}\n\n" if digest and digest != "unchanged" else ""
+    )
+    return f"{budget_prefix}{plan_prefix}{digest_prefix}Current state: {json.dumps(observation)}"
 
 
 def _mutate_decision_tool(lines: list[str], old_tool: str, new_tool: str) -> list[str]:
@@ -930,7 +942,7 @@ def test_replay_run_intent_read_with_recorded_text_reports_prompt_drift(tmp_path
     SHALL report prompt drift, not silent match.
 
     The stub locator surface always resolves to zero matches and `browser.read`
-    always returns "", so loop dispatches an "Error: could not locate ..."
+    always returns "", so loop's F12 fallback dispatches an empty body-text
     tool message. A recording captured against a real browser would have the
     actual page text in that slot — so prompt comparison must surface the
     difference rather than coerce them to look equal. This test pins that
@@ -954,11 +966,11 @@ def test_replay_run_intent_read_with_recorded_text_reports_prompt_drift(tmp_path
         obj = json.loads(line)
         if obj.get("kind") == "llm_call":
             for msg in obj.get("prompt", {}).get("messages", []):
-                if msg.get("role") == "tool" and msg.get("content", "").startswith("Error:"):
+                if msg.get("role") == "tool" and msg.get("content", "") == "":
                     msg["content"] = "Real Heading Text From Browser"
                     swapped = True
         mutated.append(json.dumps(obj))
-    assert swapped, "Expected to find a tool error message to swap"
+    assert swapped, "Expected to find an empty-body read tool message to swap"
     fixture_path.write_text("\n".join(mutated) + "\n")
 
     result = replay_run(fixture_path)

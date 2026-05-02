@@ -1,0 +1,306 @@
+{
+  "summary": {
+    "case_id": "U4",
+    "run_id": "01KQGTBET1AFD7GFPPVSTAG7SJ",
+    "task": "Find the abstract of the paper 'Attention Is All You Need' on arXiv.",
+    "ambiguous_expected": false,
+    "saw_ask_user": false,
+    "asked_questions": [],
+    "terminal": {
+      "type": "terminal",
+      "status": "timeout",
+      "reason": null,
+      "result": null,
+      "evidence": null
+    },
+    "elapsed_s": 563.3,
+    "n_events": 22
+  },
+  "events": [
+    {
+      "type": "trace",
+      "run_id": "01KQGTBET1AFD7GFPPVSTAG7SJ",
+      "seq": 1,
+      "ts": "2026-05-01T03:47:08.481243+00:00",
+      "step_id": "01KQGTBET1AFD7GFPPVSTAG7SJ:step-1",
+      "kind": "plan",
+      "reason": "started",
+      "steps": [
+        "Planning..."
+      ],
+      "llm_call_id": "2d5fa6bd-2cd0-457d-b8a4-8059fa2b9a07"
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGTBET1AFD7GFPPVSTAG7SJ",
+      "seq": 2,
+      "ts": "2026-05-01T03:47:21.757838+00:00",
+      "step_id": "01KQGTBET1AFD7GFPPVSTAG7SJ:step-1",
+      "kind": "plan",
+      "reason": "initial",
+      "steps": [
+        "Navigate to https://arxiv.org",
+        "Click on the search box or use the search functionality",
+        "Enter 'Attention Is All You Need' in the search field",
+        "Submit the search query",
+        "Click on the paper result for 'Attention Is All You Need'",
+        "Locate and read the abstract section on the paper page"
+      ],
+      "llm_call_id": "30940724-30d7-4e8d-83f7-7adb632bb0e0"
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGTBET1AFD7GFPPVSTAG7SJ",
+      "seq": 3,
+      "ts": "2026-05-01T03:47:28.586188+00:00",
+      "step_id": "01KQGTBET1AFD7GFPPVSTAG7SJ:step-1",
+      "kind": "act",
+      "tool": "goto",
+      "args": {
+        "url": "https://arxiv.org"
+      },
+      "outcome": "ok",
+      "diff": {},
+      "ms": 261
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGTBET1AFD7GFPPVSTAG7SJ",
+      "seq": 4,
+      "ts": "2026-05-01T03:47:52.548245+00:00",
+      "step_id": "01KQGTBET1AFD7GFPPVSTAG7SJ:step-3",
+      "kind": "act",
+      "tool": "type",
+      "args": {
+        "intent": "the search textbox",
+        "text": "Attention Is All You Need",
+        "submit": true
+      },
+      "outcome": "timeout",
+      "diff": {},
+      "ms": 5001
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGTBET1AFD7GFPPVSTAG7SJ",
+      "seq": 5,
+      "ts": "2026-05-01T03:48:06.108540+00:00",
+      "step_id": "01KQGTBET1AFD7GFPPVSTAG7SJ:step-4",
+      "kind": "act",
+      "tool": "goto",
+      "args": {
+        "url": "https://arxiv.org/abs/1706.03762"
+      },
+      "outcome": "ok",
+      "diff": {},
+      "ms": 326
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGTBET1AFD7GFPPVSTAG7SJ",
+      "seq": 6,
+      "ts": "2026-05-01T03:48:16.157275+00:00",
+      "step_id": "01KQGTBET1AFD7GFPPVSTAG7SJ:step-5",
+      "kind": "act",
+      "tool": "read",
+      "args": {
+        "intent": "the abstract section"
+      },
+      "outcome": "error",
+      "diff": {},
+      "ms": 0
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGTBET1AFD7GFPPVSTAG7SJ",
+      "seq": 7,
+      "ts": "2026-05-01T03:48:23.812900+00:00",
+      "step_id": "01KQGTBET1AFD7GFPPVSTAG7SJ:step-6",
+      "kind": "act",
+      "tool": "read",
+      "args": {},
+      "outcome": "ok",
+      "diff": {},
+      "ms": 3
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGTBET1AFD7GFPPVSTAG7SJ",
+      "seq": 8,
+      "ts": "2026-05-01T03:48:54.624176+00:00",
+      "step_id": "01KQGTBET1AFD7GFPPVSTAG7SJ:step-7",
+      "kind": "supervisor",
+      "trigger_event_seq": 0,
+      "classified_as": "premature_done",
+      "policy": "halt",
+      "attempt": 1
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGTBET1AFD7GFPPVSTAG7SJ",
+      "seq": 9,
+      "ts": "2026-05-01T03:49:23.931529+00:00",
+      "step_id": "01KQGTBET1AFD7GFPPVSTAG7SJ:step-8",
+      "kind": "supervisor",
+      "trigger_event_seq": 0,
+      "classified_as": "premature_done",
+      "policy": "halt",
+      "attempt": 1
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGTBET1AFD7GFPPVSTAG7SJ",
+      "seq": 10,
+      "ts": "2026-05-01T03:49:57.959655+00:00",
+      "step_id": "01KQGTBET1AFD7GFPPVSTAG7SJ:step-9",
+      "kind": "supervisor",
+      "trigger_event_seq": 0,
+      "classified_as": "premature_done",
+      "policy": "halt",
+      "attempt": 1
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGTBET1AFD7GFPPVSTAG7SJ",
+      "seq": 11,
+      "ts": "2026-05-01T03:50:22.804693+00:00",
+      "step_id": "01KQGTBET1AFD7GFPPVSTAG7SJ:step-10",
+      "kind": "act",
+      "tool": "read",
+      "args": {},
+      "outcome": "ok",
+      "diff": {},
+      "ms": 2
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGTBET1AFD7GFPPVSTAG7SJ",
+      "seq": 12,
+      "ts": "2026-05-01T03:50:51.827014+00:00",
+      "step_id": "01KQGTBET1AFD7GFPPVSTAG7SJ:step-11",
+      "kind": "supervisor",
+      "trigger_event_seq": 0,
+      "classified_as": "premature_done",
+      "policy": "halt",
+      "attempt": 1
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGTBET1AFD7GFPPVSTAG7SJ",
+      "seq": 13,
+      "ts": "2026-05-01T03:51:29.774616+00:00",
+      "step_id": "01KQGTBET1AFD7GFPPVSTAG7SJ:step-12",
+      "kind": "supervisor",
+      "trigger_event_seq": 0,
+      "classified_as": "premature_done",
+      "policy": "halt",
+      "attempt": 1
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGTBET1AFD7GFPPVSTAG7SJ",
+      "seq": 14,
+      "ts": "2026-05-01T03:52:05.212452+00:00",
+      "step_id": "01KQGTBET1AFD7GFPPVSTAG7SJ:step-13",
+      "kind": "supervisor",
+      "trigger_event_seq": 0,
+      "classified_as": "premature_done",
+      "policy": "halt",
+      "attempt": 1
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGTBET1AFD7GFPPVSTAG7SJ",
+      "seq": 15,
+      "ts": "2026-05-01T03:52:36.396618+00:00",
+      "step_id": "01KQGTBET1AFD7GFPPVSTAG7SJ:step-14",
+      "kind": "act",
+      "tool": "click",
+      "args": {
+        "intent": "the View PDF link"
+      },
+      "outcome": "ok",
+      "diff": {},
+      "ms": 133
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGTBET1AFD7GFPPVSTAG7SJ",
+      "seq": 16,
+      "ts": "2026-05-01T03:53:15.480482+00:00",
+      "step_id": "01KQGTBET1AFD7GFPPVSTAG7SJ:step-15",
+      "kind": "supervisor",
+      "trigger_event_seq": 0,
+      "classified_as": "premature_done",
+      "policy": "halt",
+      "attempt": 1
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGTBET1AFD7GFPPVSTAG7SJ",
+      "seq": 17,
+      "ts": "2026-05-01T03:53:55.220843+00:00",
+      "step_id": "01KQGTBET1AFD7GFPPVSTAG7SJ:step-16",
+      "kind": "supervisor",
+      "trigger_event_seq": 0,
+      "classified_as": "premature_done",
+      "policy": "halt",
+      "attempt": 1
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGTBET1AFD7GFPPVSTAG7SJ",
+      "seq": 18,
+      "ts": "2026-05-01T03:54:32.636656+00:00",
+      "step_id": "01KQGTBET1AFD7GFPPVSTAG7SJ:step-17",
+      "kind": "supervisor",
+      "trigger_event_seq": 0,
+      "classified_as": "premature_done",
+      "policy": "halt",
+      "attempt": 1
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGTBET1AFD7GFPPVSTAG7SJ",
+      "seq": 19,
+      "ts": "2026-05-01T03:55:18.377319+00:00",
+      "step_id": "01KQGTBET1AFD7GFPPVSTAG7SJ:step-18",
+      "kind": "supervisor",
+      "trigger_event_seq": 0,
+      "classified_as": "premature_done",
+      "policy": "halt",
+      "attempt": 1
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGTBET1AFD7GFPPVSTAG7SJ",
+      "seq": 20,
+      "ts": "2026-05-01T03:55:55.527290+00:00",
+      "step_id": "01KQGTBET1AFD7GFPPVSTAG7SJ:step-19",
+      "kind": "supervisor",
+      "trigger_event_seq": 0,
+      "classified_as": "premature_done",
+      "policy": "halt",
+      "attempt": 1
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGTBET1AFD7GFPPVSTAG7SJ",
+      "seq": 21,
+      "ts": "2026-05-01T03:56:31.457837+00:00",
+      "step_id": "01KQGTBET1AFD7GFPPVSTAG7SJ:step-20",
+      "kind": "supervisor",
+      "trigger_event_seq": 0,
+      "classified_as": "premature_done",
+      "policy": "halt",
+      "attempt": 1
+    },
+    {
+      "type": "terminal",
+      "status": "timeout",
+      "reason": null,
+      "result": null,
+      "evidence": null
+    }
+  ]
+}

@@ -30,6 +30,15 @@ from scripts.eval import (
     run_validators,
 )
 
+
+def _is_planner_call(messages: list[dict]) -> bool:
+    if not messages:
+        return False
+    first = messages[0]
+    content = first.get("content", "") if isinstance(first, dict) else ""
+    return isinstance(content, str) and content.startswith("You are a planning assistant")
+
+
 _FIXTURE_CASE = {
     "id": "fixture-heading",
     "domain": "fixture",
@@ -1251,7 +1260,7 @@ def test_maintenance_drift_rename_real_loop_cache_invalidation(playwright_chromi
             usd=0.0,
         )
 
-    plan_stub = '{"steps": ["read submit button"], "expected_end_state": "done"}'
+    plan_stub = '{"steps": ["read submit button", "click it"], "expected_end_state": "done"}'
 
     def _make_llm(version_url: str):
         class _ScopedLLM:
@@ -1259,7 +1268,7 @@ def test_maintenance_drift_rename_real_loop_cache_invalidation(playwright_chromi
                 self._call_index = 0
 
             def chat(self, messages, *, tools=None, **_):
-                if tools is None:
+                if tools is None or _is_planner_call(messages):
                     return _text_resp(plan_stub)
                 idx = self._call_index
                 self._call_index += 1
@@ -1864,6 +1873,39 @@ def test_run_case_failure_detail_includes_llm_error_body():
     assert result.validators[0]["error"] == result.failure_detail
 
 
+def test_run_case_failure_detail_includes_transport_error_message():
+    """Transport errors have body=None — the useful info is in the message/cause.
+
+    Why: webvoyager runs surfaced LLMError(kind='transport', body='') with no
+    indication of what went wrong (ReadTimeout vs ConnectError vs ReadError).
+    The message string ('transport error: timed out') and the original httpx
+    exception type carry that signal.
+    """
+    import httpx
+
+    from agent.llm import LLMError
+
+    cause = httpx.ReadTimeout("timed out")
+
+    def _raise_transport(*args, **kwargs):
+        raise LLMError("transport error: timed out", kind="transport", cause=cause)
+
+    case = {
+        "id": "transport-case",
+        "task": "dummy",
+        "budget": {"steps": 1, "usd": 1.0, "seconds": 30},
+        "expect": {},
+    }
+    with patch("scripts.eval.loop", side_effect=_raise_transport):
+        result = _run_case(case, llm_client=MagicMock(), browser=MagicMock())
+
+    assert "transport" in result.failure_detail
+    assert "timed out" in result.failure_detail, (
+        f"underlying error message dropped from failure_detail: {result.failure_detail!r}"
+    )
+    assert result.failure_class == "tool_error"
+
+
 def test_fixture_count_with_listitem_intent_stub_llm(playwright_chromium):
     from agent.browser import Browser
     from agent.llm import ChatResponse, ToolCall, Usage
@@ -1906,7 +1948,7 @@ def test_fixture_count_with_listitem_intent_stub_llm(playwright_chromium):
             self._call_index = 0
 
         def chat(self, messages, *, tools=None, **_):
-            if tools is None:
+            if tools is None or _is_planner_call(messages):
                 return _text_resp(plan_stub)
             idx = self._call_index
             self._call_index += 1

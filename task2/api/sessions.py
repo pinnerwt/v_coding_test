@@ -1,0 +1,349 @@
+from __future__ import annotations
+
+import logging
+import os
+import queue
+import threading
+import time
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from typing import Any, Literal
+
+from ulid import ULID
+
+from agent.browser import Browser
+from agent.llm import _DEFAULT_LLM_MODEL, LLMClient
+from agent.loop import RunResult, loop
+from agent.trace import Run, RunBudget, RunLLM
+from api import metrics
+from api.db import get_db_path
+from api.streaming_trace import StreamingTraceWriter
+
+logger = logging.getLogger(__name__)
+
+SessionStatus = Literal["running", "awaiting_user", "done", "failed"]
+
+_AGENT_VERSION = "0.1.0"
+
+# Watchdog: hard upper bound for any session, in seconds. The loop has its own
+# `budget_seconds` (300 s by default) but only checks the deadline at the top
+# of each step, so a single slow step (long browser timeout, locator retry
+# storm, blocked answer queue) can leave the SSE consumer with no `terminal`
+# event for arbitrarily long. The watchdog is the safety net: if the loop has
+# not produced a terminal by the deadline, force-emit one so the SSE contract
+# ("every run ends with a terminal") holds even when the loop misbehaves.
+_DEFAULT_SESSION_DEADLINE_SECONDS = 330.0
+
+
+def _terminal_status_label(loop_status: str) -> str:
+    """Map RunResult.status to the terminal-event status surface.
+
+    The UI distinguishes succeeded → 'done', and surfaces 'failed'/'unverified'/
+    'timeout' explicitly so users see why a run ended.
+    """
+    return "done" if loop_status == "succeeded" else loop_status
+
+
+_ZERO_TOTALS: dict[str, Any] = {
+    "steps": 0,
+    "llm_calls": 0,
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "usd": 0.0,
+    "browser_ms": 0,
+}
+
+
+@dataclass
+class SessionState:
+    run_id: str
+    status: SessionStatus = "running"
+    pending_question: str | None = None
+    answer_queue: queue.Queue[str] = field(default_factory=queue.Queue)
+    result: RunResult | None = None
+    error: str | None = None
+    event_log: list[dict[str, Any]] = field(default_factory=list)
+    event_subscribers: list[queue.Queue[dict[str, Any]]] = field(default_factory=list)
+    event_lock: threading.Lock = field(default_factory=threading.Lock)
+    # Monotonic clock at session start; used to compute task latency for
+    # the Prometheus histogram on terminal emit. `time.perf_counter()` is
+    # the right clock here — wall-clock can jump under NTP correction.
+    started_perf: float = field(default_factory=time.perf_counter)
+
+
+_SESSIONS: dict[str, SessionState] = {}
+_SESSIONS_LOCK = threading.Lock()
+
+
+def get_session(run_id: str) -> SessionState | None:
+    with _SESSIONS_LOCK:
+        return _SESSIONS.get(run_id)
+
+
+def _register_session(session: SessionState) -> None:
+    with _SESSIONS_LOCK:
+        _SESSIONS[session.run_id] = session
+
+
+def emit_event(session: SessionState, payload: dict[str, Any]) -> None:
+    """Append to event log and broadcast to subscribers under one lock."""
+    with session.event_lock:
+        session.event_log.append(payload)
+        subs = list(session.event_subscribers)
+    for q in subs:
+        q.put(payload)
+
+
+def subscribe_events(
+    session: SessionState,
+) -> tuple[list[dict[str, Any]], queue.Queue[dict[str, Any]]]:
+    """Atomically snapshot the event log and register a live subscriber."""
+    q: queue.Queue[dict[str, Any]] = queue.Queue()
+    with session.event_lock:
+        backlog = list(session.event_log)
+        session.event_subscribers.append(q)
+    metrics.sse_subscribers_active.inc()
+    return backlog, q
+
+
+def unsubscribe_events(session: SessionState, q: queue.Queue[dict[str, Any]]) -> None:
+    removed = False
+    with session.event_lock:
+        try:
+            session.event_subscribers.remove(q)
+            removed = True
+        except ValueError:
+            pass
+    if removed:
+        metrics.sse_subscribers_active.dec()
+
+
+def _emit_terminal_once(session: SessionState, payload: dict[str, Any]) -> bool:
+    """Emit a terminal event iff none has been emitted yet. Returns True if
+    this call emitted, False if a terminal was already in the event log.
+    Guards the SSE contract of exactly one terminal per run when both the
+    loop's normal completion and the watchdog can race.
+
+    Also records task-level Prometheus metrics on first emit — terminal
+    is the natural hook because it's exactly-once per run by construction
+    (the `event_log` check above) and carries the final status."""
+    with session.event_lock:
+        if any(e.get("type") == "terminal" for e in session.event_log):
+            return False
+        session.event_log.append(payload)
+        subs = list(session.event_subscribers)
+    for q in subs:
+        q.put(payload)
+    latency = max(0.0, time.perf_counter() - session.started_perf)
+    verifier = session.result.verifier if session.result is not None else None
+    metrics.record_task_terminal(
+        status=str(payload.get("status", "unknown")),
+        latency_seconds=latency,
+        verifier=verifier,
+    )
+    return True
+
+
+def _make_ask_user_callback(session: SessionState):
+    def ask(question: str) -> str:
+        session.pending_question = question
+        session.status = "awaiting_user"
+        metrics.sessions_awaiting_user.inc()
+        emit_event(session, {"type": "ask_user", "question": question})
+        try:
+            answer = session.answer_queue.get()
+        finally:
+            session.pending_question = None
+            session.status = "running"
+            metrics.sessions_awaiting_user.dec()
+        emit_event(session, {"type": "answer", "answer": answer})
+        return answer
+
+    return ask
+
+
+def _invoke_loop(
+    task: str,
+    *,
+    run_id: str,
+    expect_schema: dict | None = None,
+    ask_user_callback,
+    on_event=None,
+    locale: str | None = None,
+) -> RunResult:
+    """Real loop entrypoint. Tests monkeypatch this seam to avoid Browser/LLM."""
+    if os.environ.get("SESSIONS_FAKE_LOOP") == "1":
+        answer = ask_user_callback("Which destination?")
+        return RunResult(
+            status="succeeded",
+            result={"task": task, "answer": answer},
+            evidence={"url": "fake://smoke", "text_snippet": "fake-loop"},
+        )
+    base_url = os.environ.get("LLM_BASE_URL", "http://localhost:8090")
+    model = os.environ.get("LLM_MODEL", _DEFAULT_LLM_MODEL)
+    writer = StreamingTraceWriter(get_db_path(), on_event=on_event)
+    run = Run(
+        run_id=run_id,
+        task=task,
+        expect_schema=expect_schema,
+        budget=RunBudget(steps=20, usd=1.0, seconds=300),
+        llm=RunLLM(base_url=base_url, model=model, temperature=0.0, seed=None),
+        agent_version=_AGENT_VERSION,
+        started_at=datetime.now(UTC).isoformat(),
+        ended_at=None,
+        status=None,
+        final=None,
+        totals=None,
+    )
+    try:
+        writer.open_run(run)
+        with (
+            LLMClient(model=model) as llm_client,
+            Browser() as browser,
+        ):
+            result = loop(
+                task,
+                browser,
+                llm_client,
+                trace_writer=writer,
+                run_id=run_id,
+                expect=expect_schema,
+                ask_user_callback=ask_user_callback,
+                locale=locale,
+                max_steps=run.budget.steps,
+                budget_seconds=run.budget.seconds,
+            )
+        writer.close_run(
+            run_id,
+            status=result.status,
+            ended_at=datetime.now(UTC).isoformat(),
+            final={
+                "result": result.result,
+                "evidence": result.evidence,
+                "failure": None if result.status != "failed" else {"reason": "agent failed"},
+            },
+            totals=_ZERO_TOTALS,
+        )
+        return result
+    finally:
+        writer.close()
+
+
+def _session_deadline_seconds() -> float:
+    raw = os.environ.get("SESSION_DEADLINE_SECONDS")
+    if raw is None:
+        return _DEFAULT_SESSION_DEADLINE_SECONDS
+    try:
+        return float(raw)
+    except ValueError:
+        return _DEFAULT_SESSION_DEADLINE_SECONDS
+
+
+def _worker(
+    session: SessionState,
+    task: str,
+    expect_schema: dict | None,
+    locale: str | None,
+) -> None:
+    cb = _make_ask_user_callback(session)
+
+    def on_event(payload: dict[str, Any]) -> None:
+        # Cost-attribution metrics: every llm_call event flows here on
+        # its way to SSE, so this is the single seam that covers both
+        # /tasks and /sessions paths without coupling metrics to the loop.
+        if payload.get("kind") == "llm_call":
+            tokens = payload.get("tokens") or {}
+            metrics.record_llm_call(
+                prompt_tokens=int(tokens.get("prompt_tokens", 0) or 0),
+                completion_tokens=int(tokens.get("completion_tokens", 0) or 0),
+                usd=float(payload.get("usd", 0.0) or 0.0),
+            )
+        emit_event(session, {"type": "trace", **payload})
+
+    loop_done = threading.Event()
+
+    def _watchdog() -> None:
+        if loop_done.wait(_session_deadline_seconds()):
+            return
+        # Loop did not finish in time. Emit terminal=timeout so the SSE
+        # consumer sees a clean end. The loop thread keeps running until it
+        # eventually returns (browser/LLM cleanup happens via the context
+        # managers); _emit_terminal_once ensures we don't double-emit.
+        emitted = _emit_terminal_once(
+            session,
+            {
+                "type": "terminal",
+                "status": "timeout",
+                "reason": "session_deadline",
+                "result": None,
+                "evidence": None,
+            },
+        )
+        if emitted:
+            session.status = "failed"
+
+    watchdog_thread = threading.Thread(
+        target=_watchdog,
+        name=f"session-watchdog-{session.run_id}",
+        daemon=True,
+    )
+    watchdog_thread.start()
+
+    try:
+        result = _invoke_loop(
+            task,
+            run_id=session.run_id,
+            expect_schema=expect_schema,
+            ask_user_callback=cb,
+            on_event=on_event,
+            locale=locale,
+        )
+        session.result = result
+        emitted = _emit_terminal_once(
+            session,
+            {
+                "type": "terminal",
+                "status": _terminal_status_label(result.status),
+                "reason": result.reason,
+                "result": result.result,
+                "evidence": result.evidence,
+            },
+        )
+        if emitted:
+            session.status = "done" if result.status == "succeeded" else "failed"
+    except Exception as exc:
+        logger.exception("session worker failed", extra={"run_id": session.run_id})
+        session.error = str(exc)
+        emitted = _emit_terminal_once(
+            session,
+            {"type": "terminal", "status": "failed", "error": str(exc)},
+        )
+        if emitted:
+            session.status = "failed"
+    finally:
+        loop_done.set()
+
+
+def start_session(
+    task: str,
+    *,
+    expect_schema: dict | None = None,
+    locale: str | None = None,
+) -> str:
+    run_id = str(ULID())
+    session = SessionState(run_id=run_id)
+    _register_session(session)
+    thread = threading.Thread(
+        target=_worker,
+        args=(session, task, expect_schema, locale),
+        name=f"session-{run_id}",
+        daemon=True,
+    )
+    thread.start()
+    return run_id
+
+
+def submit_answer(session: SessionState, answer: str) -> None:
+    if session.status != "awaiting_user":
+        raise RuntimeError("session is not awaiting user input")
+    session.answer_queue.put(answer)

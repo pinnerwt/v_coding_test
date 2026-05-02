@@ -101,3 +101,11 @@ Let's discuss on the workflow. The demo is in 4 hours and I need to 1. get 100% 
 I also need a "ask user question" functionality. For example, when the user asks 禮拜六的旭集有沒有位置？ The agent should ask which store it is before continuing. The planner should acknowledge what is needed before starting the loop, where ask user question is needed at this phase.
 
 Let's wire things up in @task2/deploy_plan.md . 1. We need a continue deployment workflow first. 2. We need a dev branch, where we try things locally (qwen3.5 + local http backend + frontend server). 3. Only push to master if dev is good. Since we don't have zeabur account for now, let's work on the dev branch first.
+
+Create simple smoke tests to ensure that we can run them with end to end chat + ask user question + result shown in the frontend. Raise the servers in the smoke test script as well and kill them in the end. Don't touch LLM server part.
+
+---
+
+Iterate over certain test cases. The planner wasn't performing well, features are also added along the time. More precisely, codes started with I (Issues) are discussed with me in details, and claude code almost never one shot the answer itself.
+
+Add the metrics for observability. Create a plan and add it to the /chat UI interface.

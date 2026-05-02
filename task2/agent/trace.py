@@ -35,7 +35,7 @@ class ObservationEvent(EventBase):
 
 class PlanEvent(EventBase):
     kind: Literal["plan"] = "plan"
-    reason: Literal["initial", "replan"]
+    reason: Literal["initial", "replan", "ask_user", "started"]
     steps: list[str]
     llm_call_id: str
 
@@ -54,19 +54,23 @@ class DecisionEvent(EventBase):
 class LocateEvent(EventBase):
     kind: Literal["locate"] = "locate"
     intent: str
-    tier: Literal["cache", "L1_ax", "L2_dom", "L3_rerank", "L4_vision"]
+    tier: Literal["cache", "L1_ax", "L2_dom", "L_textmatch", "L3_rerank", "L4_vision"]
     outcome: Literal["hit", "miss", "ambiguous", "error"]
     candidates: list[dict[str, Any]]
     chosen: dict[str, Any] | None
     cache_action: Literal["read", "write", "invalidate"] | None
     ms: int
+    # Free-form diagnostic for outcome=error: e.g. IntentParseError message,
+    # terminal LocatorMiss text. Helps SSE consumers (update_agent2) see *why*
+    # locate failed without having to reconstruct it from the per-tier trail.
+    reason: str | None = None
 
 
 class ActEvent(EventBase):
     kind: Literal["act"] = "act"
     tool: str
     args: dict[str, Any]
-    outcome: Literal["ok", "no_effect", "nav", "timeout", "error"]
+    outcome: Literal["ok", "no_effect", "nav", "timeout", "error", "halted_by_supervisor"]
     diff: dict[str, Any]
     ms: int
 
@@ -86,6 +90,9 @@ class SupervisorEvent(EventBase):
         "Blocked",
         "Timeout",
         "premature_fail",
+        "premature_done",
+        "unsupported_done",
+        "unsupported_superlative",
     ]
     policy: EscalationPolicy
     attempt: int
@@ -113,6 +120,20 @@ class DoneEvent(EventBase):
     verifier: dict[str, Any]
 
 
+# F16: closes trace gaps when an LLM iteration completes without dispatching
+# a tool. Reasons cover the three observed silent branches: text-only
+# responses (no_tool_call), tool calls whose arguments fail JSON.parse
+# (parse_error), and tool calls whose decoded arguments are not an object
+# (arg_validate_error). `content` carries the assistant's raw output (or the
+# raw arguments string) truncated to 256 chars so reviewers can see what
+# the agent emitted without a separate LLMCallEvent lookup.
+class StepAdvanceEvent(EventBase):
+    kind: Literal["step_advance"] = "step_advance"
+    reason: Literal["no_tool_call", "parse_error", "arg_validate_error"]
+    content: str
+    tool_call_id: str | None = None
+
+
 AnyEvent = Annotated[
     ObservationEvent
     | PlanEvent
@@ -121,7 +142,8 @@ AnyEvent = Annotated[
     | ActEvent
     | SupervisorEvent
     | LLMCallEvent
-    | DoneEvent,
+    | DoneEvent
+    | StepAdvanceEvent,
     Field(discriminator="kind"),
 ]
 

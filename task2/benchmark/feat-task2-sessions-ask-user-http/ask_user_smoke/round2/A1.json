@@ -1,0 +1,240 @@
+{
+  "summary": {
+    "case_id": "A1",
+    "run_id": "01KQGSD3HJERX1ZCB7JJ59961G",
+    "task": "Book a table at Inparadise (旭集) for noon next Saturday.",
+    "ambiguous_expected": true,
+    "saw_ask_user": true,
+    "asked_questions": [
+      "Inparadise (旭集) has multiple locations. Which city or specific branch would you like to book a table at?"
+    ],
+    "terminal": {
+      "type": "terminal",
+      "status": "failed",
+      "reason": "no_progress",
+      "result": null,
+      "evidence": null
+    },
+    "elapsed_s": 279.8,
+    "n_events": 17
+  },
+  "events": [
+    {
+      "type": "trace",
+      "run_id": "01KQGSD3HJERX1ZCB7JJ59961G",
+      "seq": 1,
+      "ts": "2026-05-01T03:30:33.943208+00:00",
+      "step_id": "01KQGSD3HJERX1ZCB7JJ59961G:step-1",
+      "kind": "plan",
+      "reason": "started",
+      "steps": [
+        "Planning..."
+      ],
+      "llm_call_id": "02077f31-9b65-451e-a878-7a9c45bc2ebe"
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGSD3HJERX1ZCB7JJ59961G",
+      "seq": 2,
+      "ts": "2026-05-01T03:30:56.224615+00:00",
+      "step_id": "01KQGSD3HJERX1ZCB7JJ59961G:step-1",
+      "kind": "plan",
+      "reason": "ask_user",
+      "steps": [
+        "Asking user: Inparadise (旭集) has multiple locations. Which city or specific branch would you like to book a table at?"
+      ],
+      "llm_call_id": "d8e98d9a-93c3-4d3c-ab70-de1fe704dd61"
+    },
+    {
+      "type": "ask_user",
+      "question": "Inparadise (旭集) has multiple locations. Which city or specific branch would you like to book a table at?"
+    },
+    {
+      "type": "answer",
+      "answer": "天母店 (Tianmu)"
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGSD3HJERX1ZCB7JJ59961G",
+      "seq": 3,
+      "ts": "2026-05-01T03:31:24.894565+00:00",
+      "step_id": "01KQGSD3HJERX1ZCB7JJ59961G:step-1",
+      "kind": "plan",
+      "reason": "initial",
+      "steps": [
+        "Navigate to a restaurant reservation platform or Inparadise's official website",
+        "Search for 'Inparadise' or '旭集' restaurant",
+        "Select the Tianmu (天母店) branch location",
+        "Choose the date: Saturday, May 9, 2026",
+        "Select time: 12:00 PM (noon)",
+        "Enter party size: 2 people",
+        "Provide contact information for the reservation",
+        "Confirm and submit the booking"
+      ],
+      "llm_call_id": "13c2be5a-7fb6-4aa5-af85-7ce56e08af2b"
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGSD3HJERX1ZCB7JJ59961G",
+      "seq": 4,
+      "ts": "2026-05-01T03:31:44.332802+00:00",
+      "step_id": "01KQGSD3HJERX1ZCB7JJ59961G:step-1",
+      "kind": "act",
+      "tool": "goto",
+      "args": {
+        "url": "https://www.google.com/search?q=Inparadise+%E6%9B%B9%E9%9B%86+%E8%A2%92%E4%BD%8D"
+      },
+      "outcome": "ok",
+      "diff": {},
+      "ms": 512
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGSD3HJERX1ZCB7JJ59961G",
+      "seq": 5,
+      "ts": "2026-05-01T03:32:01.772873+00:00",
+      "step_id": "01KQGSD3HJERX1ZCB7JJ59961G:step-2",
+      "kind": "act",
+      "tool": "goto",
+      "args": {
+        "url": "https://www.inparadise.com.tw/"
+      },
+      "outcome": "ok",
+      "diff": {},
+      "ms": 472
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGSD3HJERX1ZCB7JJ59961G",
+      "seq": 6,
+      "ts": "2026-05-01T03:32:25.884467+00:00",
+      "step_id": "01KQGSD3HJERX1ZCB7JJ59961G:step-3",
+      "kind": "act",
+      "tool": "click",
+      "args": {
+        "intent": "網路訂位 link"
+      },
+      "outcome": "timeout",
+      "diff": {},
+      "ms": 5002
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGSD3HJERX1ZCB7JJ59961G",
+      "seq": 7,
+      "ts": "2026-05-01T03:33:22.574942+00:00",
+      "step_id": "01KQGSD3HJERX1ZCB7JJ59961G:step-6",
+      "kind": "act",
+      "tool": "click",
+      "args": {
+        "intent": "the 網路訂位 link"
+      },
+      "outcome": "timeout",
+      "diff": {},
+      "ms": 5000
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGSD3HJERX1ZCB7JJ59961G",
+      "seq": 8,
+      "ts": "2026-05-01T03:34:27.524315+00:00",
+      "step_id": "01KQGSD3HJERX1ZCB7JJ59961G:step-7",
+      "kind": "supervisor",
+      "trigger_event_seq": 0,
+      "classified_as": "premature_done",
+      "policy": "halt",
+      "attempt": 1
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGSD3HJERX1ZCB7JJ59961G",
+      "seq": 9,
+      "ts": "2026-05-01T03:34:56.612565+00:00",
+      "step_id": "01KQGSD3HJERX1ZCB7JJ59961G:step-9",
+      "kind": "locate",
+      "intent": "the online reservation link",
+      "tier": "L1_ax",
+      "outcome": "miss",
+      "candidates": [],
+      "chosen": null,
+      "cache_action": null,
+      "ms": 0
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGSD3HJERX1ZCB7JJ59961G",
+      "seq": 10,
+      "ts": "2026-05-01T03:34:56.620904+00:00",
+      "step_id": "01KQGSD3HJERX1ZCB7JJ59961G:step-9",
+      "kind": "supervisor",
+      "trigger_event_seq": 9,
+      "classified_as": "LocatorMiss",
+      "policy": "next_tier",
+      "attempt": 1
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGSD3HJERX1ZCB7JJ59961G",
+      "seq": 11,
+      "ts": "2026-05-01T03:34:56.631525+00:00",
+      "step_id": "01KQGSD3HJERX1ZCB7JJ59961G:step-9",
+      "kind": "locate",
+      "intent": "the online reservation link",
+      "tier": "L2_dom",
+      "outcome": "miss",
+      "candidates": [],
+      "chosen": null,
+      "cache_action": null,
+      "ms": 0
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGSD3HJERX1ZCB7JJ59961G",
+      "seq": 12,
+      "ts": "2026-05-01T03:35:13.415500+00:00",
+      "step_id": "01KQGSD3HJERX1ZCB7JJ59961G:step-10",
+      "kind": "locate",
+      "intent": "the 網路訂位 button",
+      "tier": "L1_ax",
+      "outcome": "miss",
+      "candidates": [],
+      "chosen": null,
+      "cache_action": null,
+      "ms": 0
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGSD3HJERX1ZCB7JJ59961G",
+      "seq": 13,
+      "ts": "2026-05-01T03:35:13.423605+00:00",
+      "step_id": "01KQGSD3HJERX1ZCB7JJ59961G:step-10",
+      "kind": "supervisor",
+      "trigger_event_seq": 12,
+      "classified_as": "LocatorMiss",
+      "policy": "next_tier",
+      "attempt": 2
+    },
+    {
+      "type": "trace",
+      "run_id": "01KQGSD3HJERX1ZCB7JJ59961G",
+      "seq": 14,
+      "ts": "2026-05-01T03:35:13.435042+00:00",
+      "step_id": "01KQGSD3HJERX1ZCB7JJ59961G:step-10",
+      "kind": "locate",
+      "intent": "the 網路訂位 button",
+      "tier": "L2_dom",
+      "outcome": "miss",
+      "candidates": [],
+      "chosen": null,
+      "cache_action": null,
+      "ms": 0
+    },
+    {
+      "type": "terminal",
+      "status": "failed",
+      "reason": "no_progress",
+      "result": null,
+      "evidence": null
+    }
+  ]
+}

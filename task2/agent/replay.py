@@ -96,6 +96,17 @@ class _StubPage:
     def title(self) -> str:
         return ""
 
+    # F22: canonical locator ladder probes viewport_size before L4_vision.
+    # Returning None makes L4 raise LocatorMiss(vision_miss) without ever
+    # invoking the LLM — replay sees the same "no candidate" outcome it did
+    # before the truncated ladder was deleted.
+    @property
+    def viewport_size(self) -> dict | None:
+        return None
+
+    def screenshot(self, *, full_page: bool = False, scale: str = "css") -> bytes:  # noqa: ARG002
+        return b""
+
 
 class StubBrowser:
     """Duck-type replacement for agent.browser.Browser.
@@ -152,6 +163,32 @@ _STUB_PLAN_RESPONSE = ChatResponse(
 )
 
 
+_STUB_JUDGE_RESPONSE = ChatResponse(
+    content='{"verdict": "supported", "reason": "stub"}',
+    tool_calls=[],
+    finish_reason="stop",
+    model="stub",
+    usage=Usage(0, 0, 0),
+    raw={},
+)
+
+
+def _is_judge_call(messages: list[dict]) -> bool:
+    if not messages:
+        return False
+    first = messages[0]
+    content = first.get("content", "") if isinstance(first, dict) else ""
+    return isinstance(content, str) and "[VERIFY DONE]" in content
+
+
+def _is_planner_call(messages: list[dict]) -> bool:
+    if not messages:
+        return False
+    first = messages[0]
+    content = first.get("content", "") if isinstance(first, dict) else ""
+    return isinstance(content, str) and content.startswith("You are a planning assistant")
+
+
 class StubLLMClient:
     """Returns pre-recorded ChatResponse objects in sequence.
 
@@ -175,8 +212,11 @@ class StubLLMClient:
         seed: int | None = None,  # noqa: ARG002
         **kwargs: Any,  # noqa: ARG002
     ) -> ChatResponse:
-        # Planner calls have no tools; return a stub plan without consuming the decision queue.
-        if tools is None:
+        # Verify-done judge calls — return supported without consuming decision queue.
+        if _is_judge_call(messages):
+            return _STUB_JUDGE_RESPONSE
+        # Planner calls — return a stub plan without consuming the decision queue.
+        if tools is None or _is_planner_call(messages):
             return _STUB_PLAN_RESPONSE
         # Snapshot the messages — loop.py keeps mutating the same list across calls.
         self.prompts_consumed.append(json.loads(json.dumps(messages)))
